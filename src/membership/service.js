@@ -26,6 +26,23 @@ async function roles(db,userId){
 }
 function amountFromProduct(product){ return Number(product.price); }
 
+export async function bootstrapAdmin(input){
+  const email=normalizeEmail(input.email); const password=String(input.password||"");
+  if(!email||password.length<14) throw httpError(400,"Bootstrap admin email and a password of at least 14 characters are required.","BOOTSTRAP_INVALID");
+  return withTransaction(async db=>{
+    const existing=await db.query("select id,email,status from app_user where lower(email)=lower($1)",[email]);
+    let user=existing.rows[0];
+    if(user && user.status!=="active") await db.query("update app_user set status='active',updated_at=now() where id=$1",[user.id]);
+    if(!user) user=(await db.query("insert into app_user(username,email,password_hash,status) values($1,$1,$2,'active') returning id,email,status",[email, email, hashPassword(password)])).rows[0];
+    const role=(await db.query("select id from app_role where role_code='system_admin'")).rows[0];
+    if(!role) throw httpError(500,"System administrator role is unavailable.","BOOTSTRAP_ROLE_MISSING");
+    await db.query("insert into app_user_role(user_id,role_id) values($1,$2) on conflict do nothing",[user.id,role.id]);
+    await db.query("insert into admin_bootstrap_event(user_id,source,metadata) values($1,'environment_bootstrap',$2)",[user.id,{email}]);
+    await audit(db,user.id,"admin.bootstrap","account",user.id,null,{source:"environment"});
+    return {userId:user.id,email:user.email};
+  });
+}
+
 export async function register(input,requestId){
   const email=normalizeEmail(input.email);
   if(!email || !String(input.password||"")) throw httpError(400,"email and password are required.","VALIDATION_ERROR");
