@@ -15,6 +15,18 @@ async function professionalVerified(db,userId){
 }
 function normalizeArray(v){ return Array.isArray(v)?v.map(x=>String(x).trim().toLowerCase()).filter(Boolean):[]; }
 function overlap(a,b){ const set=new Set(normalizeArray(a)); return normalizeArray(b).filter(x=>set.has(x)).length; }
+async function hasPlatformRole(db,userId,roles){
+  const row=(await db.query("select 1 from app_user_role ur join app_role r on r.id=ur.role_id where ur.user_id=$1 and r.role_code=any($2::text[]) limit 1",[userId,roles])).rows[0];
+  return Boolean(row);
+}
+async function assertSessionFitsAvailability(db,mentorUserId,startAt,endAt){
+  const profile=(await db.query("select id from mentor_profile where user_id=$1",[mentorUserId])).rows[0];
+  if(!profile) throw error(409,"Mentor profile is unavailable.","MENTOR_UNAVAILABLE");
+  const slot=(await db.query("select 1 from mentor_availability a where a.mentor_profile_id=$1 and a.active=true and a.day_of_week=extract(dow from ($2::timestamptz at time zone a.timezone))::int and a.start_time <= (($2::timestamptz at time zone a.timezone)::time) and a.end_time >= (($3::timestamptz at time zone a.timezone)::time) limit 1",[profile.id,startAt,endAt])).rows[0];
+  if(!slot) throw error(409,"The requested session time is outside the mentor's published availability.","OUTSIDE_AVAILABILITY");
+  const conflict=(await db.query("select 1 from mentor_time_off t where t.mentor_profile_id=$1 and t.starts_at < $3::timestamptz and t.ends_at > $2::timestamptz limit 1",[profile.id,startAt,endAt])).rows[0];
+  if(conflict) throw error(409,"The mentor is unavailable during the requested time.","TIME_OFF_CONFLICT");
+}
 
 const SERVICE_TRANSITIONS={
  requested:["accepted","declined","cancelled"],
@@ -254,7 +266,7 @@ export async function proposeMentorMatch(requestId,mentorUserId,actorUserId,requ
   return withTransaction(async db=>{
     const request=(await db.query("select * from mentorship_request where id=$1 for update",[requestId])).rows[0];
     if(!request) throw error(404,"Mentorship request not found.","NOT_FOUND");
-    if(request.mentee_user_id!==actorUserId && !(await activeMember(db,actorUserId))) throw error(403,"Only the mentee or an authorized matching actor may propose a match.","FORBIDDEN");
+    if(request.mentee_user_id!==actorUserId && !(await hasPlatformRole(db,actorUserId,["supporting_staff","system_admin"]))) throw error(403,"Only the mentee or authorized matching staff may propose a match.","FORBIDDEN");
     if(["cancelled","completed"].includes(request.status)) throw error(409,"This mentorship request is closed.","INVALID_STATE");
     const candidates=await mentorCandidates(db,request); const match=candidates.find(x=>x.mentorUserId===mentorUserId);
     if(!match) throw error(409,"Selected mentor is not currently eligible or available.","MENTOR_UNAVAILABLE");
@@ -310,7 +322,7 @@ export async function createMentorshipSession(mentorshipId,userId,input,requestI
   return withTransaction(async db=>{
     const m=await mentorshipParticipant(db,mentorshipId,userId);
     if(m.status!=="active") throw error(409,"Sessions can only be scheduled for an active mentorship.","MENTORSHIP_NOT_ACTIVE");
-    if(!input.scheduledStartAt||!input.scheduledEndAt) throw error(400,"scheduledStartAt and scheduledEndAt are required.","VALIDATION_ERROR");
+    if(!input.scheduledStartAt||!input.scheduledEndAt) throw error(400,"scheduledStartAt and scheduledEndAt are required.","VALIDATION_ERROR");\n    await assertSessionFitsAvailability(db,m.mentor_user_id,input.scheduledStartAt,input.scheduledEndAt);
     const row=(await db.query("insert into mentorship_session(mentorship_id,scheduled_start_at,scheduled_end_at,mode,location_label,meeting_reference,agenda,created_by) values($1,$2,$3,$4,$5,$6,$7,$8) returning *",[mentorshipId,input.scheduledStartAt,input.scheduledEndAt,input.mode||"remote",input.locationLabel||null,input.meetingReference||null,input.agenda||null,userId])).rows[0];
     await audit(db,userId,"mentorship.session_created","mentorship_session",row.id,requestId);
     return row;
