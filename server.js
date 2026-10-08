@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { loadConfig } from "./src/platform/config.js";
 import { createLogger } from "./src/platform/logger.js";
 import { verifyToken, requireRole, hashSessionToken } from "./src/platform/auth.js";
+import { getPool } from "./src/platform/db.js";
 import * as membership from "./src/membership/service.js";
 import * as verification from "./src/verification/service.js";
 import * as talent from "./src/talent/service.js";
@@ -32,12 +33,18 @@ async function body(req){
   try { return JSON.parse(raw); } catch { throw Object.assign(new Error("Request body must be valid JSON."),{statusCode:400,code:"INVALID_JSON"}); }
 }
 function clientIp(req){ return String(req.headers["x-forwarded-for"]||req.socket.remoteAddress||"").split(",")[0].trim() || null; }
-function auth(req){
+async function auth(req){
   if(!config.jwtSecret) throw Object.assign(new Error("Authentication secret is not configured."),{statusCode:503,code:"AUTH_NOT_CONFIGURED"});
   const header=req.headers.authorization||"";
   if(!header.startsWith("Bearer ")) throw Object.assign(new Error("Bearer authentication required."),{statusCode:401,code:"UNAUTHENTICATED"});
-  try { return verifyToken(header.slice(7),config.jwtSecret); }
-  catch(e){ throw Object.assign(new Error(e.message),{statusCode:e.statusCode===403?403:401,code:"UNAUTHENTICATED"}); }
+  try {
+    const identity=verifyToken(header.slice(7),config.jwtSecret);
+    if(!identity.sid) throw Object.assign(new Error("Session-bound authentication required."),{statusCode:401});
+    const db=getPool(); const r=await db.query("select s.user_id,u.status from auth_session s join app_user u on u.id=s.user_id where s.id=$1 and s.revoked_at is null and s.expires_at>now()",[identity.sid]);
+    if(!r.rows[0]||r.rows[0].status!=="active"||r.rows[0].user_id!==identity.sub) throw Object.assign(new Error("Session expired or revoked."),{statusCode:401});
+    await db.query("update auth_session set last_seen_at=now() where id=$1",[identity.sid]);
+    return identity;
+  } catch(e){ throw Object.assign(new Error(e.message),{statusCode:e.statusCode===403?403:401,code:"UNAUTHENTICATED"}); }
 }
 function optionalIdentity(req){
   if(!req.headers.authorization?.startsWith("Bearer ")) return null;
@@ -64,7 +71,7 @@ const server=http.createServer(async (req,res)=>{
     if(req.method==="POST" && p==="api/v1/public/opportunity-inquiries") { publicRateLimit(req,"public-inquiry",10,60000); return ok(res,await publicOpportunity.createPublicInquiry(await body(req),requestId,optionalIdentity(req)),requestId,201); } }
     if(req.method==="GET" && parts.length===6 && p.startsWith("api/v1/public/opportunity-inquiries/") && parts[5]==="details") { const q=query(req.url); return ok(res,await publicOpportunity.getPublicInquiry(parts[4],q.get("token")||""),requestId); }
     if(req.method==="PATCH" && parts.length===6 && p.startsWith("api/v1/public/opportunity-inquiries/") && parts[5]==="details") { const b=await body(req); return ok(res,await publicOpportunity.updatePublicInquiryDetails(parts[4],b.token||"",b,requestId),requestId); }
-    if(req.method==="POST" && parts.length===6 && p.startsWith("api/v1/public/opportunity-inquiries/") && parts[5]==="link") { const identity=auth(req); const b=await body(req); return ok(res,await publicOpportunity.linkInquiryToAccount(parts[4],b.token||"",identity.sub,requestId),requestId); }
+    if(req.method==="POST" && parts.length===6 && p.startsWith("api/v1/public/opportunity-inquiries/") && parts[5]==="link") { const identity=await auth(req); const b=await body(req); return ok(res,await publicOpportunity.linkInquiryToAccount(parts[4],b.token||"",identity.sub,requestId),requestId); }
     if(req.method==="GET" && p==="api/v1/jobs") { const q=query(req.url); const v=optionalIdentity(req); return ok(res,await organizationJobs.listJobs({visibility:q.get("visibility"),postingScope:q.get("postingScope"),q:q.get("q"),employmentType:q.get("employmentType"),workMode:q.get("workMode"),seniority:q.get("seniority"),department:q.get("department"),location:q.get("location"),industryReferenceItemId:q.get("industryReferenceItemId"),occupationReferenceItemId:q.get("occupationReferenceItemId")},v?.sub||null),requestId); }
     if(req.method==="GET" && parts.length===4 && p.startsWith("api/v1/jobs/")) { const v=optionalIdentity(req); return ok(res,await organizationJobs.getJob(parts[3],v?.sub||null),requestId); }
 
@@ -81,7 +88,7 @@ const server=http.createServer(async (req,res)=>{
     if(req.method==="GET" && parts.length===5 && p.startsWith("api/v1/experience/demo-cases/")) return ok(res,await experience.getDemoCase(parts[4]),requestId);
     if(req.method==="GET" && p==="api/v1/experience/guides") { const q=query(req.url); return ok(res,await experience.listGuides(q.get("route")),requestId); }
 
-    const identity=auth(req);
+    const identity=await auth(req);
     if(req.method==="POST" && p==="api/v1/admin/experience/demo-cases") { return ok(res,await experience.createDemoCase(identity.sub,await body(req),requestId),requestId,201); }
     if(req.method==="PATCH" && parts.length===6 && p.startsWith("api/v1/admin/experience/demo-cases/")) { return ok(res,await experience.updateDemoCase(parts[5],identity.sub,await body(req),requestId),requestId); }
     if(req.method==="POST" && p==="api/v1/admin/experience/guides") { return ok(res,await experience.createGuide(identity.sub,await body(req),requestId),requestId,201); }
@@ -161,8 +168,8 @@ const server=http.createServer(async (req,res)=>{
     if(req.method==="POST" && parts.length===6 && p.startsWith("api/v1/mentorship/sessions/") && parts[5]==="status") { const b=await body(req); return ok(res,await servicesMentorship.changeMentorshipSession(parts[4],identity.sub,b.status,b.notes,requestId),requestId); }
     if(req.method==="POST" && parts.length===5 && p.startsWith("api/v1/mentorship/") && parts[4]==="feedback") return ok(res,await servicesMentorship.submitMentorshipFeedback(parts[3],identity.sub,await body(req),requestId),requestId,201);
     if(req.method==="GET" && p==="api/v1/me/outcomes") return ok(res,await stakeholderOutcomes.getMyOutcomeWorkspace(identity.sub),requestId);
-    if(req.method==="GET" && p==="api/v1/opportunity-inquiries") { const identity=auth(req); return ok(res,await publicOpportunity.listInquiries(identity.sub,{type:query(req.url).get("type"),status:query(req.url).get("status")}),requestId); }
-    if(req.method==="PATCH" && parts.length===4 && p.startsWith("api/v1/opportunity-inquiries/") { const identity=auth(req); const b=await body(req); return ok(res,await publicOpportunity.decideInquiry(parts[3],identity.sub,b,requestId),requestId); }
+    if(req.method==="GET" && p==="api/v1/opportunity-inquiries") { const identity=await auth(req); return ok(res,await publicOpportunity.listInquiries(identity.sub,{type:query(req.url).get("type"),status:query(req.url).get("status")}),requestId); }
+    if(req.method==="PATCH" && parts.length===4 && p.startsWith("api/v1/opportunity-inquiries/") { const identity=await auth(req); const b=await body(req); return ok(res,await publicOpportunity.decideInquiry(parts[3],identity.sub,b,requestId),requestId); }
     if(req.method==="GET" && p==="api/v1/me/application-tracking") return ok(res,await applicationTracking.getApplicationTracking(identity.sub),requestId);
     if(req.method==="GET" && p==="api/v1/me") return ok(res,await membership.getMe(identity.sub),requestId);
     if(req.method==="PATCH" && p==="api/v1/me/profile") return ok(res,await membership.updateProfile(identity.sub,await body(req),requestId),requestId);
