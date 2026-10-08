@@ -164,13 +164,28 @@ export async function createJob(orgId,userId,input,requestId){
   const occupation=await validateReference(db,input.occupationReferenceItemId,"occupation");
   if(!input.title||!input.description) throw error(400,"title and description are required.","VALIDATION_ERROR");
   const visibility=input.visibility==="exclusive"?"exclusive":"public";
-  const job=(await db.query("insert into job(organization_id,title,description,employment_type,work_mode,location_label,industry_reference_item_id,occupation_reference_item_id,visibility,application_deadline,created_by) values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) returning *",[orgId,input.title,input.description,input.employmentType||null,input.workMode||null,input.locationLabel||null,industry,occupation,visibility,input.applicationDeadline||null,userId])).rows[0];
+  const postingScope=["public","mpa_members","organization_internal","partner_network"].includes(input.postingScope)?input.postingScope:"public";
+  if(postingScope==="organization_internal" && visibility==="exclusive") throw error(400,"Internal vacancies use posting scope for access control; do not combine it with exclusive visibility.","INVALID_SCOPE");
+  const positions=Number(input.positionsCount||1); if(!Number.isInteger(positions)||positions<1) throw error(400,"positionsCount must be a positive integer.","VALIDATION_ERROR");
+  const salaryMin=input.salaryMin===undefined||input.salaryMin===null?null:Number(input.salaryMin);
+  const salaryMax=input.salaryMax===undefined||input.salaryMax===null?null:Number(input.salaryMax);
+  if(salaryMin!==null&&(!Number.isFinite(salaryMin)||salaryMin<0)) throw error(400,"salaryMin must be non-negative.","VALIDATION_ERROR");
+  if(salaryMax!==null&&(!Number.isFinite(salaryMax)||salaryMax<0)) throw error(400,"salaryMax must be non-negative.","VALIDATION_ERROR");
+  if(salaryMin!==null&&salaryMax!==null&&salaryMax<salaryMin) throw error(400,"salaryMax cannot be below salaryMin.","VALIDATION_ERROR");
+  let requisitionId=input.requisitionId||null;
+  if(requisitionId){
+    const req=(await db.query("select id,status,organization_id from job_requisition where id=$1",[requisitionId])).rows[0];
+    if(!req||req.organization_id!==orgId) throw error(400,"Requisition does not belong to this organization.","INVALID_REQUISITION");
+    if(req.status!=="approved") throw error(409,"A job cannot be published from an unapproved requisition.","REQUISITION_NOT_APPROVED");
+  }
+  const job=(await db.query("insert into job(organization_id,title,description,employment_type,work_mode,location_label,industry_reference_item_id,occupation_reference_item_id,visibility,posting_scope,department,seniority_level,positions_count,salary_min,salary_max,salary_currency,requisition_id,application_deadline,created_by) values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19) returning *",[orgId,input.title,input.description,input.employmentType||null,input.workMode||null,input.locationLabel||null,industry,occupation,visibility,postingScope,input.department||null,input.seniorityLevel||null,positions,salaryMin,salaryMax,input.salaryCurrency||null,requisitionId,input.applicationDeadline||null,userId])).rows[0];
   if(Array.isArray(input.eligibilityRules)) await replaceRules(db,job.id,input.eligibilityRules);
-  if(visibility==="exclusive") await ensureExclusiveDefaults(db,job.id);
-  await audit(db,userId,"job.created","job",job.id,requestId,{visibility});
+  if(visibility==="exclusive" || postingScope==="mpa_members" || postingScope==="partner_network") await ensureExclusiveDefaults(db,job.id);
+  await audit(db,userId,"job.created","job",job.id,requestId,{visibility,postingScope,requisitionId});
   return job;
  });
 }
+
 async function ensureExclusiveDefaults(db,jobId){
  const count=Number((await db.query("select count(*)::int count from job_eligibility_rule where job_id=$1",[jobId])).rows[0].count);
  if(count===0){
@@ -193,9 +208,19 @@ export async function updateJob(jobId,userId,input,requestId){
   const industry=input.industryReferenceItemId===undefined?j.industry_reference_item_id:await validateReference(db,input.industryReferenceItemId,"industry");
   const occupation=input.occupationReferenceItemId===undefined?j.occupation_reference_item_id:await validateReference(db,input.occupationReferenceItemId,"occupation");
   const visibility=input.visibility===undefined?j.visibility:(input.visibility==="exclusive"?"exclusive":"public");
-  const updated=(await db.query("update job set title=coalesce($1,title),description=coalesce($2,description),employment_type=coalesce($3,employment_type),work_mode=coalesce($4,work_mode),location_label=coalesce($5,location_label),industry_reference_item_id=$6,occupation_reference_item_id=$7,visibility=$8,application_deadline=coalesce($9,application_deadline),updated_by=$10,updated_at=now() where id=$11 returning *",[input.title||null,input.description||null,input.employmentType||null,input.workMode||null,input.locationLabel||null,industry,occupation,visibility,input.applicationDeadline||null,userId,jobId])).rows[0];
+  const postingScope=input.postingScope===undefined?j.posting_scope:(["public","mpa_members","organization_internal","partner_network"].includes(input.postingScope)?input.postingScope:null);
+  if(!postingScope) throw error(400,"Invalid postingScope.","VALIDATION_ERROR");
+  if(postingScope==="organization_internal" && visibility==="exclusive") throw error(400,"Internal vacancies use posting scope for access control; do not combine it with exclusive visibility.","INVALID_SCOPE");
+  const positions=input.positionsCount===undefined?j.positions_count:Number(input.positionsCount); if(!Number.isInteger(positions)||positions<1) throw error(400,"positionsCount must be a positive integer.","VALIDATION_ERROR");
+  const salaryMin=input.salaryMin===undefined?j.salary_min:(input.salaryMin===null?null:Number(input.salaryMin));
+  const salaryMax=input.salaryMax===undefined?j.salary_max:(input.salaryMax===null?null:Number(input.salaryMax));
+  if(salaryMin!==null&&(!Number.isFinite(salaryMin)||salaryMin<0)) throw error(400,"salaryMin must be non-negative.","VALIDATION_ERROR");
+  if(salaryMax!==null&&(!Number.isFinite(salaryMax)||salaryMax<0)) throw error(400,"salaryMax must be non-negative.","VALIDATION_ERROR");
+  if(salaryMin!==null&&salaryMax!==null&&salaryMax<salaryMin) throw error(400,"salaryMax cannot be below salaryMin.","VALIDATION_ERROR");
+  const updated=(await db.query("update job set title=coalesce($1,title),description=coalesce($2,description),employment_type=coalesce($3,employment_type),work_mode=coalesce($4,work_mode),location_label=coalesce($5,location_label),industry_reference_item_id=$6,occupation_reference_item_id=$7,visibility=$8,posting_scope=$9,department=coalesce($10,department),seniority_level=coalesce($11,seniority_level),positions_count=$12,salary_min=$13,salary_max=$14,salary_currency=coalesce($15,salary_currency),application_deadline=coalesce($16,application_deadline),updated_by=$17,updated_at=now() where id=$18 returning *",[input.title||null,input.description||null,input.employmentType||null,input.workMode||null,input.locationLabel||null,industry,occupation,visibility,postingScope,input.department||null,input.seniorityLevel||null,positions,salaryMin,salaryMax,input.salaryCurrency||null,input.applicationDeadline||null,userId,jobId])).rows[0];
   if(Array.isArray(input.eligibilityRules)) await replaceRules(db,jobId,input.eligibilityRules);
-  await audit(db,userId,"job.updated","job",jobId,requestId,{});
+  if(visibility==="exclusive" || postingScope==="mpa_members" || postingScope==="partner_network") await ensureExclusiveDefaults(db,jobId);
+  await audit(db,userId,"job.updated","job",jobId,requestId,{postingScope});
   return updated;
  });
 }
