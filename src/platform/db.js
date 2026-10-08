@@ -27,3 +27,7 @@ export async function withTransaction(work){
     client.release();
   }
 }
+
+export async function closePool(){
+  if(pool){ await pool.end(); pool=null; }
+}
