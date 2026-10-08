@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { allowedTransition } from "../../src/verification/service.js";
-import { ELIGIBLE_VERIFICATION_CLAIMS,isEligibleVerifiedClaim } from "../../src/talent/service.js";
+import { ELIGIBLE_VERIFICATION_CLAIMS,isEligibleVerifiedClaim,allowedTalentInquiryTransition } from "../../src/talent/service.js";
 
 test("verification lifecycle permits controlled forward transitions only",()=>{
   assert.equal(allowedTransition("submitted","review"),true);
@@ -34,4 +34,13 @@ test("consent boundary keeps substantive work closed until consent",()=>{
   assert.equal(allowedTransition("consent_pending","submitted"),true);
   assert.equal(allowedTransition("consent_pending","review"),false);
   assert.equal(allowedTransition("consent_pending","decision_pending"),false);
+});
+
+test("talent inquiry creates a controlled consent-based bridge",()=>{
+  assert.equal(allowedTalentInquiryTransition("requested","accepted"),true);
+  assert.equal(allowedTalentInquiryTransition("requested","declined"),true);
+  assert.equal(allowedTalentInquiryTransition("requested","closed"),true);
+  assert.equal(allowedTalentInquiryTransition("accepted","closed"),true);
+  assert.equal(allowedTalentInquiryTransition("declined","accepted"),false);
+  assert.equal(allowedTalentInquiryTransition("closed","accepted"),false);
 });

@@ -144,3 +144,15 @@ Applicants may attach application documents through file references. Organizatio
 Phase 3 consumes Phase 1 account/person/membership records, Phase 2 professional profile and canonical talent eligibility, Phase 2 verification claims, versioned reference portfolio, platform audit and secure file abstractions.
 
 It does not duplicate membership, verification, talent-directory or reference-data semantics.
+
+## Outcome hardening addendum
+
+Recruitment now separates employer action from candidate consent. An organization can issue an offer with amount, currency and terms, but cannot mark the candidate as accepted. The candidate must explicitly accept the offer or withdraw.
+
+Additional implementation:
+- migration 012: offer fields and timestamps;
+- organization/jobs service: candidate-owned offer response;
+- route: /api/v1/job-applications/:id/respond;
+- audit: offer acceptance and withdrawal.
+
+The hired state remains an employment outcome marker, not a substitute for later contract, onboarding, payroll or HR workflows.

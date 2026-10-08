@@ -98,3 +98,14 @@ High-risk changes require explicit security and regression testing.
 | Sessions | mentorship_session with controlled state and availability-aware scheduling |
 | Feedback | mentorship_feedback with completed-session/program gates and self-rating prevention |
 | Privacy | no private verification evidence copied into services, mentor or mentorship records |
+
+## Phase 2-4 outcome hardening traceability
+
+| Requirement | Implementation |
+| --- | --- |
+| Talent opportunity bridge | migration 012, talent_inquiry, consent-based response and optional contact release |
+| Candidate offer consent | migration 012, candidate-owned application response and offer terms |
+| Service delivery outcomes | migration 012, milestones, deliveries, requester acceptance and feedback |
+| Service settlement | service_payment plus existing payment_transaction/payment_verification foundation |
+| Mentorship outcomes | mentorship_goal plus session outcome/next-step fields |
+| Outcome audit | audit events for inquiry, offer, delivery, payment and goal changes |

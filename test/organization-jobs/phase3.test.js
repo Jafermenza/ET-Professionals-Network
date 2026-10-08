@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { allowedApplicationTransition, ELIGIBILITY_RULES, isEligibleVerifiedClaimForJobs } from "../../src/organization-jobs/service.js";
+import { allowedApplicationTransition, allowedCandidateResponse, ELIGIBILITY_RULES, isEligibleVerifiedClaimForJobs } from "../../src/organization-jobs/service.js";
 
 test("phase 3 eligibility engine exposes controlled rule vocabulary",()=>{
   assert.equal(ELIGIBILITY_RULES.includes("membership_active"),true);
@@ -17,6 +17,13 @@ test("candidate workflow follows contracted progression",()=>{
   assert.equal(allowedApplicationTransition("accepted","hired"),true);
   assert.equal(allowedApplicationTransition("submitted","hired"),false);
   assert.equal(allowedApplicationTransition("rejected","screening"),false);
+});
+test("candidate owns offer acceptance and withdrawal decisions",()=>{
+  assert.equal(allowedCandidateResponse("offer","accepted"),true);
+  assert.equal(allowedCandidateResponse("offer","withdrawn"),true);
+  assert.equal(allowedCandidateResponse("submitted","withdrawn"),true);
+  assert.equal(allowedCandidateResponse("hired","withdrawn"),false);
+  assert.equal(allowedCandidateResponse("offer","rejected"),false);
 });
 test("professional eligibility is distinct from identity or membership verification",()=>{
   assert.equal(isEligibleVerifiedClaimForJobs("professional_certification"),true);
