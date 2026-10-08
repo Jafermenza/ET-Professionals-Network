@@ -22,7 +22,7 @@ function approve(repo, service, id) {
 test("enforces validated -> review -> approved -> published", () => {
   const { repo, service } = setup();
   const draft = service.createDraftVersion("occupation", "admin-1");
-  assert.throws(() => service.approve(draft.id, "reviewer-1"), /must be approved_pending/);
+  assert.throws(() => service.approve(draft.id, "reviewer-1"), /must be submitted/);
   approve(repo, service, draft.id);
   const published = service.publish(draft.id, "publisher-1", "Initial publication");
   assert.equal(published.status, "published");
