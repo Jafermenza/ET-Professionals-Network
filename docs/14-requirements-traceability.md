@@ -69,3 +69,17 @@ Lower risk:
 - non-critical reporting.
 
 High-risk changes require explicit security and regression testing.
+
+
+## Phase 3 traceability
+
+| Requirement | Implementation |
+|---|---|
+| FR-007 Jobs | Migration 009, organization/jobs service, public job routes, job lifecycle and applications |
+| Organization registration/verification | organization, organization_verification_case, organization_verification_evidence and reviewer workflow |
+| Organization users | organization_membership with scoped roles and server-side organization authorization |
+| Public jobs | published verified-organization jobs are publicly discoverable |
+| Exclusive jobs | exclusive visibility plus implicit active-membership and professional-verification requirements |
+| Eligibility engine | centralized evaluateEligibility() with controlled rule vocabulary |
+| Applications | job_application, application events, attachments and contracted candidate state transitions |
+| Privacy | safe profile/eligibility snapshots; no Phase 2 private evidence copied into applications |
