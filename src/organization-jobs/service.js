@@ -326,6 +326,7 @@ const APPLICATION_TRANSITIONS={
  withdrawn:[]
 };
 export function allowedApplicationTransition(from,to){ return (APPLICATION_TRANSITIONS[from]||[]).includes(to); }
+export function allowedCandidateResponse(from,to){ return from==="offer"&&to==="accepted" || ["submitted","screening","shortlisted","interview","offer","accepted"].includes(from)&&to==="withdrawn"; }
 
 export async function updateCandidate(jobId,applicationId,userId,input,requestId){
  return withTransaction(async db=>{
