@@ -29,7 +29,7 @@ A role on one organization never grants access to another organization.
 
 Organization verification is a business workflow and is not inferred from the organization's name or email domain.
 
-Verification decisions are audited with reviewer, reason and timestamp. Verification evidence remains private.
+Verification decisions are audited with reviewer, reason and timestamp. Verification evidence remains private. Required evidence types are admin-configurable by organization type; the platform does not hard-code one document set for every Ethiopian entity. Depending on entity type and applicable law, configuration can require items such as registration/legal-existence evidence, authorization to represent the entity, TIN, business/trade licensing or sector-specific authorization.
 
 The existing Phase 2 reviewer authorization model is reused for organization verification; a separate organization-verification evidence store prevents private organizational material from entering the talent registry.
 
@@ -125,18 +125,19 @@ Applicants may attach application documents through file references. Organizatio
 
 1. Organization registration creates an organization and scoped owner membership.
 2. Verification evidence is private and reviewable only through authorized workflow.
-3. Unverified organizations cannot publish.
-4. Verified organization users can create and publish jobs.
-5. Public jobs can be discovered without authentication.
-6. Exclusive jobs have explicit eligibility rules, including the default active-membership + professional-verification boundary.
-7. Eligibility is evaluated by one service rather than duplicated in routes.
-8. Ineligible members cannot submit an exclusive application.
-9. Eligible members can submit an exclusive application.
-10. Organization users can view and manage candidates only for their own organization jobs.
-11. Candidate status transitions are controlled and audited.
-12. Application snapshots preserve the information used at submission time.
-13. Private Phase 2 verification evidence is never copied into job/application records.
-14. CI migration, tests and smoke test must pass before Phase 3 is accepted.
+3. Required organization evidence is checked against the configured organization-type policy before submission.
+4. Unverified organizations cannot publish.
+5. Verified organization users can create and publish jobs.
+6. Public jobs can be discovered without authentication.
+7. Exclusive jobs have explicit eligibility rules, including the default active-membership + professional-verification boundary.
+8. Eligibility is evaluated by one service rather than duplicated in routes.
+9. Ineligible members cannot submit an exclusive application.
+10. Eligible members can submit an exclusive application.
+11. Organization users can view and manage candidates only for their own organization jobs.
+12. Candidate status transitions are controlled and audited.
+13. Application snapshots preserve the information used at submission time.
+14. Private Phase 2 verification evidence is never copied into job/application records.
+15. CI migration, tests and smoke test must pass before Phase 3 is accepted.
 
 ## Contract continuity
 
