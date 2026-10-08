@@ -15,6 +15,6 @@ test("ambiguous membership matches require review",()=>{
 test("manual payment is provider-neutral and evidence-aware",()=>{
   const p=createManualPayment({amount:1200,currency:"ETB",purpose:"membership",purposeReference:"M-1",idempotencyKey:"manual:M-1",submittedBy:"u1"});
   assert.equal(p.provider,"manual"); assert.equal(p.source,"manual_entry"); assert.equal(p.currency,"ETB");
-  assert.deepEqual(verifyManualPayment({...p,id:"p1"},"approved","reviewer"),{paymentId:"p1",decision:"approved",verifierUserId:"reviewer",note:"",verifiedAt:assert.anything});
+  const result=verifyManualPayment({...p,id:"p1"},"approved","reviewer"); assert.equal(result.paymentId,"p1"); assert.equal(result.decision,"approved"); assert.equal(result.verifierUserId,"reviewer"); assert.ok(result.verifiedAt);
 });
 test("payment transitions reject invalid states",()=>{assert.throws(()=>assertPaymentTransition("pending","refunded"),/Invalid payment transition/);});
