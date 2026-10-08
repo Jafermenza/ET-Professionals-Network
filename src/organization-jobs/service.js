@@ -68,7 +68,7 @@ export async function submitOrganizationVerification(orgId,userId,requestId){
   const c=(await db.query("select id,status from organization_verification_case where organization_id=$1 for update",[orgId])).rows[0];
   if(!c) throw error(404,"Organization verification case not found.","NOT_FOUND");
   if(!["submitted","correction_required"].includes(c.status)) throw error(409,"Organization verification is not in a submittable state.","INVALID_STATE");
-  await db.query("update organization_verification_case set status='submitted',submitted_by=$1,submitted_at=now(),updated_at=now() where id=$2",[userId,c.id]);
+  await db.query("update organization_verification_case set status='submitted',submitted_by=$1,submitted_at=now() where id=$2",[userId,c.id]);
   await db.query("update organization set verification_status='submitted',updated_at=now() where id=$1",[orgId]);
   await audit(db,userId,"organization.verification_submitted","organization",orgId,requestId,{});
   return {organizationId:orgId,status:"submitted"};
@@ -92,7 +92,7 @@ export async function reviewOrganization(orgId,reviewerId,input,requestId){
 }
 
 export const ELIGIBILITY_RULES=[
- "membership_active","verified_claim","occupation","industry","education_level",
+ "membership_active","professional_verified","verified_claim","occupation","industry","education_level",
  "qualification_type","field_of_study","years_experience","availability","location_contains"
 ];
 
@@ -108,6 +108,7 @@ async function evaluateRule(db,userId,rule){
  if(!ELIGIBILITY_RULES.includes(code)) return {code,eligible:false,reason:"Unsupported eligibility rule."};
  const ctx=await profileContext(db,userId);
  if(code==="membership_active") return {code,eligible:ctx.membership_status==="active",reason:ctx.membership_status==="active"?"":"Active membership is required."};
+ if(code==="professional_verified"){ const ok=(await db.query("select 1 from verification_claim vc join verification_case c on c.id=vc.case_id where c.subject_user_id=$1 and vc.status='verified' and lower(vc.claim_code_snapshot) in ('professional_certification','education','employment','experience','service_capability') limit 1",[userId])).rows[0]; return {code,eligible:Boolean(ok),reason:ok?"":"Professional verification is required."}; }
  if(code==="verified_claim"){
   const wanted=String(value?.code||value||"").toLowerCase();
   const ok=(await db.query("select 1 from verification_claim vc join verification_case c on c.id=vc.case_id where c.subject_user_id=$1 and vc.status='verified' and lower(vc.claim_code_snapshot)=$2 limit 1",[userId,wanted])).rows[0];
@@ -137,6 +138,7 @@ export async function evaluateEligibility(jobId,userId){
  const rules=(await db.query("select * from job_eligibility_rule where job_id=$1 order by sort_order,id",[jobId])).rows;
  const results=[];
  if(job.visibility==="exclusive" && !rules.some(r=>r.rule_code==="membership_active")) rules.unshift({rule_code:"membership_active",value:true,required:true,reason_label:"Active MPA membership"});
+ if(job.visibility==="exclusive" && !rules.some(r=>r.rule_code==="professional_verified")) rules.unshift({rule_code:"professional_verified",value:true,required:true,reason_label:"Verified professional status"});
  for(const rule of rules) results.push({...rule,...await evaluateRule(db,userId,rule)});
  const failed=results.filter(r=>r.required!==false&&!r.eligible);
  return {eligible:failed.length===0,results:results.map(r=>({code:r.rule_code,eligible:r.eligible,reason:r.reason_label||r.reason})),summary:failed.length?"Eligibility requirements are not met.":"Eligible to apply."};
@@ -285,4 +287,31 @@ export async function addApplicationAttachment(applicationId,userId,input,reques
   await audit(db,userId,"job.application_attachment_added","job_application",applicationId,requestId,{});
   return r;
  });
+}
+
+export async function addOrganizationUser(orgId,actorUserId,input,requestId){
+ return withTransaction(async db=>{
+  await orgRole(db,orgId,actorUserId,["owner","administrator"]);
+  if(!["owner","administrator","recruiter","project_manager","event_manager","finance","read_only"].includes(input.roleCode)) throw error(400,"Invalid organization role.","VALIDATION_ERROR");
+  const target=(await db.query("select id from app_user where id=$1",[input.userId])).rows[0]; if(!target) throw error(404,"User account not found.","NOT_FOUND");
+  const row=(await db.query("insert into organization_membership(organization_id,user_id,role_code,status,invited_by,joined_at) values($1,$2,$3,'active',$4,now()) on conflict(organization_id,user_id) do update set role_code=excluded.role_code,status='active',updated_at=now() returning *",[orgId,input.userId,input.roleCode,actorUserId])).rows[0];
+  await audit(db,actorUserId,"organization.user_added","organization_membership",row.id,requestId,{roleCode:input.roleCode});
+  return row;
+ });
+}
+export async function updateOrganizationUser(orgId,actorUserId,userId,input,requestId){
+ return withTransaction(async db=>{
+  await orgRole(db,orgId,actorUserId,["owner","administrator"]);
+  const row=(await db.query("select * from organization_membership where organization_id=$1 and user_id=$2 for update",[orgId,userId])).rows[0]; if(!row) throw error(404,"Organization user not found.","NOT_FOUND");
+  if(row.role_code==="owner"&&actorUserId!==userId) throw error(403,"The owner role requires a dedicated ownership transfer workflow.","FORBIDDEN");
+  const role=input.roleCode||row.role_code; if(!["owner","administrator","recruiter","project_manager","event_manager","finance","read_only"].includes(role)) throw error(400,"Invalid organization role.","VALIDATION_ERROR");
+  const status=input.status||row.status; if(!["active","suspended","removed"].includes(status)) throw error(400,"Invalid organization user status.","VALIDATION_ERROR");
+  const updated=(await db.query("update organization_membership set role_code=$1,status=$2,updated_at=now() where id=$3 returning *",[role,status,row.id])).rows[0];
+  await audit(db,actorUserId,"organization.user_updated","organization_membership",row.id,requestId,{roleCode:role,status});
+  return updated;
+ });
+}
+export async function listOrganizationUsers(orgId,actorUserId){
+ const db=getPool(); await orgRole(db,orgId,actorUserId,["owner","administrator","recruiter","read_only"]);
+ return (await db.query("select om.user_id,om.role_code,om.status,om.joined_at,p.display_name,u.email from organization_membership om join app_user u on u.id=om.user_id left join person p on p.user_id=u.id where om.organization_id=$1 order by om.created_at",[orgId])).rows;
 }
