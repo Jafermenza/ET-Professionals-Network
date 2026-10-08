@@ -32,9 +32,15 @@ Implementation:
 
 ## Phase 3 — Organizations and Jobs
 
-Organization registration/verification, organization users, public jobs, exclusive jobs, eligibility engine and applications.
+Organization registration/verification, scoped organization users, public jobs, exclusive jobs, centralized eligibility engine, candidate applications and candidate workflow management.
 
-Exit: organization can publish and manage candidates; eligible member can apply to exclusive jobs.
+Implementation:
+- Migration 009: organization identity/verification, scoped organization memberships, jobs, eligibility rules, applications, application attachments and application events.
+- Organization/jobs service: organization registration and verification, organization-user management, job lifecycle, centralized eligibility evaluation, applications and candidate status workflow.
+- Server routes: public job discovery, organization workspace, verification review, job publishing, eligibility preview, applications and candidate management.
+- Acceptance: see docs/28-phase-3-organizations-jobs.md.
+
+Exit: a verified organization can publish and manage candidates; an eligible member can apply to an exclusive job.
 
 ## Phase 4 — Services and Mentorship
 
