@@ -27,6 +27,11 @@ For MPA: turn membership into measurable professional, economic and community va
 - docs/11-quality-acceptance.md
 - docs/12-developer-guide.md
 - docs/adr/README.md
+- docs/20-reference-portfolio-implementation.md
+
+## Initial implementation
+
+The executable database foundation is under `db/`: PostgreSQL migration and a safe, configuration-first baseline seed package for the Reference Portfolio. The seed intentionally leaves external classification rows empty so imported releases can be validated and published rather than silently inventing authoritative data.
 
 ## Core principle
 
