@@ -8,7 +8,7 @@ function clean(v,max=4000){ return v===undefined||v===null?null:String(v).trim()
 async function audit(db,actor,action,type,id,requestId,metadata={}){ await db.query("insert into audit_log(actor_user_id,action,resource_type,resource_id,request_id,outcome,metadata) values($1,$2,$3,$4,$5,'success',$6)",[actor,action,type,id,requestId,metadata]); }
 async function hasRole(db,userId,roles){ const r=(await db.query("select 1 from app_user_role ur join app_role ar on ar.id=ur.role_id where ur.user_id=$1 and ar.role_code=any($2::text[]) limit 1",[userId,roles])).rows[0]; return Boolean(r); }
 async function orgAuthorized(db,jobId,userId){
- const r=(await db.query("select 1 from job j join organization_membership om on om.organization_id=j.organization_id where j.id=$1 and om.user_id=$2 and om.status='active' and om.role_code in ('owner','administrator','recruiter','project_manager','read_only')",[jobId,userId])).rows[0];
+ const r=(await db.query("select 1 from job j join organization_membership om on om.organization_id=j.organization_id where j.id=$1 and om.user_id=$2 and om.status='active' and om.role_code in ('owner','administrator','recruiter','project_manager')",[jobId,userId])).rows[0];
  return Boolean(r);
 }
 async function mentorAuthorized(db,mentorUserId,userId){
