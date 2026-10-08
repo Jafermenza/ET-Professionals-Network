@@ -324,6 +324,7 @@ export async function submitApplication(applicationId,userId,input={},requestId)
   if(a.job_status!=="published" || (a.application_deadline&&new Date(a.application_deadline)<=new Date())) throw error(409,"This job is not accepting applications.","JOB_NOT_OPEN");
   const eligibility=await evaluateEligibility(a.job_id,userId);
   if(!eligibility.eligible) throw error(403,"You are not eligible to apply to this job.","NOT_ELIGIBLE");
+  await saveScreeningAnswers(db,applicationId,a.job_id,input.answers||[]);
   const snapshot=await safeProfileSnapshot(db,userId);
   const updated=(await db.query("update job_application set status='submitted',cover_letter=coalesce($1,cover_letter),profile_snapshot=$2,eligibility_snapshot=$3,submitted_at=now(),updated_at=now() where id=$4 returning *",[input.coverLetter??null,snapshot,eligibility,applicationId])).rows[0];
   await db.query("insert into job_application_event(application_id,actor_user_id,from_status,to_status,note) values($1,$2,'draft','submitted',$3)",[applicationId,userId,input.note||null]);
@@ -342,6 +343,7 @@ export async function applyToJob(jobId,userId,input,requestId){
   const existing=(await db.query("select id,status from job_application where job_id=$1 and applicant_user_id=$2 for update",[jobId,userId])).rows[0];
   if(existing) throw error(409,"You already have an application for this job. Use the draft endpoint or withdraw before reapplying.","DUPLICATE_APPLICATION");
   const app=(await db.query("insert into job_application(job_id,applicant_user_id,status,cover_letter,profile_snapshot,eligibility_snapshot,submitted_at) values($1,$2,'submitted',$3,$4,$5,now()) returning *",[jobId,userId,input.coverLetter||null,snapshot,eligibility])).rows[0];
+  await saveScreeningAnswers(db,app.id,jobId,input.answers||[]);
   await db.query("insert into job_application_event(application_id,actor_user_id,from_status,to_status,note) values($1,$2,null,'submitted',$3)",[app.id,userId,input.note||null]);
   await audit(db,userId,"job.application_submitted","job_application",app.id,requestId,{jobId});
   return app;
