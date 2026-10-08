@@ -77,6 +77,17 @@ create table if not exists membership_correction (
 );
 create index if not exists ix_membership_correction_application on membership_correction(application_id,status);
 
+create table if not exists membership_application_attachment (
+  id uuid primary key default gen_random_uuid(),
+  application_id uuid not null references membership_application(id) on delete restrict,
+  file_object_id uuid not null references file_object(id) on delete restrict,
+  attachment_type text not null default 'supporting_document',
+  created_by uuid not null references app_user(id) on delete restrict,
+  created_at timestamptz not null default now(),
+  unique(application_id,file_object_id)
+);
+create index if not exists ix_membership_application_attachment on membership_application_attachment(application_id,created_at);
+
 create table if not exists membership_application_payment (
   id uuid primary key default gen_random_uuid(),
   application_id uuid not null unique references membership_application(id) on delete restrict,
@@ -106,8 +117,6 @@ create index if not exists ix_notification_event_user on notification_event(user
 create unique index if not exists uq_active_membership_per_user on membership_record(user_id) where status = 'active';
 create unique index if not exists uq_membership_number on membership_record(membership_number) where membership_number is not null;
 
--- Initial configurable products. Future price/policy changes must be versioned through
--- the reference portfolio/fee-rule workflow; applications keep their own fee snapshot.
 insert into membership_product(product_code,name,description,billing_model,price,currency,duration_days,renewal_required,active)
 values
  ('BASIC','Basic','Standard annual membership','recurring',1200,'ETB',365,true,true),
