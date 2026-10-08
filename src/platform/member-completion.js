@@ -37,7 +37,7 @@ export async function scheduleDueReminders({now=new Date(),limit=100}={}){
     const key=`completion:${row.user_id}:${row.code}:${due.toISOString().slice(0,10)}`;
     await db.query(`insert into notification_schedule(user_id,event_code,channel,scheduled_for,dedupe_key)
       values($1,'profile_completion_reminder','in_app',$2,$3)
-      on conflict(dedupe_key) do nothing`,[row.user_id,key.slice(0,10),key]);
+      on conflict(dedupe_key) do nothing`,[row.user_id,now,key]);
     await db.query(`update member_completion_item set last_reminded_at=$1,reminder_count=reminder_count+1,updated_at=now() where id=$2`,[now,row.id]);
   }
   return {scheduled:rows.length};
