@@ -30,13 +30,15 @@ jobs:
       NODE_ENV: test
       DATABASE_URL: postgresql://mpa:mpa_ci@localhost:5432/mpa
       LOG_LEVEL: error
+      JWT_SECRET: ci-only-phase1-test-secret
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-      - run: npm test
+      - run: npm install --no-audit --no-fund
       - run: npm run migrate
+      - run: npm test
       - name: Application smoke test
         shell: bash
         run: |
