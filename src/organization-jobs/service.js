@@ -31,7 +31,7 @@ export async function registerOrganization(userId,input,requestId){
   const geography=await validateReference(db,input.geographyReferenceItemId,"geography");
   const org=(await db.query("insert into organization(legal_name,display_name,organization_type,description,website,email,phone,geography_reference_item_id,address_text,created_by) values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) returning *",[input.legalName,input.displayName,input.organizationType||null,input.description||null,input.website||null,input.email||null,input.phone||null,geography,input.addressText||null,userId])).rows[0];
   await db.query("insert into organization_membership(organization_id,user_id,role_code,status,joined_at) values($1,$2,'owner','active',now())",[org.id,userId]);
-  await db.query("insert into organization_verification_case(organization_id,submitted_by) values($1,$2)",[org.id,userId]);
+  await db.query("insert into organization_verification_case(organization_id,status,submitted_by,submitted_at) values($1,'draft',$2,null)",[org.id,userId]);
   await audit(db,userId,"organization.created","organization",org.id,requestId,{});
   return org;
  });
@@ -68,7 +68,7 @@ export async function submitOrganizationVerification(orgId,userId,requestId){
   await orgRole(db,orgId,userId,["owner","administrator"]);
   const c=(await db.query("select id,status from organization_verification_case where organization_id=$1 for update",[orgId])).rows[0];
   if(!c) throw error(404,"Organization verification case not found.","NOT_FOUND");
-  if(!["submitted","correction_required"].includes(c.status)) throw error(409,"Organization verification is not in a submittable state.","INVALID_STATE");
+  if(!["draft","correction_required"].includes(c.status)) throw error(409,"Organization verification is not in a submittable state.","INVALID_STATE");
   const org=(await db.query("select organization_type from organization where id=$1",[orgId])).rows[0];
   const required=(await db.query("select evidence_type from organization_verification_requirement where active=true and required=true and (organization_type=$1 or organization_type is null) order by sort_order",[org?.organization_type||null])).rows;
   if(required.length){
@@ -77,7 +77,7 @@ export async function submitOrganizationVerification(orgId,userId,requestId){
    if(missing.length) throw error(400,"Required organization verification evidence is missing.","EVIDENCE_REQUIRED");
   }
   await db.query("update organization_verification_case set status='submitted',submitted_by=$1,submitted_at=now() where id=$2",[userId,c.id]);
-  await db.query("update organization set verification_status='submitted',updated_at=now() where id=$1",[orgId]);
+  await db.query("update organization set verification_status='pending',updated_at=now() where id=$1",[orgId]);
   await audit(db,userId,"organization.verification_submitted","organization",orgId,requestId,{});
   return {organizationId:orgId,status:"submitted"};
  });
@@ -245,6 +245,49 @@ export async function listOrganizationJobs(orgId,userId){
  return (await db.query("select * from job where organization_id=$1 order by created_at desc",[orgId])).rows;
 }
 
+export async function saveApplicationDraft(jobId,userId,input={},requestId){
+ return withTransaction(async db=>{
+  const j=(await db.query("select * from job where id=$1 for update",[jobId])).rows[0]; if(!j) throw error(404,"Job not found.","NOT_FOUND");
+  if(["closed","archived"].includes(j.status)) throw error(409,"This job is not accepting applications.","JOB_NOT_OPEN");
+  const existing=(await db.query("select * from job_application where job_id=$1 and applicant_user_id=$2 for update",[jobId,userId])).rows[0];
+  if(existing && !["draft","withdrawn"].includes(existing.status)) throw error(409,"You already have an active or completed application for this job.","DUPLICATE_APPLICATION");
+  const snapshot=await safeProfileSnapshot(db,userId);
+  const app=existing?.status==="withdrawn"
+    ? (await db.query("update job_application set status='draft',cover_letter=$1,profile_snapshot=$2,eligibility_snapshot='{}'::jsonb,submitted_at=null,withdrawn_at=null,decided_at=null,updated_at=now() where id=$3 returning *",[input.coverLetter||null,snapshot,existing.id])).rows[0]
+    : (await db.query("insert into job_application(job_id,applicant_user_id,status,cover_letter,profile_snapshot) values($1,$2,'draft',$3,$4) returning *",[jobId,userId,input.coverLetter||null,snapshot])).rows[0];
+  await db.query("insert into job_application_event(application_id,actor_user_id,from_status,to_status,note) values($1,$2,$3,'draft',$4)",[app.id,userId,existing?.status||null,input.note||null]);
+  await audit(db,userId,"job.application_draft_saved","job_application",app.id,requestId,{jobId});
+  return app;
+ });
+}
+
+export async function updateApplicationDraft(applicationId,userId,input={},requestId){
+ return withTransaction(async db=>{
+  const a=(await db.query("select * from job_application where id=$1 for update",[applicationId])).rows[0]; if(!a) throw error(404,"Application not found.","NOT_FOUND");
+  if(a.applicant_user_id!==userId) throw error(403,"Only the applicant can edit an application draft.","FORBIDDEN");
+  if(a.status!=="draft") throw error(409,"Only draft applications can be edited.","INVALID_STATE");
+  const updated=(await db.query("update job_application set cover_letter=coalesce($1,cover_letter),updated_at=now() where id=$2 returning *",[input.coverLetter??null,applicationId])).rows[0];
+  await audit(db,userId,"job.application_draft_updated","job_application",applicationId,requestId,{});
+  return updated;
+ });
+}
+
+export async function submitApplication(applicationId,userId,input={},requestId){
+ return withTransaction(async db=>{
+  const a=(await db.query("select a.*,j.visibility,j.status job_status,j.application_deadline from job_application a join job j on j.id=a.job_id where a.id=$1 for update",[applicationId])).rows[0]; if(!a) throw error(404,"Application not found.","NOT_FOUND");
+  if(a.applicant_user_id!==userId) throw error(403,"Only the applicant can submit this application.","FORBIDDEN");
+  if(a.status!=="draft") throw error(409,"Only draft applications can be submitted.","INVALID_STATE");
+  if(a.job_status!=="published" || (a.application_deadline&&new Date(a.application_deadline)<=new Date())) throw error(409,"This job is not accepting applications.","JOB_NOT_OPEN");
+  const eligibility=await evaluateEligibility(a.job_id,userId);
+  if(!eligibility.eligible) throw error(403,"You are not eligible to apply to this job.","NOT_ELIGIBLE");
+  const snapshot=await safeProfileSnapshot(db,userId);
+  const updated=(await db.query("update job_application set status='submitted',cover_letter=coalesce($1,cover_letter),profile_snapshot=$2,eligibility_snapshot=$3,submitted_at=now(),updated_at=now() where id=$4 returning *",[input.coverLetter??null,snapshot,eligibility,applicationId])).rows[0];
+  await db.query("insert into job_application_event(application_id,actor_user_id,from_status,to_status,note) values($1,$2,'draft','submitted',$3)",[applicationId,userId,input.note||null]);
+  await audit(db,userId,"job.application_submitted","job_application",applicationId,requestId,{jobId:a.job_id});
+  return updated;
+ });
+}
+
 export async function applyToJob(jobId,userId,input,requestId){
  return withTransaction(async db=>{
   const j=(await db.query("select * from job where id=$1 for update",[jobId])).rows[0]; if(!j) throw error(404,"Job not found.","NOT_FOUND");
@@ -252,7 +295,9 @@ export async function applyToJob(jobId,userId,input,requestId){
   const eligibility=await evaluateEligibility(jobId,userId);
   if(!eligibility.eligible) throw error(403,"You are not eligible to apply to this job.","NOT_ELIGIBLE");
   const snapshot=await safeProfileSnapshot(db,userId);
-  const app=(await db.query("insert into job_application(job_id,applicant_user_id,status,cover_letter,profile_snapshot,eligibility_snapshot,submitted_at) values($1,$2,'submitted',$3,$4,$5,now()) on conflict(job_id,applicant_user_id) do update set cover_letter=excluded.cover_letter,status='submitted',profile_snapshot=excluded.profile_snapshot,eligibility_snapshot=excluded.eligibility_snapshot,submitted_at=now(),updated_at=now() returning *",[jobId,userId,input.coverLetter||null,snapshot,eligibility])).rows[0];
+  const existing=(await db.query("select id,status from job_application where job_id=$1 and applicant_user_id=$2 for update",[jobId,userId])).rows[0];
+  if(existing) throw error(409,"You already have an application for this job. Use the draft endpoint or withdraw before reapplying.","DUPLICATE_APPLICATION");
+  const app=(await db.query("insert into job_application(job_id,applicant_user_id,status,cover_letter,profile_snapshot,eligibility_snapshot,submitted_at) values($1,$2,'submitted',$3,$4,$5,now()) returning *",[jobId,userId,input.coverLetter||null,snapshot,eligibility])).rows[0];
   await db.query("insert into job_application_event(application_id,actor_user_id,from_status,to_status,note) values($1,$2,null,'submitted',$3)",[app.id,userId,input.note||null]);
   await audit(db,userId,"job.application_submitted","job_application",app.id,requestId,{jobId});
   return app;
