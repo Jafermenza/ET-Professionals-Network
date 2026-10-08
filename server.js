@@ -8,6 +8,7 @@ import * as verification from "./src/verification/service.js";
 import * as talent from "./src/talent/service.js";
 import * as organizationJobs from "./src/organization-jobs/service.js";
 import * as servicesMentorship from "./src/services-mentorship/service.js";
+import * as stakeholderOutcomes from "./src/platform/stakeholder-outcomes.js";
 
 const config=loadConfig();
 const logger=createLogger({level:config.logLevel});
@@ -34,6 +35,10 @@ function auth(req){
   try { return verifyToken(header.slice(7),config.jwtSecret); }
   catch(e){ throw Object.assign(new Error(e.message),{statusCode:e.statusCode===403?403:401,code:"UNAUTHENTICATED"}); }
 }
+function optionalIdentity(req){
+  if(!req.headers.authorization?.startsWith("Bearer ")) return null;
+  try { return verifyToken(req.headers.authorization.slice(7),config.jwtSecret); } catch { return null; }
+}
 function anyRole(identity,allowed){
   if(!allowed.some(role=>Array.isArray(identity.roles)&&identity.roles.includes(role))) throw Object.assign(new Error("Forbidden."),{statusCode:403,code:"FORBIDDEN"});
   return identity;
@@ -48,8 +53,8 @@ const server=http.createServer(async (req,res)=>{
     if(req.method==="GET" && req.url==="/readyz") return ok(res,{status:"ready",databaseConfigured:Boolean(config.databaseUrl)},requestId);
     const parts=pathParts(req.url);
     const p=parts.join("/");
-    if(req.method==="GET" && p==="api/v1/jobs") { const q=query(req.url); return ok(res,await organizationJobs.listJobs({visibility:q.get("visibility"),q:q.get("q")}),requestId); }
-    if(req.method==="GET" && parts.length===4 && p.startsWith("api/v1/jobs/")) return ok(res,await organizationJobs.getJob(parts[3]),requestId);
+    if(req.method==="GET" && p==="api/v1/jobs") { const q=query(req.url); const v=optionalIdentity(req); return ok(res,await organizationJobs.listJobs({visibility:q.get("visibility"),postingScope:q.get("postingScope"),q:q.get("q"),employmentType:q.get("employmentType"),workMode:q.get("workMode"),seniority:q.get("seniority"),department:q.get("department"),location:q.get("location"),industryReferenceItemId:q.get("industryReferenceItemId"),occupationReferenceItemId:q.get("occupationReferenceItemId")},v?.sub||null),requestId); }
+    if(req.method==="GET" && parts.length===4 && p.startsWith("api/v1/jobs/")) { const v=optionalIdentity(req); return ok(res,await organizationJobs.getJob(parts[3],v?.sub||null),requestId); }
 
     if(req.method==="GET" && p==="api/v1/services") { const q=query(req.url); return ok(res,await servicesMentorship.listServices(null,{category:q.get("category"),q:q.get("q"),limit:q.get("limit"),offset:q.get("offset")}),requestId); }
     if(req.method==="GET" && parts.length===4 && p.startsWith("api/v1/services/")) return ok(res,await servicesMentorship.getServiceListing(parts[3],null),requestId);
@@ -74,6 +79,29 @@ const server=http.createServer(async (req,res)=>{
     if(req.method==="PATCH" && parts.length===5 && p.startsWith("api/v1/admin/organization-verification-requirements/")) return ok(res,await organizationJobs.updateOrganizationVerificationRequirement(parts[4],identity.sub,await body(req),requestId),requestId);
 
     if(req.method==="POST" && p==="api/v1/jobs") { const b=await body(req); if(!b.organizationId) throw Object.assign(new Error("organizationId is required."),{statusCode:400,code:"VALIDATION_ERROR"}); return ok(res,await organizationJobs.createJob(b.organizationId,identity.sub,b,requestId),requestId,201); }
+    if(req.method==="POST" && parts.length===5 && p.startsWith("api/v1/organizations/") && parts[4]==="requisitions") return ok(res,await organizationJobs.createRequisition(parts[3],identity.sub,await body(req),requestId),requestId,201);
+    if(req.method==="GET" && parts.length===5 && p.startsWith("api/v1/organizations/") && parts[4]==="requisitions") return ok(res,await organizationJobs.listRequisitions(parts[3],identity.sub),requestId);
+    if(req.method==="POST" && parts.length===5 && p.startsWith("api/v1/job-requisitions/") && parts[4]==="decision") return ok(res,await organizationJobs.decideRequisition(parts[3],identity.sub,await body(req),requestId),requestId);
+    if(req.method==="GET" && parts.length===5 && p.startsWith("api/v1/organizations/") && parts[4]==="recruiting-dashboard") return ok(res,await organizationJobs.organizationRecruitingDashboard(parts[3],identity.sub),requestId);
+    if(req.method==="GET" && parts.length===5 && p.startsWith("api/v1/organizations/") && parts[4]==="outcomes") return ok(res,await stakeholderOutcomes.getOrganizationOutcomeWorkspace(parts[3],identity.sub),requestId);
+    if(req.method==="GET" && parts.length===5 && p.startsWith("api/v1/jobs/") && parts[4]==="dashboard") return ok(res,await organizationJobs.jobDashboard(parts[3],identity.sub),requestId);
+    if(req.method==="POST" && parts.length===5 && p.startsWith("api/v1/jobs/") && parts[4]==="team") return ok(res,await organizationJobs.addJobTeamMember(parts[3],identity.sub,await body(req),requestId),requestId,201);
+    if(req.method==="GET" && parts.length===5 && p.startsWith("api/v1/jobs/") && parts[4]==="team") return ok(res,await organizationJobs.listJobTeam(parts[3],identity.sub),requestId);
+    if(req.method==="POST" && parts.length===5 && p.startsWith("api/v1/jobs/") && parts[4]==="screening-questions") return ok(res,await organizationJobs.addScreeningQuestion(parts[3],identity.sub,await body(req),requestId),requestId,201);
+    if(req.method==="GET" && parts.length===5 && p.startsWith("api/v1/jobs/") && parts[4]==="screening-questions") return ok(res,await organizationJobs.listScreeningQuestions(parts[3],identity.sub),requestId);
+    if(req.method==="POST" && parts.length===6 && p.startsWith("api/v1/jobs/") && parts[4]==="candidates" && parts[5]!=="") return ok(res,await organizationJobs.referCandidate(parts[3],identity.sub,await body(req),requestId),requestId,201);
+    if(req.method==="POST" && parts.length===5 && p.startsWith("api/v1/jobs/") && parts[4]==="save") return ok(res,await organizationJobs.saveJob(parts[3],identity.sub,requestId),requestId,201);
+    if(req.method==="DELETE" && parts.length===5 && p.startsWith("api/v1/jobs/") && parts[4]==="save") return ok(res,await organizationJobs.unsaveJob(parts[3],identity.sub,requestId),requestId);
+    if(req.method==="GET" && p==="api/v1/me/saved-jobs") return ok(res,await organizationJobs.listSavedJobs(identity.sub),requestId);
+    if(req.method==="POST" && p==="api/v1/me/job-alerts") return ok(res,await organizationJobs.createJobAlert(identity.sub,await body(req),requestId),requestId,201);
+    if(req.method==="GET" && p==="api/v1/me/job-alerts") return ok(res,await organizationJobs.listJobAlerts(identity.sub),requestId);
+    if(req.method==="GET" && parts.length===5 && p.startsWith("api/v1/job-applications/") && parts[4]==="notes") return ok(res,await organizationJobs.listApplicationNotes(parts[3],identity.sub),requestId);
+    if(req.method==="POST" && parts.length===5 && p.startsWith("api/v1/job-applications/") && parts[4]==="notes") return ok(res,await organizationJobs.addApplicationNote(parts[3],identity.sub,await body(req),requestId),requestId,201);
+    if(req.method==="POST" && parts.length===5 && p.startsWith("api/v1/job-applications/") && parts[4]==="interviews") return ok(res,await organizationJobs.scheduleInterview(parts[3],identity.sub,await body(req),requestId),requestId,201);
+    if(req.method==="POST" && parts.length===5 && p.startsWith("api/v1/job-interviews/") && parts[4]==="response") { const b=await body(req); return ok(res,await organizationJobs.respondInterview(parts[3],identity.sub,b.status,requestId),requestId); }
+    if(req.method==="POST" && parts.length===5 && p.startsWith("api/v1/job-interviews/") && parts[4]==="feedback") return ok(res,await organizationJobs.submitInterviewFeedback(parts[3],identity.sub,await body(req),requestId),requestId,201);
+    if(req.method==="POST" && parts.length===5 && p.startsWith("api/v1/jobs/") && parts[4]==="outcome") return ok(res,await organizationJobs.recordJobOutcome(parts[3],identity.sub,await body(req),requestId),requestId,201);
+
 
     if(req.method==="POST" && p==="api/v1/services") return ok(res,await servicesMentorship.createServiceListing(identity.sub,await body(req),requestId),requestId,201);
     if(req.method==="PATCH" && parts.length===4 && p.startsWith("api/v1/services/")) return ok(res,await servicesMentorship.updateServiceListing(parts[3],identity.sub,await body(req),requestId),requestId);
@@ -107,6 +135,7 @@ const server=http.createServer(async (req,res)=>{
     if(req.method==="POST" && parts.length===5 && p.startsWith("api/v1/mentorship/") && parts[4]==="sessions") return ok(res,await servicesMentorship.createMentorshipSession(parts[3],identity.sub,await body(req),requestId),requestId,201);
     if(req.method==="POST" && parts.length===6 && p.startsWith("api/v1/mentorship/sessions/") && parts[5]==="status") { const b=await body(req); return ok(res,await servicesMentorship.changeMentorshipSession(parts[4],identity.sub,b.status,b.notes,requestId),requestId); }
     if(req.method==="POST" && parts.length===5 && p.startsWith("api/v1/mentorship/") && parts[4]==="feedback") return ok(res,await servicesMentorship.submitMentorshipFeedback(parts[3],identity.sub,await body(req),requestId),requestId,201);
+    if(req.method==="GET" && p==="api/v1/me/outcomes") return ok(res,await stakeholderOutcomes.getMyOutcomeWorkspace(identity.sub),requestId);
     if(req.method==="GET" && p==="api/v1/me") return ok(res,await membership.getMe(identity.sub),requestId);
     if(req.method==="PATCH" && p==="api/v1/me/profile") return ok(res,await membership.updateProfile(identity.sub,await body(req),requestId),requestId);
     if(req.method==="GET" && p==="api/v1/membership/history") return ok(res,await membership.history(identity.sub),requestId);
