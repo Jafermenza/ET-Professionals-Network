@@ -158,14 +158,22 @@ export async function createJob(orgId,userId,input,requestId){
   const visibility=input.visibility==="exclusive"?"exclusive":"public";
   const job=(await db.query("insert into job(organization_id,title,description,employment_type,work_mode,location_label,industry_reference_item_id,occupation_reference_item_id,visibility,application_deadline,created_by) values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) returning *",[orgId,input.title,input.description,input.employmentType||null,input.workMode||null,input.locationLabel||null,industry,occupation,visibility,input.applicationDeadline||null,userId])).rows[0];
   if(Array.isArray(input.eligibilityRules)) await replaceRules(db,job.id,input.eligibilityRules);
+  if(visibility==="exclusive") await ensureExclusiveDefaults(db,job.id);
   await audit(db,userId,"job.created","job",job.id,requestId,{visibility});
   return job;
  });
+}
+async function ensureExclusiveDefaults(db,jobId){
+ const count=Number((await db.query("select count(*)::int count from job_eligibility_rule where job_id=$1",[jobId])).rows[0].count);
+ if(count===0){
+  await db.query("insert into job_eligibility_rule(job_id,rule_code,operator,value,required,reason_label,sort_order) values($1,'membership_active','equals','true'::jsonb,true,'Active MPA membership',0),($1,'professional_verified','equals','true'::jsonb,true,'Verified professional status',1)",[jobId]);
+ }
 }
 async function replaceRules(db,jobId,rules){
  await db.query("delete from job_eligibility_rule where job_id=$1",[jobId]);
  for(let i=0;i<rules.length;i++){
   const rule=rules[i]; if(!ELIGIBILITY_RULES.includes(String(rule.ruleCode).toLowerCase())) throw error(400,"Unsupported eligibility rule: "+rule.ruleCode,"INVALID_ELIGIBILITY_RULE");
+  if(!["equals","in","gte","lte","contains"].includes(rule.operator||"equals")) throw error(400,"Unsupported eligibility operator.","INVALID_ELIGIBILITY_OPERATOR");
   await db.query("insert into job_eligibility_rule(job_id,rule_code,operator,value,required,reason_label,sort_order) values($1,$2,$3,$4,$5,$6,$7)",[jobId,String(rule.ruleCode).toLowerCase(),rule.operator||"equals",rule.value,rule.required!==false,rule.reasonLabel||null,i]);
  }
 }
@@ -189,7 +197,7 @@ export async function publishJob(jobId,userId,requestId){
   const j=(await db.query("select * from job where id=$1 for update",[jobId])).rows[0]; if(!j) throw error(404,"Job not found.","NOT_FOUND");
   await orgRole(db,j.organization_id,userId); await verifiedOrg(db,j.organization_id);
   if(!j.title||!j.description) throw error(400,"Job is incomplete.","VALIDATION_ERROR");
-  if(j.visibility==="exclusive" && !(await db.query("select 1 from job_eligibility_rule where job_id=$1",[jobId])).rows[0]) throw error(400,"Exclusive jobs must define eligibility rules.","ELIGIBILITY_REQUIRED");
+  if(j.visibility==="exclusive") await ensureExclusiveDefaults(db,jobId);
   await db.query("update job set status='published',published_at=coalesce(published_at,now()),updated_by=$1,updated_at=now() where id=$2",[userId,jobId]);
   await audit(db,userId,"job.published","job",jobId,requestId,{visibility:j.visibility});
   return (await db.query("select * from job where id=$1",[jobId])).rows[0];
