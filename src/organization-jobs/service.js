@@ -224,24 +224,43 @@ export async function changeJobStatus(jobId,userId,status,requestId){
  });
 }
 
+async function jobScopeAllowed(db,job,viewerId){
+ if(job.posting_scope==="public") return true;
+ if(!viewerId) return false;
+ if(job.posting_scope==="mpa_members") return Boolean((await db.query("select 1 from membership_record where user_id=$1 and status='active' limit 1",[viewerId])).rows[0]);
+ if(job.posting_scope==="organization_internal") return Boolean((await db.query("select 1 from organization_membership where organization_id=$1 and user_id=$2 and status='active'",[job.organization_id,viewerId])).rows[0]);
+ if(job.posting_scope==="partner_network"){
+   return Boolean((await db.query("select 1 from membership_record where user_id=$1 and status='active' limit 1",[viewerId])).rows[0]);
+ }
+ return false;
+}
+
 export async function listJobs(filters={},viewerId=null){
  const db=getPool(); const args=[]; const where=["j.status='published'","(j.application_deadline is null or j.application_deadline>now())","o.verification_status='verified'","o.public_visible=true"];
  if(filters.visibility){args.push(filters.visibility);where.push("j.visibility=$"+args.length);}
- if(filters.q){args.push("%"+String(filters.q).trim()+"%");where.push("(j.title ilike $"+args.length+" or j.description ilike $"+args.length+")");}
- const rows=(await db.query("select j.id,j.title,j.description,j.employment_type,j.work_mode,j.location_label,j.visibility,j.application_deadline,j.published_at,o.id organization_id,o.display_name organization_name from job j join organization o on o.id=j.organization_id where "+where.join(" and ")+" order by j.published_at desc",[...args])).rows;
- return {items:rows};
+ if(filters.postingScope){args.push(filters.postingScope);where.push("j.posting_scope=$"+args.length);}
+ if(filters.q){args.push("%"+String(filters.q).trim()+"%");where.push("(j.title ilike $"+args.length+" or j.description ilike $"+args.length+" or coalesce(j.department,'') ilike $"+args.length+")");}
+ for(const [key,col] of [["employmentType","j.employment_type"],["workMode","j.work_mode"],["seniority","j.seniority_level"],["department","j.department"],["location","j.location_label"]]){
+   if(filters[key]){args.push("%"+String(filters[key]).trim()+"%");where.push(col+" ilike $"+args.length);}
+ }
+ if(filters.industryReferenceItemId){args.push(filters.industryReferenceItemId);where.push("j.industry_reference_item_id=$"+args.length);}
+ if(filters.occupationReferenceItemId){args.push(filters.occupationReferenceItemId);where.push("j.occupation_reference_item_id=$"+args.length);}
+ const rows=(await db.query("select j.id,j.title,j.description,j.employment_type,j.work_mode,j.location_label,j.visibility,j.posting_scope,j.department,j.seniority_level,j.positions_count,j.salary_min,j.salary_max,j.salary_currency,j.application_deadline,j.published_at,o.id organization_id,o.display_name organization_name from job j join organization o on o.id=j.organization_id where "+where.join(" and ")+" order by j.published_at desc",[...args])).rows;
+ const visible=[]; for(const row of rows){ if(await jobScopeAllowed(db,row,viewerId)) visible.push(row); }
+ return {items:visible};
 }
 
 export async function getJob(jobId,viewerId=null){
  const db=getPool();
  const j=(await db.query("select j.*,o.display_name organization_name,o.description organization_description from job j join organization o on o.id=j.organization_id where j.id=$1 and j.status='published' and o.verification_status='verified' and o.public_visible=true",[jobId])).rows[0];
- if(!j) throw error(404,"Job not found.","NOT_FOUND");
+ if(!j || !(await jobScopeAllowed(db,j,viewerId))) throw error(404,"Job not found.","NOT_FOUND");
  const rules=(await db.query("select rule_code,operator,value,required,reason_label,sort_order from job_eligibility_rule where job_id=$1 order by sort_order",[jobId])).rows;
- return {...j,eligibility:rules.map(r=>({code:r.rule_code,required:r.required,reasonLabel:r.reason_label}))};
+ const questions=(await db.query("select id,question,question_type,options,required,knockout,sort_order from job_screening_question where job_id=$1 and active=true order by sort_order",[jobId])).rows;
+ return {...j,eligibility:rules.map(r=>({code:r.rule_code,operator:r.operator,required:r.required,reasonLabel:r.reason_label})),screeningQuestions:questions};
 }
 
 export async function listOrganizationJobs(orgId,userId){
- const db=getPool(); await orgRole(db,orgId,userId,["owner","administrator","recruiter","read_only"]);
+ const db=getPool(); await orgRole(db,orgId,userId,["owner","administrator","recruiter","hiring_manager","read_only"]);
  return (await db.query("select * from job where organization_id=$1 order by created_at desc",[orgId])).rows;
 }
 
