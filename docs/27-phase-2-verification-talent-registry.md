@@ -313,3 +313,15 @@ Phase 2 is accepted only when all of the following are true:
 ## Known Phase 3 dependency
 
 Phase 3 will add organizations and organization users. It will consume the Phase 2 talent registry rather than create a second talent directory. Organization eligibility filtering must therefore use the same registry and verification semantics.
+
+## Outcome hardening addendum
+
+The talent registry is now also a controlled opportunity bridge. A verified professional can receive a talent inquiry without publishing private contact details. The professional may accept or decline and may explicitly release contact information after acceptance. Organization context is accepted only when the requester is actually an active member of that organization.
+
+This preserves the registry boundary: private verification evidence remains private, while a verified professional has a practical path from discovery to an opportunity.
+
+Additional implementation:
+- migration 012: talent inquiry;
+- talent service: create/list/respond/close inquiry;
+- routes: /api/v1/talent/inquiries;
+- audit: inquiry creation, response and closure.
