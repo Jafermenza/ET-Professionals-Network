@@ -6,7 +6,8 @@ import { verifyToken, requireRole } from "./src/platform/auth.js";
 import * as membership from "./src/membership/service.js";
 import * as verification from "./src/verification/service.js";
 import * as talent from "./src/talent/service.js";
-import * as organizationJobs from "./src/organization-jobs/service.js";\nimport * as servicesMentorship from "./src/services-mentorship/service.js";
+import * as organizationJobs from "./src/organization-jobs/service.js";
+import * as servicesMentorship from "./src/services-mentorship/service.js";
 
 const config=loadConfig();
 const logger=createLogger({level:config.logLevel});
