@@ -27,7 +27,7 @@ export async function updateProfessionalProfile(userId,input,requestId){
   }
   if(Array.isArray(input.experience)){
    await db.query("delete from professional_experience where profile_id=$1",[p.id]);
-   for(const item of input.experience) await db.query("insert into professional_experience(profile_id,employer_name,role_title,start_date,end_date,current_role,description,visibility) values($1,$2,$3,$4,$5,$6,$7,$8)",[p.id,item.employerName||null,item.roleTitle,item.startDate||null,item.endDate||null,Boolean(item.currentRole),item.description||null,item.visibility||"members"]);
+   for(const item of input.experience) await db.query("insert into professional_experience(profile_id,employer_name,role_title,start_date,end_date,is_current,description,visibility) values($1,$2,$3,$4,$5,$6,$7,$8)",[p.id,item.employerName||null,item.roleTitle,item.startDate||null,item.endDate||null,Boolean(item.currentRole),item.description||null,item.visibility||"members"]);
   }
   await audit(db,userId,"talent.profile_updated","professional_profile",p.id,requestId,{referenceCount:Array.isArray(input.references)?input.references.length:0,experienceCount:Array.isArray(input.experience)?input.experience.length:0});
   return getTalent(userId,userId);
@@ -73,7 +73,7 @@ export async function getTalent(userId,viewerId){
  if(!row) throw error(404,"Professional not found or not visible.","NOT_FOUND");
  const refs=(await db.query("select prf.relation_type,ri.code,ri.label,ri.dataset_version_id from professional_profile_reference prf join reference_item ri on ri.id=prf.reference_item_id where prf.profile_id=$1 order by prf.relation_type,prf.is_primary desc,ri.label",[row.profile_id])).rows;
  const claims=(await db.query("select distinct vc.claim_code_snapshot claim_code from verification_claim vc join verification_case c on c.id=vc.case_id where c.subject_user_id=$1 and vc.status='verified'",[userId])).rows;
- const experience=row.show_experience?(await db.query("select id,employer_name,role_title,start_date,end_date,current_role,description from professional_experience where profile_id=$1 and visibility in ('members','public') order by start_date desc nulls last",[row.profile_id])).rows:[];
+ const experience=row.show_experience?(await db.query("select id,employer_name,role_title,start_date,end_date,is_current,description from professional_experience where profile_id=$1 and visibility in ('members','public') order by start_date desc nulls last",[row.profile_id])).rows:[];
  return {...row,references:refs,verifiedClaims:claims,experience};
 }
 
