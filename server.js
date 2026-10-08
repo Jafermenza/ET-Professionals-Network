@@ -6,7 +6,7 @@ import { verifyToken, requireRole } from "./src/platform/auth.js";
 import * as membership from "./src/membership/service.js";
 import * as verification from "./src/verification/service.js";
 import * as talent from "./src/talent/service.js";
-import * as organizationJobs from "./src/organization-jobs/service.js";
+import * as organizationJobs from "./src/organization-jobs/service.js";\nimport * as servicesMentorship from "./src/services-mentorship/service.js";
 
 const config=loadConfig();
 const logger=createLogger({level:config.logLevel});
@@ -50,6 +50,9 @@ const server=http.createServer(async (req,res)=>{
     if(req.method==="GET" && p==="api/v1/jobs") { const q=query(req.url); return ok(res,await organizationJobs.listJobs({visibility:q.get("visibility"),q:q.get("q")}),requestId); }
     if(req.method==="GET" && parts.length===4 && p.startsWith("api/v1/jobs/")) return ok(res,await organizationJobs.getJob(parts[3]),requestId);
 
+    if(req.method==="GET" && p==="api/v1/services") { const q=query(req.url); return ok(res,await servicesMentorship.listServices(null,{category:q.get("category"),q:q.get("q"),limit:q.get("limit"),offset:q.get("offset")}),requestId); }
+    if(req.method==="GET" && parts.length===4 && p.startsWith("api/v1/services/")) return ok(res,await servicesMentorship.getServiceListing(parts[3],null),requestId);
+    if(req.method==="GET" && p==="api/v1/mentors") { const q=query(req.url); return ok(res,await servicesMentorship.listMentors(null,{q:q.get("q"),topic:q.get("topic")}),requestId); }
     if(req.method==="POST" && p==="api/v1/auth/register") return ok(res,await membership.register(await body(req),requestId),requestId,201);
     if(req.method==="POST" && p==="api/v1/auth/login") {
       const b=await body(req); return ok(res,await membership.login(b.email,b.password,requestId),requestId);
@@ -71,6 +74,27 @@ const server=http.createServer(async (req,res)=>{
 
     if(req.method==="POST" && p==="api/v1/jobs") { const b=await body(req); if(!b.organizationId) throw Object.assign(new Error("organizationId is required."),{statusCode:400,code:"VALIDATION_ERROR"}); return ok(res,await organizationJobs.createJob(b.organizationId,identity.sub,b,requestId),requestId,201); }
 
+    if(req.method==="POST" && p==="api/v1/services") return ok(res,await servicesMentorship.createServiceListing(identity.sub,await body(req),requestId),requestId,201);
+    if(req.method==="PATCH" && parts.length===4 && p.startsWith("api/v1/services/")) return ok(res,await servicesMentorship.updateServiceListing(parts[3],identity.sub,await body(req),requestId),requestId);
+    if(req.method==="POST" && parts.length===5 && p.startsWith("api/v1/services/") && parts[4]==="status") { const b=await body(req); return ok(res,await servicesMentorship.changeServiceListingStatus(parts[3],identity.sub,b.status,requestId),requestId); }
+    if(req.method==="GET" && p==="api/v1/me/service-requests") return ok(res,await servicesMentorship.listMyServiceRequests(identity.sub),requestId);
+    if(req.method==="POST" && parts.length===5 && p.startsWith("api/v1/services/") && parts[4]==="requests") return ok(res,await servicesMentorship.requestService(parts[3],identity.sub,await body(req),requestId),requestId,201);
+    if(req.method==="POST" && parts.length===5 && p.startsWith("api/v1/service-requests/") && parts[4]==="status") { const b=await body(req); return ok(res,await servicesMentorship.changeServiceRequestStatus(parts[3],identity.sub,b.status,b.note,requestId),requestId); }
+    if(req.method==="GET" && p==="api/v1/mentors") { const q=query(req.url); return ok(res,await servicesMentorship.listMentors(identity.sub,{q:q.get("q"),topic:q.get("topic")}),requestId); }
+    if(req.method==="POST" && p==="api/v1/me/mentor-profile") return ok(res,await servicesMentorship.createMentorProfile(identity.sub,await body(req),requestId),requestId,201);
+    if(req.method==="PATCH" && parts.length===4 && p.startsWith("api/v1/mentor-profiles/")) return ok(res,await servicesMentorship.updateMentorProfile(parts[3],identity.sub,await body(req),requestId),requestId);
+    if(req.method==="POST" && parts.length===5 && p.startsWith("api/v1/mentor-profiles/") && parts[4]==="status") { const b=await body(req); return ok(res,await servicesMentorship.changeMentorStatus(parts[3],identity.sub,b.status,requestId),requestId); }
+    if(req.method==="PUT" && parts.length===5 && p.startsWith("api/v1/mentor-profiles/") && parts[4]==="availability") return ok(res,await servicesMentorship.setMentorAvailability(parts[3],identity.sub,await body(req),requestId),requestId);
+    if(req.method==="POST" && parts.length===5 && p.startsWith("api/v1/mentor-profiles/") && parts[4]==="time-off") return ok(res,await servicesMentorship.addMentorTimeOff(parts[3],identity.sub,await body(req),requestId),requestId,201);
+    if(req.method==="POST" && p==="api/v1/mentorship/requests") return ok(res,await servicesMentorship.createMentorshipRequest(identity.sub,await body(req),requestId),requestId,201);
+    if(req.method==="GET" && parts.length===5 && p.startsWith("api/v1/mentorship/requests/") && parts[4]==="matches") return ok(res,await servicesMentorship.findMentorMatches(parts[3],identity.sub),requestId);
+    if(req.method==="POST" && parts.length===5 && p.startsWith("api/v1/mentorship/requests/") && parts[4]==="match") { const b=await body(req); return ok(res,await servicesMentorship.proposeMentorMatch(parts[3],b.mentorUserId,identity.sub,requestId),requestId,201); }
+    if(req.method==="POST" && parts.length===5 && p.startsWith("api/v1/mentorship/matches/") && parts[4]==="response") { const b=await body(req); return ok(res,await servicesMentorship.respondToMatch(parts[3],identity.sub,b.status,requestId),requestId); }
+    if(req.method==="GET" && parts.length===4 && p.startsWith("api/v1/mentorship/")) return ok(res,await servicesMentorship.getMentorship(parts[3],identity.sub),requestId);
+    if(req.method==="POST" && parts.length===5 && p.startsWith("api/v1/mentorship/") && parts[4]==="status") { const b=await body(req); return ok(res,await servicesMentorship.changeMentorshipStatus(parts[3],identity.sub,b.status,b.note,requestId),requestId); }
+    if(req.method==="POST" && parts.length===5 && p.startsWith("api/v1/mentorship/") && parts[4]==="sessions") return ok(res,await servicesMentorship.createMentorshipSession(parts[3],identity.sub,await body(req),requestId),requestId,201);
+    if(req.method==="POST" && parts.length===5 && p.startsWith("api/v1/mentorship/sessions/") && parts[4]==="status") { const b=await body(req); return ok(res,await servicesMentorship.changeMentorshipSession(parts[3],identity.sub,b.status,b.notes,requestId),requestId); }
+    if(req.method==="POST" && parts.length===5 && p.startsWith("api/v1/mentorship/") && parts[4]==="feedback") return ok(res,await servicesMentorship.submitMentorshipFeedback(parts[3],identity.sub,await body(req),requestId),requestId,201);
     if(req.method==="GET" && p==="api/v1/me") return ok(res,await membership.getMe(identity.sub),requestId);
     if(req.method==="PATCH" && p==="api/v1/me/profile") return ok(res,await membership.updateProfile(identity.sub,await body(req),requestId),requestId);
     if(req.method==="GET" && p==="api/v1/membership/history") return ok(res,await membership.history(identity.sub),requestId);
