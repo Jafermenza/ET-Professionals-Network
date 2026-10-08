@@ -329,42 +329,49 @@ export function allowedApplicationTransition(from,to){ return (APPLICATION_TRANS
 export function allowedCandidateResponse(from,to){ return from==="offer"&&to==="accepted" || ["submitted","screening","shortlisted","interview","offer","accepted"].includes(from)&&to==="withdrawn"; }
 
 export async function updateCandidate(jobId,applicationId,userId,input,requestId){
- return withTransaction(async db=>{
-  const j=(await db.query("select organization_id from job where id=$1",[jobId])).rows[0]; if(!j) throw error(404,"Job not found.","NOT_FOUND");
-  await orgRole(db,j.organization_id,userId,CANDIDATE_ROLES);
-  const a=(await db.query("select * from job_application where id=$1 and job_id=$2 for update",[applicationId,jobId])).rows[0]; if(!a) throw error(404,"Application not found.","NOT_FOUND");
-  if(input.status==="accepted") throw error(403,"The candidate must accept an offer; the organization cannot accept it on the candidate's behalf.","CANDIDATE_ACTION_REQUIRED");
-  if(!allowedApplicationTransition(a.status,input.status)) throw error(409,"Invalid candidate status transition.","INVALID_STATE");
-  if(input.status==="offer" && input.offerAmount!==undefined && input.offerAmount!==null && Number(input.offerAmount)<0) throw error(400,"offerAmount must be non-negative.","VALIDATION_ERROR");
-  const updated=(await db.query("update job_application set status=$1,offer_amount=case when $1='offer' then $2 else offer_amount end,offer_currency=case when $1='offer' then $3 else offer_currency end,offer_terms=case when $1='offer' then $4 else offer_terms end,offer_issued_at=case when $1='offer' then now() else offer_issued_at end,hired_at=case when $1='hired' then now() else hired_at end,decided_at=case when $1 in ('rejected','hired') then now() else decided_at end,updated_at=now() where id=$5 returning *",[input.status,input.offerAmount??null,input.offerCurrency?String(input.offerCurrency).toUpperCase():null,input.offerTerms||null,applicationId])).rows[0];
-  await db.query("insert into job_application_event(application_id,actor_user_id,from_status,to_status,note) values($1,$2,$3,$4,$5)",[applicationId,userId,a.status,input.status,input.note||null]);
-  await audit(db,userId,"job.candidate_status_changed","job_application",applicationId,requestId,{from:a.status,to:input.status});
-  return updated;
- });
+  return withTransaction(async db=>{
+    const j=(await db.query("select organization_id from job where id=$1",[jobId])).rows[0];
+    if(!j) throw error(404,"Job not found.","NOT_FOUND");
+    await orgRole(db,j.organization_id,userId,CANDIDATE_ROLES);
+    const a=(await db.query("select * from job_application where id=$1 and job_id=$2 for update",[applicationId,jobId])).rows[0];
+    if(!a) throw error(404,"Application not found.","NOT_FOUND");
+    if(input.status==="accepted") throw error(403,"The candidate must accept an offer; the organization cannot accept it on the candidate's behalf.","CANDIDATE_ACTION_REQUIRED");
+    if(!allowedApplicationTransition(a.status,input.status)) throw error(409,"Invalid candidate status transition.","INVALID_STATE");
+    const offerAmount=input.offerAmount===undefined||input.offerAmount===null?null:Number(input.offerAmount);
+    if(input.status==="offer" && offerAmount!==null && (!Number.isFinite(offerAmount)||offerAmount<0)) throw error(400,"offerAmount must be non-negative.","VALIDATION_ERROR");
+    const offerCurrency=input.offerCurrency?String(input.offerCurrency).toUpperCase():null;
+    const updated=(await db.query(
+      "update job_application set status=$1,offer_amount=case when $1='offer' then $2 else offer_amount end,offer_currency=case when $1='offer' then $3 else offer_currency end,offer_terms=case when $1='offer' then $4 else offer_terms end,offer_issued_at=case when $1='offer' then now() else offer_issued_at end,hired_at=case when $1='hired' then now() else hired_at end,decided_at=case when $1 in ('rejected','hired') then now() else decided_at end,updated_at=now() where id=$5 returning *",
+      [input.status,offerAmount,offerCurrency,input.offerTerms||null,applicationId]
+    )).rows[0];
+    await db.query("insert into job_application_event(application_id,actor_user_id,from_status,to_status,note) values($1,$2,$3,$4,$5)",[applicationId,userId,a.status,input.status,input.note||null]);
+    await audit(db,userId,"job.candidate_status_changed","job_application",applicationId,requestId,{from:a.status,to:input.status});
+    return updated;
+  });
 }
 
 export async function respondToJobApplication(applicationId,userId,input,requestId){
- return withTransaction(async db=>{
-  const a=(await db.query("select a.*,j.organization_id from job_application a join job j on j.id=a.job_id where a.id=$1 for update",[applicationId])).rows[0];
-  if(!a) throw error(404,"Application not found.","NOT_FOUND");
-  if(a.applicant_user_id!==userId) throw error(403,"Only the applicant can respond to the application.","FORBIDDEN");
-  if(input.status==="accepted"){
-    if(a.status!=="offer") throw error(409,"Only an issued offer can be accepted.","INVALID_STATE");
-    const row=(await db.query("update job_application set status='accepted',offer_responded_at=now(),updated_at=now() where id=$1 returning *",[applicationId])).rows[0];
-    await db.query("insert into job_application_event(application_id,actor_user_id,from_status,to_status,note) values($1,$2,'offer','accepted',$3)",[applicationId,userId,input.note||null]);
-    await audit(db,userId,"job.offer_accepted","job_application",applicationId,requestId);
-    return row;
-  }
-  if(input.status==="withdrawn"){
-    if(!["submitted","screening","shortlisted","interview","offer","accepted"].includes(a.status)) throw error(409,"This application cannot be withdrawn at its current stage.","INVALID_STATE");
-    const row=(await db.query("update job_application set status='withdrawn',withdrawn_at=now(),updated_at=now() where id=$1 returning *",[applicationId])).rows[0];
-    await db.query("insert into job_application_event(application_id,actor_user_id,from_status,to_status,note) values($1,$2,$3,'withdrawn',$4)",[applicationId,userId,a.status,input.note||null]);
-    await audit(db,userId,"job.application_withdrawn","job_application",applicationId,requestId);
-    return row;
-  }
-  throw error(400,"Application response must be accepted or withdrawn.","VALIDATION_ERROR");
+  return withTransaction(async db=>{
+    const a=(await db.query("select a.*,j.organization_id from job_application a join job j on j.id=a.job_id where a.id=$1 for update",[applicationId])).rows[0];
+    if(!a) throw error(404,"Application not found.","NOT_FOUND");
+    if(a.applicant_user_id!==userId) throw error(403,"Only the applicant can respond to the application.","FORBIDDEN");
+    if(input.status==="accepted"){
+      if(a.status!=="offer") throw error(409,"Only an issued offer can be accepted.","INVALID_STATE");
+      const row=(await db.query("update job_application set status='accepted',offer_responded_at=now(),updated_at=now() where id=$1 returning *",[applicationId])).rows[0];
+      await db.query("insert into job_application_event(application_id,actor_user_id,from_status,to_status,note) values($1,$2,'offer','accepted',$3)",[applicationId,userId,input.note||null]);
+      await audit(db,userId,"job.offer_accepted","job_application",applicationId,requestId);
+      return row;
+    }
+    if(input.status==="withdrawn"){
+      if(!["submitted","screening","shortlisted","interview","offer","accepted"].includes(a.status)) throw error(409,"This application cannot be withdrawn at its current stage.","INVALID_STATE");
+      const row=(await db.query("update job_application set status='withdrawn',withdrawn_at=now(),updated_at=now() where id=$1 returning *",[applicationId])).rows[0];
+      await db.query("insert into job_application_event(application_id,actor_user_id,from_status,to_status,note) values($1,$2,$3,'withdrawn',$4)",[applicationId,userId,a.status,input.note||null]);
+      await audit(db,userId,"job.application_withdrawn","job_application",applicationId,requestId);
+      return row;
+    }
+    throw error(400,"Application response must be accepted or withdrawn.","VALIDATION_ERROR");
+  });
 }
-
 
 export async function addApplicationAttachment(applicationId,userId,input,requestId){
  return withTransaction(async db=>{
