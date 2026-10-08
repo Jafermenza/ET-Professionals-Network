@@ -140,3 +140,18 @@ comment on table organization is 'Organization identity is separate from organiz
 comment on table organization_membership is 'Scoped organization role; membership does not imply global platform privilege.';
 comment on table job_eligibility_rule is 'Centralized, configurable eligibility policy evaluated by the jobs service; never duplicated in controllers.';
 comment on table job_application is 'Candidate workflow record with a safe profile/eligibility snapshot; private verification evidence is not copied here.';
+
+create table if not exists organization_verification_requirement (
+  id uuid primary key default gen_random_uuid(),
+  organization_type text,
+  evidence_type text not null,
+  label text not null,
+  required boolean not null default true,
+  active boolean not null default true,
+  sort_order integer not null default 0,
+  created_at timestamptz not null default now(),
+  unique(organization_type,evidence_type)
+);
+create index if not exists ix_org_verification_requirement on organization_verification_requirement(organization_type,active,sort_order);
+
+comment on table organization_verification_requirement is 'Admin-configurable organization evidence policy. Requirements vary by organization type and applicable law; the platform does not assume one document set fits every entity.';
