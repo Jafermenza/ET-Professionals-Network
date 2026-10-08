@@ -26,8 +26,9 @@ Authorized supporting staff can open a member record and fill permitted gaps. Th
 Default brand colors: deep blue #123B6D and lemon #D9E85B. All visual tokens are globally overridable.
 
 Strict theme contract:
-- Light mode: main/background presentation is deep blue; content components use light surfaces with dark text.
-- Dark mode: main/background presentation is light; content components reverse to dark surfaces with light text.
+- Light mode: the presentation uses light backgrounds/surfaces with dark text.
+- Dark mode: the presentation reverses to dark backgrounds/surfaces with light text.
+- Deep blue remains the primary brand/control color and lemon remains the accent in both modes.
 - Semantic tokens control text, surfaces, borders, controls, alerts, navigation, cards, dialogs and tables.
 - No page may hard-code its own theme colors.
 - Theme/contrast validation belongs in CI.
