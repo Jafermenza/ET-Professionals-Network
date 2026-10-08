@@ -22,3 +22,10 @@ test("private verification evidence is not a talent eligibility signal",()=>{
   assert.equal(isEligibleVerifiedClaim("membership"),false);
   assert.equal(isEligibleVerifiedClaim(""),false);
 });
+
+test("talent eligibility filters reject non-professional claim types",()=>{
+  assert.equal(isEligibleVerifiedClaim("identity"),false);
+  assert.equal(isEligibleVerifiedClaim("membership"),false);
+  assert.equal(isEligibleVerifiedClaim("professional_certification"),true);
+  assert.equal(isEligibleVerifiedClaim("service_capability"),true);
+});

@@ -240,6 +240,20 @@ Adds:
 - saved searches;
 - directory/search indexes.
 
+## Phase 2 hardening controls
+
+The final Phase 2 boundary also enforces the following controls in the service layer:
+
+- only the latest published checklist version for each configured claim type is snapshotted into a new case;
+- every required checklist item must have an explicit passing or not-applicable result before a positive decision can be made; missing results are treated as incomplete;
+- a claim cannot become verified without supporting evidence and without being in an active review/decision state;
+- review actions are restricted to the assigned reviewer or a system administrator, and the subject cannot review or decide their own case;
+- appeal decisions cannot be made by the original decision maker or the subject;
+- a requested verified-claim filter is rejected unless the claim type is one of the approved professional eligibility types;
+- registry claim counts and returned verified-claim labels are limited to professional eligibility claims, preventing unrelated verified facts from becoming directory metadata.
+
+These controls operationalize **Adl (Justice/Fairness)**, **Tabayyun (Verification/Due diligence)**, **Amanah (Trust/Responsibility)** and **Satr (Privacy/Confidentiality)**. They are governance-oriented software controls, not a substitute for a qualified Shariah review. The International Islamic Fiqh Academy's published standards emphasize accuracy, objectivity, impartiality and documented evidence, while its core values include discipline, transparency and justice. urlIIFA Resolution No. 1https://iifa-aifi.org/en/34158.html urlIIFA Core Valueshttps://iifa-aifi.org/en/core-values
+
 ## Audit and security
 
 Material actions are audited, including:
