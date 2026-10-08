@@ -155,3 +155,34 @@ For browser/API connection failures, verify NEXT_PUBLIC_API_BASE_URL was set bef
 
 ## cPanel limitation
 Some shared hosts disable long-running Node.js processes, custom ports, PostgreSQL, or shell access. If Setup Node.js App / Passenger is unavailable, use a hosting plan that explicitly supports Node.js + PostgreSQL or deploy the runtime to a VPS/PaaS. Do not replace the database with browser storage just to fit an incompatible hosting plan.
+## Production security and first administrator
+
+Before the first production start, set these API-only environment variables in cPanel Node.js application configuration (never in web/.env and never commit real values):
+
+- JWT_SECRET — long random signing secret, minimum 32 characters.
+- AUTH_SESSION_DAYS — default 7; use the shortest practical lifetime.
+- BOOTSTRAP_SUPER_ADMIN_EMAIL — first system administrator email.
+- BOOTSTRAP_SUPER_ADMIN_PASSWORD — unique random password, minimum 14 characters.
+- BOOTSTRAP_ADMIN_NAME — display name for the first administrator.
+- CORS_ORIGIN — exact HTTPS web origin, not * , for production browser access.
+
+On startup, the bootstrap is idempotent: it creates the administrator if absent and assigns system_admin; it does not replace an existing account password. Remove the bootstrap password from the hosting environment after the initial administrator is securely established, or rotate it to a value unavailable to application operators.
+
+### Administrator security operations
+
+System administrators can manage account status, assign roles, revoke all sessions, and reset passwords. Suspending/disabling an account revokes active sessions. Password resets also revoke sessions. These operations are audited.
+
+### Production acceptance
+
+1. HTTPS/AutoSSL is active on both web and API domains.
+2. PostgreSQL is private to the application account where possible.
+3. DATABASE_URL, JWT_SECRET, and bootstrap credentials are server-side environment secrets only.
+4. CORS_ORIGIN exactly matches the production web origin.
+5. The first administrator signs in, changes the bootstrap password, and confirms a second trusted administrator account before removing bootstrap credentials.
+6. Test logout: the old bearer token must no longer access protected routes.
+7. Test suspension: suspended user sessions must fail immediately.
+8. Test failed-login throttling and confirm legitimate sign-in recovers after the window.
+9. Confirm audit records exist for bootstrap, login, logout/session revocation, role/status changes and password resets.
+10. Do not expose database credentials, JWT secrets, bootstrap passwords, private evidence, or reviewer notes in frontend builds or logs.
+
+The API uses bearer access tokens rather than browser cookies, so CSRF is not the primary session threat; nevertheless, exact CORS configuration and HTTPS remain mandatory.
