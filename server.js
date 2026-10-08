@@ -9,6 +9,7 @@ import * as talent from "./src/talent/service.js";
 import * as organizationJobs from "./src/organization-jobs/service.js";
 import * as servicesMentorship from "./src/services-mentorship/service.js";
 import * as stakeholderOutcomes from "./src/platform/stakeholder-outcomes.js";
+import * as experience from "./src/platform/experience.js";
 
 const config=loadConfig();
 const logger=createLogger({level:config.logLevel});
@@ -64,7 +65,16 @@ const server=http.createServer(async (req,res)=>{
       const b=await body(req); return ok(res,await membership.login(b.email,b.password,requestId),requestId);
     }
 
+    if(req.method==="GET" && p==="api/v1/experience/demo-cases") return ok(res,await experience.listDemoCases(),requestId);
+    if(req.method==="GET" && parts.length===5 && p.startsWith("api/v1/experience/demo-cases/")) return ok(res,await experience.getDemoCase(parts[4]),requestId);
+    if(req.method==="GET" && p==="api/v1/experience/guides") { const q=query(req.url); return ok(res,await experience.listGuides(q.get("route")),requestId); }
+
     const identity=auth(req);
+    if(req.method==="POST" && p==="api/v1/admin/experience/demo-cases") { return ok(res,await experience.createDemoCase(identity.sub,await body(req),requestId),requestId,201); }
+    if(req.method==="PATCH" && parts.length===6 && p.startsWith("api/v1/admin/experience/demo-cases/")) { return ok(res,await experience.updateDemoCase(parts[5],identity.sub,await body(req),requestId),requestId); }
+    if(req.method==="POST" && p==="api/v1/admin/experience/guides") { return ok(res,await experience.createGuide(identity.sub,await body(req),requestId),requestId,201); }
+    if(req.method==="PATCH" && parts.length===6 && p.startsWith("api/v1/admin/experience/guides/")) { return ok(res,await experience.updateGuide(parts[5],identity.sub,await body(req),requestId),requestId); }
+
     if(req.method==="POST" && p==="api/v1/organizations") return ok(res,await organizationJobs.registerOrganization(identity.sub,await body(req),requestId),requestId,201);
     if(req.method==="GET" && p==="api/v1/organizations") return ok(res,await organizationJobs.listMyOrganizations(identity.sub),requestId);
     if(req.method==="GET" && parts.length===4 && p.startsWith("api/v1/organizations/")) return ok(res,await organizationJobs.getOrganization(parts[3],identity.sub),requestId);
