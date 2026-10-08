@@ -4,7 +4,8 @@ import {
   allowedServiceRequestTransition,
   allowedMentorshipTransition,
   allowedMatchTransition,
-  allowedSessionTransition
+  allowedSessionTransition,
+  canAcceptServiceCompletion
 } from "../../src/services-mentorship/service.js";
 
 test("service request lifecycle is controlled",()=>{
@@ -14,6 +15,13 @@ test("service request lifecycle is controlled",()=>{
   assert.equal(allowedServiceRequestTransition("in_progress","completed"),true);
   assert.equal(allowedServiceRequestTransition("completed","in_progress"),false);
   assert.equal(allowedServiceRequestTransition("declined","accepted"),false);
+});
+
+test("service completion requires provider submission and requester acceptance",()=>{
+  assert.equal(canAcceptServiceCompletion({status:"in_progress",providerCompleted:true,paid:false,settled:false}),true);
+  assert.equal(canAcceptServiceCompletion({status:"in_progress",providerCompleted:false,paid:false,settled:false}),false);
+  assert.equal(canAcceptServiceCompletion({status:"in_progress",providerCompleted:true,paid:true,settled:false}),false);
+  assert.equal(canAcceptServiceCompletion({status:"in_progress",providerCompleted:true,paid:true,settled:true}),true);
 });
 
 test("mentorship lifecycle supports pause/resume and completion",()=>{
