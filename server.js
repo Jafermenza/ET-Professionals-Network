@@ -2,7 +2,8 @@ import http from "node:http";
 import { randomUUID } from "node:crypto";
 import { loadConfig } from "./src/platform/config.js";
 import { createLogger } from "./src/platform/logger.js";
-import { verifyToken, requireRole } from "./src/platform/auth.js";
+import { verifyToken, requireRole, hashSessionToken } from "./src/platform/auth.js";
+import { getPool } from "./src/platform/db.js";
 import * as membership from "./src/membership/service.js";
 import * as verification from "./src/verification/service.js";
 import * as talent from "./src/talent/service.js";
@@ -11,6 +12,8 @@ import * as servicesMentorship from "./src/services-mentorship/service.js";
 import * as stakeholderOutcomes from "./src/platform/stakeholder-outcomes.js";
 import * as experience from "./src/platform/experience.js";
 import * as applicationTracking from "./src/platform/application-tracking.js";
+import * as publicOpportunity from "./src/platform/public-opportunity.js";
+import * as userAdmin from "./src/platform/user-admin.js";
 
 const config=loadConfig();
 const logger=createLogger({level:config.logLevel});
@@ -30,12 +33,19 @@ async function body(req){
   if(!raw) return {};
   try { return JSON.parse(raw); } catch { throw Object.assign(new Error("Request body must be valid JSON."),{statusCode:400,code:"INVALID_JSON"}); }
 }
-function auth(req){
+function clientIp(req){ return String(req.headers["x-forwarded-for"]||req.socket.remoteAddress||"").split(",")[0].trim() || null; }
+async function auth(req){
   if(!config.jwtSecret) throw Object.assign(new Error("Authentication secret is not configured."),{statusCode:503,code:"AUTH_NOT_CONFIGURED"});
   const header=req.headers.authorization||"";
   if(!header.startsWith("Bearer ")) throw Object.assign(new Error("Bearer authentication required."),{statusCode:401,code:"UNAUTHENTICATED"});
-  try { return verifyToken(header.slice(7),config.jwtSecret); }
-  catch(e){ throw Object.assign(new Error(e.message),{statusCode:e.statusCode===403?403:401,code:"UNAUTHENTICATED"}); }
+  try {
+    const identity=verifyToken(header.slice(7),config.jwtSecret);
+    if(!identity.sid) throw Object.assign(new Error("Session-bound authentication required."),{statusCode:401});
+    const db=getPool(); const r=await db.query("select s.user_id,u.status from auth_session s join app_user u on u.id=s.user_id where s.id=$1 and s.revoked_at is null and s.expires_at>now()",[identity.sid]);
+    if(!r.rows[0]||r.rows[0].status!=="active"||r.rows[0].user_id!==identity.sub) throw Object.assign(new Error("Session expired or revoked."),{statusCode:401});
+    await db.query("update auth_session set last_seen_at=now() where id=$1",[identity.sid]);
+    return identity;
+  } catch(e){ throw Object.assign(new Error(e.message),{statusCode:e.statusCode===403?403:401,code:"UNAUTHENTICATED"}); }
 }
 function optionalIdentity(req){
   if(!req.headers.authorization?.startsWith("Bearer ")) return null;
@@ -46,32 +56,47 @@ function anyRole(identity,allowed){
   return identity;
 }
 function ok(res,data,requestId,status=200){ return json(res,status,{data},requestId); }
+const rateBuckets=new Map();
+function publicRateLimit(req,key,limit=30,windowMs=60000){ const now=Date.now(), k=key+":"+clientIp(req); const b=rateBuckets.get(k)||{start:now,count:0}; if(now-b.start>=windowMs){b.start=now;b.count=0} b.count++; rateBuckets.set(k,b); if(b.count>limit) throw Object.assign(new Error("Too many requests. Please try again later."),{statusCode:429,code:"RATE_LIMITED"}); }
+async function bootstrapAdmin(){ if(!config.bootstrapAdminEmail||!config.bootstrapAdminPassword) return; const m=await import("./src/membership/service.js"); return m.bootstrapAdmin({email:config.bootstrapAdminEmail,password:config.bootstrapAdminPassword,name:config.bootstrapAdminName}); }
 
 const server=http.createServer(async (req,res)=>{
   const requestId=req.headers["x-request-id"]||randomUUID();
+  if(req.method==="OPTIONS"){res.writeHead(204,{"access-control-allow-origin":config.corsOrigin||"*","access-control-allow-methods":"GET,POST,PATCH,DELETE,OPTIONS","access-control-allow-headers":"Authorization,Content-Type,X-Request-Id","access-control-max-age":"600"});return res.end();}
+  if(config.corsOrigin) res.setHeader("access-control-allow-origin",config.corsOrigin);
+  res.setHeader("vary","Origin"); res.setHeader("x-content-type-options","nosniff"); res.setHeader("x-frame-options","DENY"); res.setHeader("referrer-policy","strict-origin-when-cross-origin"); res.setHeader("permissions-policy","camera=(),microphone=(),geolocation=()"); if(config.nodeEnv==="production") res.setHeader("strict-transport-security","max-age=31536000; includeSubDomains");
   res.on("finish",()=>logger.info("http.request",{requestId,method:req.method,path:req.url,status:res.statusCode}));
   try {
     if(req.method==="GET" && req.url==="/healthz") return ok(res,{status:"ok"},requestId);
     if(req.method==="GET" && req.url==="/readyz") return ok(res,{status:"ready",databaseConfigured:Boolean(config.databaseUrl)},requestId);
     const parts=pathParts(req.url);
     const p=parts.join("/");
+    if(req.method==="POST" && p==="api/v1/public/opportunity-inquiries") { publicRateLimit(req,"public-inquiry",10,60000); return ok(res,await publicOpportunity.createPublicInquiry(await body(req),requestId,optionalIdentity(req)),requestId,201); }
+    if(req.method==="GET" && parts.length===6 && p.startsWith("api/v1/public/opportunity-inquiries/") && parts[5]==="details") { const q=query(req.url); return ok(res,await publicOpportunity.getPublicInquiry(parts[4],q.get("token")||""),requestId); }
+    if(req.method==="PATCH" && parts.length===6 && p.startsWith("api/v1/public/opportunity-inquiries/") && parts[5]==="details") { const b=await body(req); return ok(res,await publicOpportunity.updatePublicInquiryDetails(parts[4],b.token||"",b,requestId),requestId); }
+    if(req.method==="POST" && parts.length===6 && p.startsWith("api/v1/public/opportunity-inquiries/") && parts[5]==="link") { const identity=await auth(req); const b=await body(req); return ok(res,await publicOpportunity.linkInquiryToAccount(parts[4],b.token||"",identity.sub,requestId),requestId); }
     if(req.method==="GET" && p==="api/v1/jobs") { const q=query(req.url); const v=optionalIdentity(req); return ok(res,await organizationJobs.listJobs({visibility:q.get("visibility"),postingScope:q.get("postingScope"),q:q.get("q"),employmentType:q.get("employmentType"),workMode:q.get("workMode"),seniority:q.get("seniority"),department:q.get("department"),location:q.get("location"),industryReferenceItemId:q.get("industryReferenceItemId"),occupationReferenceItemId:q.get("occupationReferenceItemId")},v?.sub||null),requestId); }
     if(req.method==="GET" && parts.length===4 && p.startsWith("api/v1/jobs/")) { const v=optionalIdentity(req); return ok(res,await organizationJobs.getJob(parts[3],v?.sub||null),requestId); }
 
     if(req.method==="GET" && p==="api/v1/services") { const q=query(req.url); return ok(res,await servicesMentorship.listServices(null,{category:q.get("category"),q:q.get("q"),limit:q.get("limit"),offset:q.get("offset")}),requestId); }
     if(req.method==="GET" && parts.length===4 && p.startsWith("api/v1/services/")) return ok(res,await servicesMentorship.getServiceListing(parts[3],null),requestId);
     if(req.method==="GET" && p==="api/v1/mentors") { const q=query(req.url); return ok(res,await servicesMentorship.listMentors(null,{q:q.get("q"),topic:q.get("topic")}),requestId); }
-    if(req.method==="POST" && p==="api/v1/auth/register") return ok(res,await membership.register(await body(req),requestId),requestId,201);
+    if(req.method==="POST" && p==="api/v1/auth/register") { publicRateLimit(req,"register",5,60000); return ok(res,await membership.register(await body(req),requestId),requestId,201); }
     if(req.method==="GET" && p==="api/v1/membership/products") return ok(res,await membership.listMembershipProducts(),requestId);
     if(req.method==="POST" && p==="api/v1/auth/login") {
-      const b=await body(req); return ok(res,await membership.login(b.email,b.password,requestId),requestId);
+      publicRateLimit(req,"login",20,60000); const b=await body(req); return ok(res,await membership.login(b.email,b.password,requestId,{ip:clientIp(req),userAgent:req.headers["user-agent"]||null}),requestId);
     }
 
+    if(req.method==="POST" && p==="api/v1/auth/logout") { const identity=await auth(req); return ok(res,await userAdmin.logout(identity.sub,identity.sid),requestId); }
+    if(req.method==="GET" && p==="api/v1/admin/users") { const identity=await auth(req); return ok(res,await userAdmin.listUsers(identity,{q:query(req.url).get("q"),status:query(req.url).get("status")}),requestId); }
+    if(req.method==="PATCH" && parts.length===5 && p.startsWith("api/v1/admin/users/")) { const identity=await auth(req); return ok(res,await userAdmin.updateUser(identity.sub,parts[4],await body(req),requestId),requestId); }
+    if(req.method==="POST" && parts.length===6 && p.startsWith("api/v1/admin/users/") && parts[5]==="revoke-sessions") { const identity=await auth(req); return ok(res,await userAdmin.revokeSessions(identity.sub,parts[4],requestId),requestId); }
+    if(req.method==="POST" && parts.length===6 && p.startsWith("api/v1/admin/users/") && parts[5]==="reset-password") { const identity=await auth(req); const b=await body(req); return ok(res,await userAdmin.resetPassword(identity.sub,parts[4],b.password,requestId),requestId); }
     if(req.method==="GET" && p==="api/v1/experience/demo-cases") return ok(res,await experience.listDemoCases(),requestId);
     if(req.method==="GET" && parts.length===5 && p.startsWith("api/v1/experience/demo-cases/")) return ok(res,await experience.getDemoCase(parts[4]),requestId);
     if(req.method==="GET" && p==="api/v1/experience/guides") { const q=query(req.url); return ok(res,await experience.listGuides(q.get("route")),requestId); }
 
-    const identity=auth(req);
+    const identity=await auth(req);
     if(req.method==="POST" && p==="api/v1/admin/experience/demo-cases") { return ok(res,await experience.createDemoCase(identity.sub,await body(req),requestId),requestId,201); }
     if(req.method==="PATCH" && parts.length===6 && p.startsWith("api/v1/admin/experience/demo-cases/")) { return ok(res,await experience.updateDemoCase(parts[5],identity.sub,await body(req),requestId),requestId); }
     if(req.method==="POST" && p==="api/v1/admin/experience/guides") { return ok(res,await experience.createGuide(identity.sub,await body(req),requestId),requestId,201); }
@@ -151,6 +176,8 @@ const server=http.createServer(async (req,res)=>{
     if(req.method==="POST" && parts.length===6 && p.startsWith("api/v1/mentorship/sessions/") && parts[5]==="status") { const b=await body(req); return ok(res,await servicesMentorship.changeMentorshipSession(parts[4],identity.sub,b.status,b.notes,requestId),requestId); }
     if(req.method==="POST" && parts.length===5 && p.startsWith("api/v1/mentorship/") && parts[4]==="feedback") return ok(res,await servicesMentorship.submitMentorshipFeedback(parts[3],identity.sub,await body(req),requestId),requestId,201);
     if(req.method==="GET" && p==="api/v1/me/outcomes") return ok(res,await stakeholderOutcomes.getMyOutcomeWorkspace(identity.sub),requestId);
+    if(req.method==="GET" && p==="api/v1/opportunity-inquiries") { const identity=await auth(req); return ok(res,await publicOpportunity.listInquiries(identity.sub,{type:query(req.url).get("type"),status:query(req.url).get("status")}),requestId); }
+    if(req.method==="PATCH" && parts.length===4 && p.startsWith("api/v1/opportunity-inquiries/")) { const identity=await auth(req); const b=await body(req); return ok(res,await publicOpportunity.decideInquiry(parts[3],identity.sub,b,requestId),requestId); }
     if(req.method==="GET" && p==="api/v1/me/application-tracking") return ok(res,await applicationTracking.getApplicationTracking(identity.sub),requestId);
     if(req.method==="GET" && p==="api/v1/me") return ok(res,await membership.getMe(identity.sub),requestId);
     if(req.method==="PATCH" && p==="api/v1/me/profile") return ok(res,await membership.updateProfile(identity.sub,await body(req),requestId),requestId);
@@ -276,5 +303,5 @@ const server=http.createServer(async (req,res)=>{
     return json(res,status,{error:{code:error.code||"INTERNAL_ERROR",message:status>=500?"Internal server error.":error.message}},requestId);
   }
 });
-server.listen(config.port,config.host,()=>logger.info("server.started",{host:config.host,port:config.port,environment:config.nodeEnv}));
+server.listen(config.port,config.host,async()=>{ try { await bootstrapAdmin(); logger.info("server.started",{host:config.host,port:config.port,environment:config.nodeEnv,bootstrapAdmin:Boolean(config.bootstrapAdminEmail)}); } catch(error){ logger.error("bootstrap.admin.failed",{error:error.message}); if(config.nodeEnv==="production") process.exitCode=1; } });
 export { server };

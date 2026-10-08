@@ -5,6 +5,11 @@ export function loadConfig(env = process.env) {
     port: Number(env.PORT ?? 3000),
     logLevel: env.LOG_LEVEL ?? "info",
     jwtSecret: env.JWT_SECRET,
+    authSessionDays: Number(env.AUTH_SESSION_DAYS ?? 7),
+    bootstrapAdminEmail: env.BOOTSTRAP_SUPER_ADMIN_EMAIL ?? env.BOOTSTRAP_ADMIN_EMAIL,
+    bootstrapAdminPassword: env.BOOTSTRAP_SUPER_ADMIN_PASSWORD ?? env.BOOTSTRAP_ADMIN_PASSWORD,
+    bootstrapAdminName: env.BOOTSTRAP_ADMIN_NAME ?? "System Administrator",
+    corsOrigin: env.CORS_ORIGIN ?? "",
     databaseUrl: env.DATABASE_URL
   };
   if (!Number.isInteger(config.port) || config.port < 1 || config.port > 65535) throw new Error("PORT must be a valid TCP port.");

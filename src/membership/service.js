@@ -1,14 +1,16 @@
 import { randomUUID } from "node:crypto";
 import { withTransaction, getPool } from "../platform/db.js";
-import { signToken } from "../platform/auth.js";
+import { signToken, newSessionToken, hashSessionToken, sessionTokenPayload } from "../platform/auth.js";
 import { loadConfig } from "../platform/config.js";
 import { hashPassword, verifyPassword, normalizeEmail, normalizePhone, normalizeName, validatePersonInput } from "./identity.js";
 
 function httpError(status,message,code="BUSINESS_RULE"){
   const e=new Error(message); e.statusCode=status; e.code=code; return e;
 }
-function tokenFor(user,roles){
-  return signToken({sub:user.id,roles,email:user.email||null},loadConfig().jwtSecret);
+async function tokenFor(db,user,roles,requestMeta={}){
+  const raw=newSessionToken(); const ttl=Number(process.env.AUTH_SESSION_DAYS||7);
+  const row=(await db.query("insert into auth_session(user_id,token_hash,expires_at,ip_address,user_agent) values($1,$2,now()+make_interval(days=>$3),$4,$5) returning id",[user.id,hashSessionToken(raw),ttl,requestMeta.ip||null,requestMeta.userAgent||null])).rows[0];
+  return signToken(sessionTokenPayload(user,roles,row.id),loadConfig().jwtSecret);
 }
 function audit(db,actor,action,type,id,requestId,metadata={}){
   return db.query("insert into audit_log(actor_user_id,action,resource_type,resource_id,request_id,outcome,metadata) values($1,$2,$3,$4,$5,'success',$6)",[actor||null,action,type,id||null,requestId||null,metadata]);
@@ -23,6 +25,23 @@ async function roles(db,userId){
   return r.rows.map(x=>x.role_code);
 }
 function amountFromProduct(product){ return Number(product.price); }
+
+export async function bootstrapAdmin(input){
+  const email=normalizeEmail(input.email); const password=String(input.password||"");
+  if(!email||password.length<14) throw httpError(400,"Bootstrap admin email and a password of at least 14 characters are required.","BOOTSTRAP_INVALID");
+  return withTransaction(async db=>{
+    const existing=await db.query("select id,email,status from app_user where lower(email)=lower($1)",[email]);
+    let user=existing.rows[0];
+    if(user && user.status!=="active") await db.query("update app_user set status='active',updated_at=now() where id=$1",[user.id]);
+    if(!user) user=(await db.query("insert into app_user(username,email,password_hash,status) values($1,$1,$2,'active') returning id,email,status",[email, email, hashPassword(password)])).rows[0];
+    const role=(await db.query("select id from app_role where role_code='system_admin'")).rows[0];
+    if(!role) throw httpError(500,"System administrator role is unavailable.","BOOTSTRAP_ROLE_MISSING");
+    await db.query("insert into app_user_role(user_id,role_id) values($1,$2) on conflict do nothing",[user.id,role.id]);
+    await db.query("insert into admin_bootstrap_event(user_id,source,metadata) values($1,'environment_bootstrap',$2)",[user.id,{email}]);
+    await audit(db,user.id,"admin.bootstrap","account",user.id,null,{source:"environment"});
+    return {userId:user.id,email:user.email};
+  });
+}
 
 export async function register(input,requestId){
   const email=normalizeEmail(input.email);
@@ -46,19 +65,25 @@ export async function register(input,requestId){
     await db.query("insert into notification_preference(user_id) values($1) on conflict do nothing",[user.id]);
     await audit(db,user.id,"account.registered","account",user.id,requestId,{identityPolicy:"email_phone_exact_name"});
     await notify(db,user.id,"account_registered","account",user.id,{displayName:p.display_name});
-    return {user:{id:user.id,email:user.email},person:p,token:tokenFor(user,["member"])};
+    return {user:{id:user.id,email:user.email},person:p,token:await tokenFor(db,user,["member"])};
   });
 }
 
-export async function login(email,password,requestId){
+export async function login(email,password,requestId,requestMeta={}){
+  const db=getPool(); const identityKey=normalizeEmail(email);
+  const recent=await db.query("select count(*)::int count from auth_login_attempt where identity_key=$1 and attempted_at>now()-interval '15 minutes' and succeeded=false",[identityKey]);
+  if(recent.rows[0].count>=8) throw httpError(429,"Too many unsuccessful sign-in attempts. Try again later.","AUTH_RATE_LIMIT");
   const e=normalizeEmail(email);
-  const db=getPool();
   const r=await db.query("select id,email,username,password_hash,status from app_user where lower(email)=lower($1)",[e]);
   const user=r.rows[0];
-  if(!user || user.status!=="active" || !verifyPassword(password,user.password_hash)) throw httpError(401,"Invalid credentials.","UNAUTHENTICATED");
+  if(!user || user.status!=="active" || !verifyPassword(password,user.password_hash)){
+    await db.query("insert into auth_login_attempt(identity_key,ip_address,succeeded) values($1,$2,false)",[identityKey,requestMeta.ip||null]);
+    throw httpError(401,"Invalid credentials.","UNAUTHENTICATED");
+  }
+  await db.query("insert into auth_login_attempt(identity_key,ip_address,succeeded) values($1,$2,true)",[identityKey,requestMeta.ip||null]);
   const rs=await roles(db,user.id);
   await audit(db,user.id,"account.login","account",user.id,requestId);
-  return {token:tokenFor(user,rs),user:{id:user.id,email:user.email,roles:rs}};
+  return {token:await tokenFor(db,user,rs,requestMeta),user:{id:user.id,email:user.email,roles:rs}};
 }
 
 export async function getMe(userId){
