@@ -387,14 +387,29 @@ export async function updateCandidate(jobId,applicationId,userId,input,requestId
     const offerAmount=input.offerAmount===undefined||input.offerAmount===null?null:Number(input.offerAmount);
     if(input.status==="offer" && offerAmount!==null && (!Number.isFinite(offerAmount)||offerAmount<0)) throw error(400,"offerAmount must be non-negative.","VALIDATION_ERROR");
     const offerCurrency=input.offerCurrency?String(input.offerCurrency).toUpperCase():null;
+    const hasApprover=Boolean((await db.query("select 1 from job_team_member where job_id=$1 and role_code='approver' and active=true limit 1",[jobId])).rows[0]);
+    const offerApproval=input.status==="offer" ? (hasApprover?"pending":"approved") : (a.offer_approval_status||"not_required");
     const updated=(await db.query(
-      "update job_application set status=$1,offer_amount=case when $1='offer' then $2 else offer_amount end,offer_currency=case when $1='offer' then $3 else offer_currency end,offer_terms=case when $1='offer' then $4 else offer_terms end,offer_issued_at=case when $1='offer' then now() else offer_issued_at end,hired_at=case when $1='hired' then now() else hired_at end,decided_at=case when $1 in ('rejected','hired') then now() else decided_at end,updated_at=now() where id=$5 returning *",
-      [input.status,offerAmount,offerCurrency,input.offerTerms||null,applicationId]
+      "update job_application set status=$1,offer_amount=case when $1='offer' then $2 else offer_amount end,offer_currency=case when $1='offer' then $3 else offer_currency end,offer_terms=case when $1='offer' then $4 else offer_terms end,offer_issued_at=case when $1='offer' then now() else offer_issued_at end,offer_approval_status=case when $1='offer' then $5 else offer_approval_status end,hired_at=case when $1='hired' then now() else hired_at end,decided_at=case when $1 in ('rejected','hired') then now() else decided_at end,updated_at=now() where id=$6 returning *",
+      [input.status,offerAmount,offerCurrency,input.offerTerms||null,offerApproval,applicationId]
     )).rows[0];
     await db.query("insert into job_application_event(application_id,actor_user_id,from_status,to_status,note) values($1,$2,$3,$4,$5)",[applicationId,userId,a.status,input.status,input.note||null]);
     await audit(db,userId,"job.candidate_status_changed","job_application",applicationId,requestId,{from:a.status,to:input.status});
     return updated;
   });
+}
+
+export async function approveJobOffer(applicationId,userId,input,requestId){
+ return withTransaction(async db=>{
+  const a=(await db.query("select a.*,j.id job_id from job_application a join job j on j.id=a.job_id where a.id=$1 for update",[applicationId])).rows[0]; if(!a) throw error(404,"Application not found.","NOT_FOUND");
+  await jobRole(db,a.job_id,userId,["hiring_manager","approver"]);
+  if(a.status!=="offer" || a.offer_approval_status!=="pending") throw error(409,"This offer is not awaiting approval.","INVALID_STATE");
+  const decision=input.decision==="approved"?"approved":"rejected";
+  const row=(await db.query("update job_application set offer_approval_status=$1,updated_at=now() where id=$2 returning *",[decision,applicationId])).rows[0];
+  await audit(db,userId,"job.offer_approval_decided","job_application",applicationId,requestId,{decision});
+  return row;
+ }
+ );
 }
 
 export async function respondToJobApplication(applicationId,userId,input,requestId){
@@ -404,6 +419,8 @@ export async function respondToJobApplication(applicationId,userId,input,request
     if(a.applicant_user_id!==userId) throw error(403,"Only the applicant can respond to the application.","FORBIDDEN");
     if(input.status==="accepted"){
       if(a.status!=="offer") throw error(409,"Only an issued offer can be accepted.","INVALID_STATE");
+      if(a.offer_approval_status==="pending") throw error(409,"The offer is awaiting internal approval.","OFFER_NOT_APPROVED");
+      if(a.offer_approval_status==="rejected") throw error(409,"The offer was not approved.","OFFER_REJECTED");
       const row=(await db.query("update job_application set status='accepted',offer_responded_at=now(),updated_at=now() where id=$1 returning *",[applicationId])).rows[0];
       await db.query("insert into job_application_event(application_id,actor_user_id,from_status,to_status,note) values($1,$2,'offer','accepted',$3)",[applicationId,userId,input.note||null]);
       await audit(db,userId,"job.offer_accepted","job_application",applicationId,requestId);
