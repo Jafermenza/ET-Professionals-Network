@@ -156,3 +156,120 @@ Additional implementation:
 - audit: offer acceptance and withdrawal.
 
 The hired state remains an employment outcome marker, not a substitute for later contract, onboarding, payroll or HR workflows.
+
+
+## Comprehensive job portal / ATS layer
+
+Phase 3 is intentionally a **job portal plus applicant tracking system**, not only a job-posting table.
+
+The design follows established ATS patterns: requisition/intake and approvals, structured hiring, screening questions, team-specific permissions, interview scheduling, scorecards, candidate collaboration, offer approval/acceptance, saved jobs/job alerts, referrals and pipeline/outcome analytics. Current ATS guidance from Greenhouse and Workable emphasizes these capabilities as the shared workspace connecting recruiters, hiring managers, interviewers, candidates, HR and leadership.
+
+### Vacancy and posting scopes
+
+A verified organization can create:
+- public vacancy;
+- MPA-member vacancy;
+- organization-internal vacancy;
+- partner-network vacancy.
+
+An organization-internal vacancy is visible/applicable only to active members of that organization. MPA-member and partner-network scopes require authenticated eligible network participation. Direct application attempts are subject to the same scope enforcement; hiding a job in search is not treated as a security boundary.
+
+### Requisition-to-posting
+
+A vacancy can begin as a requisition with:
+- headcount;
+- justification;
+- department;
+- employment/work mode;
+- location;
+- compensation range;
+- target start date.
+
+The requisition is submitted and approved before it is used as a governed job posting.
+
+### Full candidate lifecycle
+
+The portal now supports:
+1. requisition;
+2. job drafting;
+3. structured job requirements;
+4. publication;
+5. discovery/search/filter;
+6. saved jobs;
+7. job alerts;
+8. direct application or draft application;
+9. screening questions/knockout rules;
+10. centralized candidate pipeline;
+11. team collaboration and notes;
+12. referral;
+13. interview scheduling and participant responses;
+14. structured interview scorecards;
+15. human feedback;
+16. shortlist/interview decisions;
+17. offer creation;
+18. offer approval where an approver is assigned;
+19. candidate acceptance/withdrawal;
+20. hired outcome;
+21. explicit vacancy outcome recording;
+22. reporting and funnel analytics.
+
+AI is deliberately not a hidden hiring decision-maker. Any future AI assistance must expose reasoning, remain reversible and leave the final advancement/rejection decision with authorized humans.
+
+### Stakeholder progress visibility
+
+The system now exposes:
+- candidate application progress;
+- interview schedule and responses;
+- organization job inventory;
+- per-job funnel;
+- upcoming interviews;
+- offers and accepted offers;
+- hires;
+- requisition status;
+- explicit vacancy outcomes;
+- organization recruiting dashboard;
+- cross-workflow stakeholder outcome workspace.
+
+The candidate sees only their own application progress. Organization users see only jobs/candidates within their authorized organization scope. Job-team roles receive only the permissions required for their assigned work.
+
+### Outcome model
+
+The platform distinguishes:
+- vacancy created;
+- vacancy published;
+- application received;
+- candidate screened;
+- interview completed;
+- offer issued;
+- offer approved;
+- offer accepted;
+- hire recorded;
+- vacancy filled/partially filled/cancelled/expired/reopened.
+
+This makes business progress observable without exposing another actor's private evidence or internal notes.
+
+### Reference model
+
+Occupation, industry, geography and education-related requirements continue to use the existing configurable reference portfolio. The job portal does not introduce a second hard-coded classification system.
+
+### Ethiopia-facing job portal considerations
+
+The public job-portal pattern also reflects local expectations: Ethiopian job seekers commonly expect keyword/category/location/career/employment-type discovery, job alerts, CV/profile-based application and application tracking. Ethiojobs currently exposes those discovery and tracking patterns and advertises ATS capabilities including screening questions, advanced applicant filtering, recruitment-process management and reporting/analytics.
+
+### Acceptance expansion
+
+Phase 3 is not accepted as complete unless the release verifies:
+- verified organization can create and govern a vacancy/requisition;
+- authorized organization users can collaborate on the job;
+- internal, member and partner scopes are enforced at both discovery and application;
+- applicants can save jobs and configure alerts;
+- required screening questions block incomplete applications;
+- candidate pipeline can be progressed by authorized staff;
+- interviews can be scheduled and responded to;
+- interviewers can submit structured scorecards;
+- offers can require internal approval;
+- candidates control acceptance/withdrawal;
+- candidate and organization stakeholders can inspect progress;
+- organization can inspect funnel and vacancy outcomes;
+- all sensitive actions are audited;
+- migration, tests and smoke CI pass.
