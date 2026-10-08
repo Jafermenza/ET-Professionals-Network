@@ -37,7 +37,7 @@ export async function register(input,requestId){
       select p.user_id from person p where lower(regexp_replace(coalesce(p.display_name,''),'[^[:alnum:]]','','g'))=
         lower(regexp_replace($3,'[^[:alnum:]]','','g')) limit 3`,[email,person.phone,person.displayName]);
     if(identity.rows.length) throw httpError(409,"An existing account or identity matches these details. Sign in or contact membership support instead of creating a duplicate.","IDENTITY_CONFLICT");
-    const user=(await db.query("insert into app_user(username,email,password_hash,status) values($1,$2,$3,'active') returning id,email,username",[email,email,hashPassword(input.password),email])).rows[0];
+    const user=(await db.query("insert into app_user(username,email,password_hash,status) values($1,$2,$3,'active') returning id,email,username",[email,email,hashPassword(input.password)]).rows[0];
     const p=(await db.query(`insert into person(user_id,first_name,middle_name,last_name,display_name,phone,date_of_birth,sex,nationality)
       values($1,$2,$3,$4,$5,$6,$7,$8,$9) returning id,user_id,first_name,middle_name,last_name,display_name,phone,date_of_birth,sex,nationality`,
       [user.id,person.firstName,person.middleName,person.lastName,person.displayName,person.phone,person.dateOfBirth,person.sex,person.nationality])).rows[0];
@@ -240,4 +240,31 @@ export async function listApplicationsForReview(){
     from membership_application a join membership_product p on p.id=a.membership_product_id
     where a.status in ('submitted','in_review','correction_required') order by a.created_at asc`);
   return r.rows;
+}
+
+export async function attachApplicationFile(applicationId,userId,input,requestId){
+  return withTransaction(async db=>{
+    const app=(await db.query("select id from membership_application where id=$1 and user_id=$2",[applicationId,userId])).rows[0];
+    if(!app) throw httpError(404,"Application not found.","NOT_FOUND");
+    const file=(await db.query("select id,original_name,content_type,byte_size,visibility from file_object where id=$1 and (created_by=$2 or created_by is null)",[input.fileObjectId,userId])).rows[0];
+    if(!file) throw httpError(400,"File is not available to this account.","INVALID_FILE");
+    const row=(await db.query("insert into membership_application_attachment(application_id,file_object_id,attachment_type,created_by) values($1,$2,$3,$4) on conflict(application_id,file_object_id) do update set attachment_type=excluded.attachment_type returning *",[applicationId,input.fileObjectId,input.attachmentType||"supporting_document",userId])).rows[0];
+    await audit(db,userId,"membership.application_attachment_added","membership_application_attachment",row.id,requestId,{applicationId,fileObjectId:input.fileObjectId});
+    return {...row,file};
+  });
+}
+
+export async function notificationPreferences(userId,input=null){
+  const db=getPool();
+  if(input){
+    return (await db.query(`insert into notification_preference(user_id,email_enabled,sms_enabled,push_enabled,in_app_enabled,updated_at)
+      values($1,coalesce($2,true),coalesce($3,true),coalesce($4,true),coalesce($5,true),now())
+      on conflict(user_id) do update set email_enabled=coalesce($2,notification_preference.email_enabled),
+      sms_enabled=coalesce($3,notification_preference.sms_enabled),push_enabled=coalesce($4,notification_preference.push_enabled),
+      in_app_enabled=coalesce($5,notification_preference.in_app_enabled),updated_at=now() returning *`,[
+        userId,input.emailEnabled,input.smsEnabled,input.pushEnabled,input.inAppEnabled
+      ])).rows[0];
+  }
+  return (await db.query("select * from notification_preference where user_id=$1",[userId])).rows[0] ||
+    (await db.query("insert into notification_preference(user_id) values($1) returning *",[userId])).rows[0];
 }
