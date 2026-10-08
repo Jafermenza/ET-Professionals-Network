@@ -62,6 +62,7 @@ async function bootstrapAdmin(){ if(!config.bootstrapAdminEmail||!config.bootstr
 
 const server=http.createServer(async (req,res)=>{
   const requestId=req.headers["x-request-id"]||randomUUID();
+  if(req.method==="OPTIONS"){res.writeHead(204,{"access-control-allow-origin":config.corsOrigin||"*","access-control-allow-methods":"GET,POST,PATCH,DELETE,OPTIONS","access-control-allow-headers":"Authorization,Content-Type,X-Request-Id","access-control-max-age":"600"});return res.end();}
   if(config.corsOrigin) res.setHeader("access-control-allow-origin",config.corsOrigin);
   res.setHeader("vary","Origin"); res.setHeader("x-content-type-options","nosniff"); res.setHeader("x-frame-options","DENY"); res.setHeader("referrer-policy","strict-origin-when-cross-origin"); res.setHeader("permissions-policy","camera=(),microphone=(),geolocation=()"); if(config.nodeEnv==="production") res.setHeader("strict-transport-security","max-age=31536000; includeSubDomains");
   res.on("finish",()=>logger.info("http.request",{requestId,method:req.method,path:req.url,status:res.statusCode}));
