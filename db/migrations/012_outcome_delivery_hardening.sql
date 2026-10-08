@@ -109,3 +109,24 @@ comment on table service_request_milestone is 'Measurable service delivery check
 comment on table service_request_delivery is 'Provider delivery evidence or deliverable submitted for requester acceptance.';
 comment on table service_request_feedback is 'Post-delivery feedback for service quality; separate from professional verification.';
 comment on table mentorship_goal is 'Outcome-oriented mentorship goal with an explicit success measure.';
+
+create table if not exists service_payment (
+  id uuid primary key default gen_random_uuid(),
+  request_id uuid not null references service_request(id) on delete restrict,
+  payment_transaction_id uuid not null unique references payment_transaction(id) on delete restrict,
+  payer_user_id uuid not null references app_user(id) on delete restrict,
+  provider_user_id uuid not null references app_user(id) on delete restrict,
+  amount numeric(14,2) not null check (amount >= 0),
+  currency char(3) not null,
+  channel text not null check (channel in ('online','manual','bank_transfer','cash','other')),
+  status text not null default 'pending' check (status in ('pending','succeeded','failed','refunded','cancelled')),
+  evidence_file_id uuid references file_object(id) on delete restrict,
+  submitted_by uuid not null references app_user(id) on delete restrict,
+  verified_by uuid references app_user(id) on delete restrict,
+  verified_at timestamptz,
+  verification_note text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+create index if not exists ix_service_payment_request on service_payment(request_id,status,created_at desc);
+create index if not exists ix_service_payment_provider on service_payment(provider_user_id,status,created_at desc);
