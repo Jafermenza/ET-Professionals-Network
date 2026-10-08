@@ -27,7 +27,7 @@ create table if not exists reference_dataset_version (
   dataset_id uuid not null references reference_dataset(id),
   version_label text not null,
   schema_version integer not null default 1,
-  status text not null default 'draft' check (status in ('draft','validated','approved','scheduled','published','archived')),
+  status text not null default 'draft' check (status in ('draft','validated','submitted','approved','scheduled','published','archived')),
   effective_from date,
   effective_to date,
   import_method text check (import_method in ('manual','csv','xlsx','json','api')),

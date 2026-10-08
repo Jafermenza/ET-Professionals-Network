@@ -1,0 +1,55 @@
+name: CI
+
+on:
+  push:
+    branches: ["main", "feat/**"]
+  pull_request:
+    branches: ["main"]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: mpa
+          POSTGRES_USER: mpa
+          POSTGRES_PASSWORD: mpa_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U mpa -d mpa"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      NODE_ENV: test
+      DATABASE_URL: postgresql://mpa:mpa_ci@localhost:5432/mpa
+      LOG_LEVEL: error
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm test
+      - run: npm run migrate
+      - name: Application smoke test
+        shell: bash
+        run: |
+          export JWT_SECRET="$(openssl rand -hex 32)"
+          node server.js > /tmp/mpa-server.log 2>&1 &
+          pid=$!
+          trap 'kill "$pid" 2>/dev/null || true' EXIT
+          for i in {1..20}; do
+            if curl --fail --silent http://127.0.0.1:3000/healthz; then
+              echo
+              exit 0
+            fi
+            sleep 0.5
+          done
+          cat /tmp/mpa-server.log
+          exit 1

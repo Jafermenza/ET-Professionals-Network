@@ -1,0 +1,16 @@
+{
+  "name": "et-professionals-network",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Ethiopian Muslim Professionals Association platform foundation",
+  "type": "module",
+  "scripts": {
+    "test": "node --test test/**/*.test.js",
+    "test:reference-portfolio": "node --test test/reference-portfolio/*.test.js",
+    "start": "node server.js",
+    "migrate": "node scripts/migrate.js"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
