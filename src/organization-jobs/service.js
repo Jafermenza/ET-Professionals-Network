@@ -315,3 +315,5 @@ export async function listOrganizationUsers(orgId,actorUserId){
  const db=getPool(); await orgRole(db,orgId,actorUserId,["owner","administrator","recruiter","read_only"]);
  return (await db.query("select om.user_id,om.role_code,om.status,om.joined_at,p.display_name,u.email from organization_membership om join app_user u on u.id=om.user_id left join person p on p.user_id=u.id where om.organization_id=$1 order by om.created_at",[orgId])).rows;
 }
+
+export function isEligibleVerifiedClaimForJobs(code){ return ["professional_certification","education","employment","experience","service_capability"].includes(String(code||"").toLowerCase()); }
