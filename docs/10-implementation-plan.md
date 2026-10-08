@@ -32,15 +32,17 @@ Implementation:
 
 ## Phase 3 — Organizations and Jobs
 
-Organization registration/verification, scoped organization users, public jobs, exclusive jobs, centralized eligibility engine, candidate applications and candidate workflow management.
+Organization registration/verification, scoped organization users, full job portal/ATS, internal and partner vacancies, centralized eligibility, candidate applications, screening, interviews, structured evaluation, offer approval/acceptance and outcome analytics.
 
 Implementation:
-- Migration 009: organization identity/verification, scoped organization memberships, jobs, eligibility rules, applications, application attachments and application events.
-- Organization/jobs service: organization registration and verification, organization-user management, job lifecycle, centralized eligibility evaluation, applications and candidate status workflow.
-- Server routes: public job discovery, organization workspace, verification review, job publishing, eligibility preview, applications and candidate management.
+- Migrations 009-010: organization identity/verification, scoped organization memberships, jobs, eligibility rules, applications, attachments, events and hardening.
+- Migration 012: candidate offer-consent hardening.
+- Migration 013: requisitions, vacancy scopes, compensation/headcount, hiring teams, screening questions, answers, notes, interviews, scorecards, saved jobs, alerts, referrals, explicit vacancy outcomes and offer approval.
+- Organization/jobs service: requisition governance, job lifecycle, scope-aware discovery, eligibility, screening, candidate pipeline, collaboration, interviews, scorecards, offers and outcome reporting.
+- Server routes: public/network job discovery, organization job workspace, requisitions, hiring team, screening, interviews, scorecards, saved jobs/alerts, referrals, candidate progress, recruiting dashboards and outcome workspaces.
 - Acceptance: see docs/28-phase-3-organizations-jobs.md.
 
-Exit: a verified organization can publish and manage candidates; an eligible member can apply to an exclusive job.
+Exit: a verified organization or authorized partner can govern and publish the appropriate vacancy scope; an eligible stakeholder can discover/apply; hiring teams can progress candidates through structured human-led recruitment; candidates can inspect their own progress; authorized organization stakeholders can inspect pipeline and vacancy outcomes.
 
 ## Phase 4 — Services and Mentorship
 
