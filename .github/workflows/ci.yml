@@ -29,7 +29,8 @@ jobs:
     env:
       NODE_ENV: test
       DATABASE_URL: postgresql://mpa:mpa_ci@localhost:5432/mpa
-      LOG_LEVEL: error\n      JWT_SECRET: ci-only-phase1-test-secret
+      LOG_LEVEL: error
+      JWT_SECRET: ci-only-phase1-test-secret
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
