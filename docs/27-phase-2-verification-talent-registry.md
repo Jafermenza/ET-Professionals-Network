@@ -254,6 +254,20 @@ The final Phase 2 boundary also enforces the following controls in the service l
 
 These controls operationalize **Adl (Justice/Fairness)**, **Tabayyun (Verification/Due diligence)**, **Amanah (Trust/Responsibility)** and **Satr (Privacy/Confidentiality)**. They are governance-oriented software controls, not a substitute for a qualified Shariah review. The International Islamic Fiqh Academy's published standards emphasize accuracy, objectivity, impartiality and documented evidence, while its core values include discipline, transparency and justice. urlIIFA Resolution No. 1https://iifa-aifi.org/en/34158.html urlIIFA Core Valueshttps://iifa-aifi.org/en/core-values
 
+## Case-access and state hardening
+
+The final case boundary also enforces:
+
+- consent-pending cases cannot receive claims or evidence until the subject has consented;
+- closed/withdrawn cases cannot be modified with new claims or evidence;
+- case detail is authorized inside the service layer, not only in the HTTP route;
+- members receive a reduced case projection and do not receive reviewer notes, confidential concerns, referee contact/response data, or private evidence metadata;
+- reviewer-facing case detail remains available only to authorized verification roles;
+- appeals are rejected when the governing verification program has appeals disabled;
+- every decision requires a non-empty reason.
+
+This prevents a client or alternate route from bypassing the same **Satr (Privacy/Confidentiality)**, **Amanah (Trust/Responsibility)** and **Tabayyun (Verification/Due diligence)** boundaries.
+
 ## Audit and security
 
 Material actions are audited, including:
