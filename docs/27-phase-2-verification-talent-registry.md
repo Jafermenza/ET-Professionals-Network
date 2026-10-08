@@ -201,6 +201,7 @@ The workflow applies:
 
 - POST /api/v1/verification/cases
 - GET /api/v1/verification/cases/:id
+- POST /api/v1/verification/cases/:id/consent
 - POST /api/v1/verification/cases/:id/claims
 - POST /api/v1/verification/cases/:id/evidence
 - POST /api/v1/verification/cases/:id/response
@@ -223,6 +224,10 @@ All server-side role checks are mandatory.
 ### 006_vetting_and_trust_framework.sql
 
 Provides the complete case/evidence/decision/response/appeal foundation and verification roles.
+
+### 008_phase2_consent_boundary.sql
+
+Adds explicit consent timestamp/version and prevents consent-required programs from entering substantive verification before consent.
 
 ### 007_phase2_verification_talent.sql
 
@@ -260,6 +265,7 @@ The system uses role-based server authorization. Client-side hiding is not consi
 Phase 2 is accepted only when all of the following are true:
 
 - a case can be opened against a configured verification program;
+- consent-required programs remain in consent_pending until the subject records consent;
 - the applicable checklist version is snapshotted;
 - a claim can be recorded;
 - evidence can be attached without automatically verifying the claim;
