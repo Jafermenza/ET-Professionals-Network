@@ -65,7 +65,7 @@ export async function register(input,requestId){
     await db.query("insert into notification_preference(user_id) values($1) on conflict do nothing",[user.id]);
     await audit(db,user.id,"account.registered","account",user.id,requestId,{identityPolicy:"email_phone_exact_name"});
     await notify(db,user.id,"account_registered","account",user.id,{displayName:p.display_name});
-    return {user:{id:user.id,email:user.email},person:p,token:tokenFor(user,["member"])};
+    return {user:{id:user.id,email:user.email},person:p,token:await tokenFor(db,user,["member"])};
   });
 }
 
