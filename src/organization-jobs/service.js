@@ -378,6 +378,33 @@ export async function listOrganizationUsers(orgId,actorUserId){
  return (await db.query("select om.user_id,om.role_code,om.status,om.joined_at,p.display_name,u.email from organization_membership om join app_user u on u.id=om.user_id left join person p on p.user_id=u.id where om.organization_id=$1 order by om.created_at",[orgId])).rows;
 }
 
+async function assertSystemAdmin(db,userId){
+ const r=(await db.query("select 1 from app_user_role ur join app_role r on r.id=ur.role_id where ur.user_id=$1 and r.role_code='system_admin' limit 1",[userId])).rows[0];
+ if(!r) throw error(403,"System administrator role required.","FORBIDDEN");
+}
+export async function listOrganizationVerificationRequirements(userId){
+ const db=getPool(); await assertSystemAdmin(db,userId);
+ return (await db.query("select * from organization_verification_requirement order by coalesce(organization_type,''),sort_order,evidence_type")).rows;
+}
+export async function createOrganizationVerificationRequirement(userId,input,requestId){
+ return withTransaction(async db=>{
+  await assertSystemAdmin(db,userId);
+  if(!input.evidenceType||!input.label) throw error(400,"evidenceType and label are required.","VALIDATION_ERROR");
+  const row=(await db.query("insert into organization_verification_requirement(organization_type,evidence_type,label,required,active,sort_order) values($1,$2,$3,$4,$5,$6) returning *",[input.organizationType||null,input.evidenceType,input.label,input.required!==false,input.active!==false,Number.isInteger(input.sortOrder)?input.sortOrder:0])).rows[0];
+  await audit(db,userId,"organization.verification_requirement_created","organization_verification_requirement",row.id,requestId,{});
+  return row;
+ });
+}
+export async function updateOrganizationVerificationRequirement(id,userId,input,requestId){
+ return withTransaction(async db=>{
+  await assertSystemAdmin(db,userId);
+  const current=(await db.query("select * from organization_verification_requirement where id=$1 for update",[id])).rows[0]; if(!current) throw error(404,"Verification requirement not found.","NOT_FOUND");
+  const row=(await db.query("update organization_verification_requirement set label=coalesce($1,label),required=coalesce($2,required),active=coalesce($3,active),sort_order=coalesce($4,sort_order) where id=$5 returning *",[input.label??null,input.required===undefined?null:Boolean(input.required),input.active===undefined?null:Boolean(input.active),Number.isInteger(input.sortOrder)?input.sortOrder:null,id])).rows[0];
+  await audit(db,userId,"organization.verification_requirement_updated","organization_verification_requirement",id,requestId,{});
+  return row;
+ });
+}
+
 export function isEligibleVerifiedClaimForJobs(code){ return ["professional_certification","education","employment","experience","service_capability"].includes(String(code||"").toLowerCase()); }
 
 export async function listApplicationAttachments(applicationId,userId){
