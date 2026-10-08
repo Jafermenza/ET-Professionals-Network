@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { getPool } from "../../src/platform/db.js";
+import { getPool, closePool } from "../../src/platform/db.js";
 import * as membership from "../../src/membership/service.js";
 
 const suffix=randomUUID().slice(0,8);
@@ -102,3 +102,6 @@ test("Phase 1 notification preferences are persisted",async()=>{
   const loaded=await membership.notificationPreferences(userId);
   assert.equal(loaded.sms_enabled,false);
 });
+
+
+test.after("close database pool",async()=>{ await closePool(); });
