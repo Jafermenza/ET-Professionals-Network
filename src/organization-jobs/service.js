@@ -680,6 +680,20 @@ export async function recordJobOutcome(jobId,userId,input,requestId){
  });
 }
 
+export async function listApplicationInterviews(applicationId,userId){
+ const db=getPool();
+ const a=(await db.query("select applicant_user_id,job_id from job_application where id=$1",[applicationId])).rows[0]; if(!a) throw error(404,"Application not found.","NOT_FOUND");
+ if(a.applicant_user_id!==userId) await jobRole(db,a.job_id,userId,["hiring_manager","recruiter","interviewer","observer"]);
+ return (await db.query("select ji.*,coalesce((select json_agg(json_build_object('userId',jp.user_id,'role',jp.role_code,'response',jp.response_status)) from job_interview_participant jp where jp.interview_id=ji.id),'[]'::json) participants from job_interview ji where ji.application_id=$1 order by ji.scheduled_start",[applicationId])).rows;
+}
+export async function getMyApplicationProgress(applicationId,userId){
+ const db=getPool(); const a=(await db.query("select a.*,j.id job_id,j.title,o.display_name organization_name from job_application a join job j on j.id=a.job_id join organization o on o.id=j.organization_id where a.id=$1 and a.applicant_user_id=$2",[applicationId,userId])).rows[0];
+ if(!a) throw error(404,"Application not found.","NOT_FOUND");
+ const events=(await db.query("select from_status,to_status,note,created_at from job_application_event where application_id=$1 order by created_at",[applicationId])).rows;
+ const answers=(await db.query("select q.question,q.question_type,q.required,aa.answer from job_application_answer aa join job_screening_question q on q.id=aa.question_id where aa.application_id=$1 order by q.sort_order",[applicationId])).rows;
+ const interviews=await listApplicationInterviews(applicationId,userId);
+ return {application:{id:a.id,status:a.status,jobId:a.job_id,jobTitle:a.title,organizationName:a.organization_name,submittedAt:a.submitted_at,updatedAt:a.updated_at,offer:{amount:a.offer_amount,currency:a.offer_currency,terms:a.offer_terms,issuedAt:a.offer_issued_at,respondedAt:a.offer_responded_at}},events,screeningAnswers:answers,interviews};
+}
 export async function listApplicationAttachments(applicationId,userId){
  const db=getPool();
  const a=(await db.query("select a.id,a.applicant_user_id,j.organization_id from job_application a join job j on j.id=a.job_id where a.id=$1",[applicationId])).rows[0];
