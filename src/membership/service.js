@@ -161,7 +161,7 @@ export async function createManualPayment(applicationId,userId,input,requestId){
     const p=(await db.query(`insert into payment_transaction(provider,provider_transaction_id,idempotency_key,purpose,amount,currency,status,request_payload,channel,submitted_by,purpose_reference,source)
       values('manual',null,$1,'membership', $2,$3,'pending',$4::jsonb,$5,$6,$7,'manual_entry') returning *`,
       [idem,amount,fee.currency,JSON.stringify({channel:input.channel||"manual",reference:input.reference||null}),input.channel||"manual",userId,input.reference||applicationId])).rows[0];
-    await db.query("insert into membership_application_payment(application_id,payment_transaction_id) values($1,$2)",[applicationId,p.id]);
+    await db.query("insert into membership_application_payment(application_id,payment_transaction_id) values($1,$2)",[applicationId,p.id]);\n    if(input.evidenceFileId){\n      const file=await db.query("select id from file_object where id=$1 and (created_by=$2 or created_by is null)",[input.evidenceFileId,userId]);\n      if(!file.rows[0]) throw httpError(400,"Payment evidence file is not available to this account.","INVALID_EVIDENCE");\n      await db.query("update payment_transaction set evidence_file_id=$1 where id=$2",[input.evidenceFileId,p.id]);\n    }
     await audit(db,userId,"membership.payment_submitted","payment_transaction",p.id,requestId,{applicationId,channel:input.channel||"manual"});
     await notify(db,userId,"membership_payment_submitted","membership_application",applicationId,{paymentId:p.id});
     return p;
