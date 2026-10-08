@@ -15,8 +15,8 @@ Product objective -> requirement -> domain entity/workflow -> API/UI -> permissi
 | Account | Identity | All | registration, login, recovery |
 | Membership | Membership | Members/admins | application, approval, payment, renewal |
 | Profile | Profile | Members | visibility, update, search |
-| Verification | Verification | Members/reviewers | evidence, decision, expiry |
-| Talent registry | Talent | Members/orgs/public | search, privacy, eligibility |
+| Verification | Verification | Members/reviewers | case lifecycle, evidence, checklist, decision, response, appeal |
+| Talent registry | Talent | Members/orgs/public | verified eligibility, search/filter, privacy projection, visibility, saved searches |
 | Jobs | Jobs | Job seekers/orgs | publish, apply, eligibility |
 | Services | Services | Members/orgs | listing, request |
 | Mentorship | Mentorship | Mentors/mentees | match, sessions, completion |
