@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: ["main", "feat/**", "fix/**"]
+    branches: ["main","feat/**","fix/**"]
   pull_request:
     branches: ["main"]
 
@@ -36,9 +36,11 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
+          cache: npm
       - run: npm install --no-audit --no-fund
       - run: npm run migrate
       - run: npm test
+      - run: npm run web:build
       - name: Application smoke test
         shell: bash
         run: |
