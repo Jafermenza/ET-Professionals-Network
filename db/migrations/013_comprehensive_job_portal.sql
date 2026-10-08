@@ -213,3 +213,11 @@ comment on table job_team_member is 'Scoped hiring-team collaboration; role gran
 comment on table job_screening_question is 'Structured, configurable pre-screening questions; knockout rules are transparent and auditable.';
 comment on table job_interview_feedback is 'Structured human interviewer evaluation; not an automated hiring decision.';
 comment on table job_outcome is 'Explicit vacancy outcome record for stakeholder reporting and post-hire learning.';
+
+alter table job_application
+  add column if not exists offer_approval_status text not null default 'approved'
+    check (offer_approval_status in ('not_required','pending','approved','rejected'));
+
+create index if not exists ix_job_application_offer_approval on job_application(job_id,offer_approval_status,status);
+
+comment on column job_application.offer_approval_status is 'Human approval gate for offers when the job has an assigned approver; candidate acceptance is still a separate actor action.';
