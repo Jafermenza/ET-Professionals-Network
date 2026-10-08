@@ -109,3 +109,13 @@ Implementation complete, migrations complete, tests pass, authorization tested, 
 ## 6. Sequencing rule
 
 Do not start with the dashboard. Build domains and workflows first; dashboard screens should visualize real business states.
+
+## Outcome hardening after Phase 4
+
+Before advancing to later phases, Phases 2-4 receive an outcome hardening layer:
+- Phase 2 opportunity inquiry and consent-based contact release;
+- Phase 3 candidate-owned offer acceptance;
+- Phase 4 service scope, milestones, delivery, payment settlement and acceptance;
+- Phase 4 mentorship goals and measurable outcomes.
+
+This preserves the vertical-slice rule: workflows should create observable business value, not merely database state transitions.
