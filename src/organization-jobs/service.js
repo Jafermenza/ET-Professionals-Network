@@ -325,3 +325,11 @@ export async function listOrganizationUsers(orgId,actorUserId){
 }
 
 export function isEligibleVerifiedClaimForJobs(code){ return ["professional_certification","education","employment","experience","service_capability"].includes(String(code||"").toLowerCase()); }
+
+export async function listApplicationAttachments(applicationId,userId){
+ const db=getPool();
+ const a=(await db.query("select a.id,a.applicant_user_id,j.organization_id from job_application a join job j on j.id=a.job_id where a.id=$1",[applicationId])).rows[0];
+ if(!a) throw error(404,"Application not found.","NOT_FOUND");
+ if(a.applicant_user_id!==userId) await orgRole(db,a.organization_id,userId,CANDIDATE_ROLES);
+ return (await db.query("select aa.id,aa.file_object_id,aa.attachment_type,aa.created_at from job_application_attachment aa where aa.application_id=$1 order by aa.created_at",[applicationId])).rows;
+}
