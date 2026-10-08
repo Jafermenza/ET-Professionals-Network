@@ -4,6 +4,8 @@ import { loadConfig } from "./src/platform/config.js";
 import { createLogger } from "./src/platform/logger.js";
 import { verifyToken, requireRole } from "./src/platform/auth.js";
 import * as membership from "./src/membership/service.js";
+import * as verification from "./src/verification/service.js";
+import * as talent from "./src/talent/service.js";
 
 const config=loadConfig();
 const logger=createLogger({level:config.logLevel});
@@ -13,6 +15,7 @@ function json(res,status,body,requestId){
   res.end(JSON.stringify(body));
 }
 function pathParts(url){ return new URL(url,"http://localhost").pathname.split("/").filter(Boolean); }
+function query(url){ return new URL(url,"http://localhost").searchParams; }
 async function body(req){
   let raw="";
   for await (const chunk of req) {
@@ -81,6 +84,70 @@ const server=http.createServer(async (req,res)=>{
     }
     if(req.method==="GET" && p==="api/v1/review/membership/applications") {
       anyRole(identity,["reviewer","finance_officer","system_admin"]); return ok(res,await membership.listApplicationsForReview(),requestId);
+    }
+
+    if(req.method==="PATCH" && p==="api/v1/me/talent-profile") return ok(res,await talent.updateProfessionalProfile(identity.sub,await body(req),requestId),requestId);
+    if(req.method==="GET" && p==="api/v1/me/talent-visibility") return ok(res,await talent.getVisibility(identity.sub),requestId);
+    if(req.method==="PATCH" && p==="api/v1/me/talent-visibility") return ok(res,await talent.updateVisibility(identity.sub,await body(req),requestId),requestId);
+    if(req.method==="GET" && p==="api/v1/talent"){
+      const q=query(req.url);
+      return ok(res,await talent.searchTalent(identity.sub,{q:q.get("q"),occupation:q.get("occupation"),industry:q.get("industry"),educationLevel:q.get("educationLevel"),qualificationType:q.get("qualificationType"),fieldOfStudy:q.get("fieldOfStudy"),availability:q.get("availability"),location:q.get("location"),verifiedClaim:q.get("verifiedClaim"),limit:q.get("limit"),offset:q.get("offset")}),requestId);
+    }
+    if(req.method==="GET" && parts.length===4 && p.startsWith("api/v1/talent/")) return ok(res,await talent.getTalent(parts[3],identity.sub),requestId);
+    if(req.method==="POST" && p==="api/v1/talent/saved-searches") return ok(res,await talent.saveSearch(identity.sub,await body(req),requestId),requestId,201);
+    if(req.method==="GET" && p==="api/v1/talent/saved-searches") return ok(res,await talent.listSavedSearches(identity.sub),requestId);
+
+    if(req.method==="POST" && p==="api/v1/verification/cases"){
+      const b=await body(req);
+      if(b.subjectUserId && b.subjectUserId!==identity.sub) anyRole(identity,["verification_reviewer","ethics_reviewer","system_admin"]);
+      else requireRole(identity,"member");
+      return ok(res,await verification.createCase(b.subjectUserId||identity.sub,b.programCode,identity.sub,requestId),requestId,201);
+    }
+    if(req.method==="GET" && parts.length===4 && p.startsWith("api/v1/verification/cases/")){
+      const c=await verification.getCase(parts[3]);
+      if(c.subject_user_id!==identity.sub) anyRole(identity,["verification_reviewer","ethics_reviewer","system_admin","appeal_reviewer"]);
+      return ok(res,c,requestId);
+    }
+    if(req.method==="GET" && p==="api/v1/review/verification/cases"){
+      anyRole(identity,["verification_reviewer","ethics_reviewer","system_admin"]);
+      const q=query(req.url);
+      return ok(res,await verification.listCases({status:q.get("status"),programCode:q.get("programCode"),reviewerId:q.get("reviewerId"),limit:q.get("limit"),offset:q.get("offset")}),requestId);
+    }
+    if(req.method==="POST" && parts.length===5 && p.startsWith("api/v1/verification/cases/") && parts[4]==="assign"){
+      anyRole(identity,["verification_reviewer","system_admin"]); const b=await body(req);
+      return ok(res,await verification.assignCase(parts[3],b.reviewerId,identity.sub,requestId),requestId);
+    }
+    if(req.method==="POST" && parts.length===5 && p.startsWith("api/v1/verification/cases/") && parts[4]==="transition"){
+      anyRole(identity,["verification_reviewer","ethics_reviewer","system_admin"]); const b=await body(req);
+      return ok(res,await verification.transitionCase(parts[3],b.status,identity.sub,requestId),requestId);
+    }
+    if(req.method==="POST" && parts.length===5 && p.startsWith("api/v1/verification/cases/") && parts[4]==="claims"){
+      const b=await body(req); const c=await verification.getCase(parts[3]);
+      if(c.subject_user_id!==identity.sub) anyRole(identity,["verification_reviewer","ethics_reviewer","system_admin"]);
+      return ok(res,await verification.addClaim(parts[3],b.claimTypeCode,b.claimedValue,identity.sub,requestId),requestId,201);
+    }
+    if(req.method==="POST" && parts.length===5 && p.startsWith("api/v1/verification/cases/") && parts[4]==="evidence"){
+      const b=await body(req); const c=await verification.getCase(parts[3]);
+      if(c.subject_user_id!==identity.sub) anyRole(identity,["verification_reviewer","ethics_reviewer","system_admin"]);
+      return ok(res,await verification.addEvidence(parts[3],b,identity.sub,requestId),requestId,201);
+    }
+    if(req.method==="POST" && parts.length===5 && p.startsWith("api/v1/verification/cases/") && parts[4]==="decision"){
+      anyRole(identity,["verification_reviewer","ethics_reviewer","system_admin"]);
+      return ok(res,await verification.decide(parts[3],await body(req),identity.sub,requestId),requestId);
+    }
+    if(req.method==="POST" && parts.length===5 && p.startsWith("api/v1/verification/cases/") && parts[4]==="response") return ok(res,await verification.memberResponse(parts[3],await body(req),identity.sub,requestId),requestId);
+    if(req.method==="POST" && parts.length===5 && p.startsWith("api/v1/verification/cases/") && parts[4]==="appeal") return ok(res,await verification.submitAppeal(parts[3],await body(req),identity.sub,requestId),requestId,201);
+    if(req.method==="POST" && parts.length===5 && p.startsWith("api/v1/verification/appeals/") && parts[4]==="decision"){
+      anyRole(identity,["appeal_reviewer","system_admin"]);
+      return ok(res,await verification.decideAppeal(parts[3],await body(req),identity.sub,requestId),requestId);
+    }
+    if(req.method==="POST" && parts.length===6 && p.startsWith("api/v1/verification/cases/") && parts[5]==="claim-status"){
+      anyRole(identity,["verification_reviewer","ethics_reviewer","system_admin"]); const b=await body(req);
+      return ok(res,await verification.setClaimStatus(parts[4],b.status,identity.sub,requestId),requestId);
+    }
+    if(req.method==="POST" && parts.length===6 && p.startsWith("api/v1/verification/cases/") && parts[5]==="check-results"){
+      anyRole(identity,["verification_reviewer","ethics_reviewer","system_admin"]); const b=await body(req);
+      return ok(res,await verification.recordCheckResult(parts[4],b.checklistItemId,b,identity.sub,requestId),requestId);
     }
     return json(res,404,{error:{code:"NOT_FOUND",message:"Route not found."}},requestId);
   } catch(error) {
