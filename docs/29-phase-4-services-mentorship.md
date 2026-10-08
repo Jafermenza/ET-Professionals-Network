@@ -257,3 +257,32 @@ Phase 4 does not:
 - replace human governance with automated matching;
 - create a separate professional directory;
 - make religious or sensitive profiling a matching criterion.
+
+## Outcome hardening addendum
+
+Phase 4 now goes beyond connection to controlled delivery and outcome acceptance.
+
+### Services
+
+A service request can capture scope, price, currency and delivery deadline. Providers can define milestones and submit delivery evidence. Requesters can accept or request revision. The provider submits completion, but final completion requires requester acceptance. Paid services additionally require successful payment verification before final acceptance.
+
+Service feedback is available after completion.
+
+### Mentorship
+
+Mentorship can contain explicit goals with success measures, target dates, owner roles and outcome states. Sessions also capture outcomes and next steps. This distinguishes a completed relationship from an achieved goal.
+
+### Outcome principle
+
+The platform treats:
+- discovery as discovery;
+- matching as matching;
+- payment as settlement;
+- delivery as delivery;
+- acceptance as acceptance;
+- feedback as feedback;
+- verification as verification.
+
+No one of these is silently substituted for another.
+
+Additional implementation is in migration 012 and the outcome APIs documented in docs/30-phase-2-4-business-outcome-audit.md.
