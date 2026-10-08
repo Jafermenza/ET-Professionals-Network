@@ -18,9 +18,17 @@ Exit: a real user can register, apply, be reviewed, pay, become active and renew
 
 ## Phase 2 — Verification and Talent Registry
 
-Verification cases, evidence, reviewer workspace, directory, search/filter and visibility controls.
+Verification cases, configurable verification programs/checklist snapshots, evidence metadata and secure file references, reviewer workspace, claim-level decisions, response/appeal controls, professional talent profile, directory, search/filter, saved searches and visibility controls.
 
-Exit: an organization can find an eligible verified professional without seeing private evidence.
+Exit: an organization-ready consumer can find an active eligible verified professional through the canonical talent registry without seeing private evidence, reviewer notes or confidential verification material. Phase 3 organizations consume this registry rather than create a second talent directory.
+
+Implementation:
+- Migration 006: verification case/evidence/decision/response/appeal/reference/concern model and verification roles.
+- Migration 007: structured professional profile, reference-linked attributes, experience and explicit directory visibility.
+- Verification service: case lifecycle, evidence, checklist results, claim verification, decisions and appeals.
+- Talent service: privacy-safe profile projection, verified eligibility search, filters and saved searches.
+- Server routes: member profile/visibility, talent discovery and reviewer workspace.
+- Acceptance: see docs/27-phase-2-verification-talent-registry.md.
 
 ## Phase 3 — Organizations and Jobs
 
