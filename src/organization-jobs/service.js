@@ -56,6 +56,7 @@ export async function addVerificationEvidence(orgId,userId,input,requestId){
   const c=(await db.query("select id,status from organization_verification_case where organization_id=$1 for update",[orgId])).rows[0];
   if(!c) throw error(404,"Organization verification case not found.","NOT_FOUND");
   if(["verified","rejected"].includes(c.status)) throw error(409,"The organization verification case is closed.","INVALID_STATE");
+  const file=(await db.query("select id from file_object where id=$1 and created_by=$2 and visibility='private'",[input.fileObjectId,userId])).rows[0]; if(!file) throw error(400,"The verification document is not a private file owned by the submitting user.","INVALID_FILE");
   const e=(await db.query("insert into organization_verification_evidence(case_id,file_object_id,evidence_type,note,created_by) values($1,$2,$3,$4,$5) returning *",[c.id,input.fileObjectId,input.evidenceType||"supporting_document",input.note||null,userId])).rows[0];
   await audit(db,userId,"organization.verification_evidence_added","organization_verification_case",c.id,requestId,{evidenceType:e.evidence_type});
   return e;
@@ -298,6 +299,7 @@ export async function addApplicationAttachment(applicationId,userId,input,reques
  return withTransaction(async db=>{
   const a=(await db.query("select id,applicant_user_id from job_application where id=$1",[applicationId])).rows[0]; if(!a) throw error(404,"Application not found.","NOT_FOUND");
   if(a.applicant_user_id!==userId) throw error(403,"Only the applicant can add application documents.","FORBIDDEN");
+  const file=(await db.query("select id from file_object where id=$1 and created_by=$2 and visibility='private'",[input.fileObjectId,userId])).rows[0]; if(!file) throw error(400,"The application document must be a private file owned by the applicant.","INVALID_FILE");
   const r=(await db.query("insert into job_application_attachment(application_id,file_object_id,attachment_type) values($1,$2,$3) returning *",[applicationId,input.fileObjectId,input.attachmentType||"application_document"])).rows[0];
   await audit(db,userId,"job.application_attachment_added","job_application",applicationId,requestId,{});
   return r;
