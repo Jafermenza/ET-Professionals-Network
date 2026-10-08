@@ -484,6 +484,200 @@ export async function updateOrganizationVerificationRequirement(id,userId,input,
 
 export function isEligibleVerifiedClaimForJobs(code){ return ["professional_certification","education","employment","experience","service_capability"].includes(String(code||"").toLowerCase()); }
 
+
+async function jobRole(db,jobId,userId,teamRoles=[]){
+ const j=(await db.query("select organization_id from job where id=$1",[jobId])).rows[0];
+ if(!j) throw error(404,"Job not found.","NOT_FOUND");
+ const org=(await db.query("select role_code from organization_membership where organization_id=$1 and user_id=$2 and status='active'",[j.organization_id,userId])).rows[0];
+ if(org && ["owner","administrator","recruiter"].includes(org.role_code)) return {job:j,role:org.role_code};
+ const team=(await db.query("select role_code from job_team_member where job_id=$1 and user_id=$2 and active=true",[jobId,userId])).rows[0];
+ if(!team || (teamRoles.length && !teamRoles.includes(team.role_code))) throw error(403,"You do not have the required job-team permission.","FORBIDDEN");
+ return {job:j,role:team.role_code};
+}
+
+async function saveScreeningAnswers(db,applicationId,jobId,answers=[]){
+ const questions=(await db.query("select * from job_screening_question where job_id=$1 and active=true order by sort_order",[jobId])).rows;
+ const byId=new Map((Array.isArray(answers)?answers:[]).map(a=>[String(a.questionId),a.answer]));
+ for(const q of questions){
+   const answer=byId.get(String(q.id));
+   if(q.required && (answer===undefined||answer===null||answer==="")) throw error(400,"Required screening question is unanswered.","SCREENING_REQUIRED");
+   if(answer!==undefined){
+     let knockout=false;
+     if(q.knockout && q.knockout_operator){
+       const av=Array.isArray(answer)?answer.map(String):String(answer);
+       const kv=Array.isArray(q.knockout_value)?q.knockout_value.map(String):String(q.knockout_value??"");
+       if(q.knockout_operator==="equals") knockout=Array.isArray(av)?av.includes(kv):av===kv;
+       if(q.knockout_operator==="not_equals") knockout=Array.isArray(av)?!av.includes(kv):av!==kv;
+       if(q.knockout_operator==="contains") knockout=Array.isArray(av)?av.includes(kv):String(av).toLowerCase().includes(String(kv).toLowerCase());
+       if(q.knockout_operator==="gte") knockout=Number(av)>=Number(kv);
+       if(q.knockout_operator==="lte") knockout=Number(av)<=Number(kv);
+     }
+     if(knockout) throw error(403,"Your screening response does not meet this job's stated requirement.","SCREENING_NOT_ELIGIBLE");
+     await db.query("insert into job_application_answer(application_id,question_id,answer) values($1,$2,$3) on conflict(application_id,question_id) do update set answer=excluded.answer,updated_at=now()",[applicationId,q.id,answer]);
+   }
+ }
+}
+
+export async function createRequisition(orgId,userId,input,requestId){
+ return withTransaction(async db=>{
+  await orgRole(db,orgId,userId,["owner","administrator","recruiter"]);
+  if(!input.title) throw error(400,"title is required.","VALIDATION_ERROR");
+  const row=(await db.query("insert into job_requisition(organization_id,requested_by,title,department,justification,headcount,employment_type,work_mode,location_label,salary_min,salary_max,salary_currency,target_start_date) values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) returning *",[orgId,userId,input.title,input.department||null,input.justification||null,Number(input.headcount||1),input.employmentType||null,input.workMode||null,input.locationLabel||null,input.salaryMin??null,input.salaryMax??null,input.salaryCurrency||null,input.targetStartDate||null])).rows[0];
+  await audit(db,userId,"job.requisition_created","job_requisition",row.id,requestId,{});
+  return row;
+ });
+}
+export async function listRequisitions(orgId,userId){
+ const db=getPool(); await orgRole(db,orgId,userId,["owner","administrator","recruiter","read_only"]);
+ return (await db.query("select * from job_requisition where organization_id=$1 order by created_at desc",[orgId])).rows;
+}
+export async function decideRequisition(requisitionId,userId,input,requestId){
+ return withTransaction(async db=>{
+  const r=(await db.query("select * from job_requisition where id=$1 for update",[requisitionId])).rows[0]; if(!r) throw error(404,"Requisition not found.","NOT_FOUND");
+  await orgRole(db,r.organization_id,userId,["owner","administrator"]);
+  if(!["approved","rejected","cancelled"].includes(input.status)) throw error(400,"Invalid requisition decision.","VALIDATION_ERROR");
+  if(input.status==="approved"){
+    const row=(await db.query("update job_requisition set status='approved',approved_by=$1,approved_at=now(),decision_note=$2,updated_at=now() where id=$3 returning *",[userId,input.note||null,requisitionId])).rows[0];
+    await audit(db,userId,"job.requisition_approved","job_requisition",requisitionId,requestId,{});
+    return row;
+  }
+  const row=(await db.query("update job_requisition set status=$1,decision_note=$2,updated_at=now() where id=$3 returning *",[input.status,input.note||null,requisitionId])).rows[0];
+  await audit(db,userId,"job.requisition_decided","job_requisition",requisitionId,requestId,{status:input.status});
+  return row;
+});
+}
+export async function addJobTeamMember(jobId,userId,input,requestId){
+ return withTransaction(async db=>{
+  const j=(await jobRole(db,jobId,userId,["hiring_manager","recruiter","approver","observer"])).job;
+  await orgRole(db,j.organization_id,userId,["owner","administrator","recruiter"]);
+  const orgMember=(await db.query("select 1 from organization_membership where organization_id=$1 and user_id=$2 and status='active'",[j.organization_id,input.userId])).rows[0];
+  if(!orgMember) throw error(400,"Job-team members must belong to the organization.","ORGANIZATION_SCOPE");
+  if(!["hiring_manager","recruiter","interviewer","approver","observer"].includes(input.roleCode)) throw error(400,"Invalid job-team role.","VALIDATION_ERROR");
+  const row=(await db.query("insert into job_team_member(job_id,user_id,role_code,added_by) values($1,$2,$3,$4) on conflict(job_id,user_id,role_code) do update set active=true returning *",[jobId,input.userId,input.roleCode,userId])).rows[0];
+  await audit(db,userId,"job.team_member_added","job_team_member",row.id,requestId,{roleCode:input.roleCode});
+  return row;
+ });
+}
+export async function listJobTeam(jobId,userId){
+ const db=getPool(); await jobRole(db,jobId,userId,["hiring_manager","recruiter","interviewer","approver","observer"]);
+ return (await db.query("select jt.*,p.display_name,u.email from job_team_member jt join app_user u on u.id=jt.user_id left join person p on p.user_id=u.id where jt.job_id=$1 and jt.active=true order by jt.created_at",[jobId])).rows;
+}
+export async function addScreeningQuestion(jobId,userId,input,requestId){
+ return withTransaction(async db=>{
+  await jobRole(db,jobId,userId,["hiring_manager","recruiter"]);
+  if(!input.question) throw error(400,"question is required.","VALIDATION_ERROR");
+  const row=(await db.query("insert into job_screening_question(job_id,question,question_type,options,required,knockout,knockout_operator,knockout_value,sort_order) values($1,$2,$3,$4,$5,$6,$7,$8,$9) returning *",[jobId,input.question,input.questionType||"text",input.options||[],Boolean(input.required),Boolean(input.knockout),input.knockoutOperator||null,input.knockoutValue??null,Number(input.sortOrder||0)])).rows[0];
+  await audit(db,userId,"job.screening_question_added","job_screening_question",row.id,requestId,{});
+  return row;
+ });
+}
+export async function listScreeningQuestions(jobId,userId){
+ const db=getPool(); await jobRole(db,jobId,userId,["hiring_manager","recruiter","interviewer","observer"]);
+ return (await db.query("select * from job_screening_question where job_id=$1 order by sort_order,id",[jobId])).rows;
+}
+export async function addApplicationNote(applicationId,userId,input,requestId){
+ return withTransaction(async db=>{
+  const a=(await db.query("select a.*,j.id job_id from job_application a join job j on j.id=a.job_id where a.id=$1",[applicationId])).rows[0]; if(!a) throw error(404,"Application not found.","NOT_FOUND");
+  await jobRole(db,a.job_id,userId,["hiring_manager","recruiter","interviewer","observer"]);
+  if(!input.note) throw error(400,"note is required.","VALIDATION_ERROR");
+  const row=(await db.query("insert into job_application_note(application_id,author_user_id,note,visibility) values($1,$2,$3,$4) returning *",[applicationId,userId,input.note,input.visibility==="private"?"private":"team"])).rows[0];
+  await audit(db,userId,"job.application_note_added","job_application",applicationId,requestId,{});
+  return row;
+ });
+}
+export async function listApplicationNotes(applicationId,userId){
+ const db=getPool(); const a=(await db.query("select job_id from job_application where id=$1",[applicationId])).rows[0]; if(!a) throw error(404,"Application not found.","NOT_FOUND");
+ await jobRole(db,a.job_id,userId,["hiring_manager","recruiter","interviewer","observer"]);
+ return (await db.query("select n.*,p.display_name author_name from job_application_note n left join person p on p.user_id=n.author_user_id where n.application_id=$1 order by n.created_at desc",[applicationId])).rows;
+}
+export async function scheduleInterview(applicationId,userId,input,requestId){
+ return withTransaction(async db=>{
+  const a=(await db.query("select a.*,j.organization_id from job_application a join job j on j.id=a.job_id where a.id=$1",[applicationId])).rows[0]; if(!a) throw error(404,"Application not found.","NOT_FOUND");
+  await jobRole(db,a.job_id,userId,["hiring_manager","recruiter"]);
+  const start=new Date(input.scheduledStart),end=new Date(input.scheduledEnd); if(Number.isNaN(start.getTime())||Number.isNaN(end.getTime())||end<=start) throw error(400,"A valid interview time range is required.","VALIDATION_ERROR");
+  const overlap=(await db.query("select 1 from job_interview ji join job_interview_participant jp on jp.interview_id=ji.id where jp.user_id=$1 and ji.status in ('scheduled','confirmed') and ji.scheduled_start < $3 and ji.scheduled_end > $2 limit 1",[input.interviewerUserId||userId,start,end])).rows[0];
+  if(overlap) throw error(409,"The interviewer already has an overlapping interview.","INTERVIEW_CONFLICT");
+  const row=(await db.query("insert into job_interview(application_id,organizer_user_id,scheduled_start,scheduled_end,timezone,mode,location_text,meeting_url,agenda) values($1,$2,$3,$4,$5,$6,$7,$8,$9) returning *",[applicationId,userId,start,end,input.timezone||"Africa/Addis_Ababa",input.mode||"online",input.locationText||null,input.meetingUrl||null,input.agenda||null])).rows[0];
+  await db.query("insert into job_interview_participant(interview_id,user_id,role_code) values($1,$2,'candidate') on conflict do nothing",[row.id,a.applicant_user_id]);
+  if(input.interviewerUserId) await db.query("insert into job_interview_participant(interview_id,user_id,role_code) values($1,$2,'interviewer') on conflict do nothing",[row.id,input.interviewerUserId]);
+  await audit(db,userId,"job.interview_scheduled","job_interview",row.id,requestId,{applicationId});
+  return row;
+ });
+}
+export async function respondInterview(interviewId,userId,status,requestId){
+ return withTransaction(async db=>{
+  const p=(await db.query("select jp.*,ji.application_id,j.organization_id from job_interview_participant jp join job_interview ji on ji.id=jp.interview_id join job_application a on a.id=ji.application_id join job j on j.id=a.job_id where jp.interview_id=$1 and jp.user_id=$2",[interviewId,userId])).rows[0];
+  if(!p) throw error(403,"You are not an interview participant.","FORBIDDEN");
+  if(!["accepted","declined"].includes(status)) throw error(400,"Invalid interview response.","VALIDATION_ERROR");
+  const row=(await db.query("update job_interview_participant set response_status=$1 where interview_id=$2 and user_id=$3 returning *",[status,interviewId,userId])).rows[0];
+  await audit(db,userId,"job.interview_response","job_interview",interviewId,requestId,{status});
+  return row;
+ });
+}
+export async function submitInterviewFeedback(interviewId,userId,input,requestId){
+ return withTransaction(async db=>{
+  const p=(await db.query("select jp.*,ji.application_id,a.job_id from job_interview_participant jp join job_interview ji on ji.id=jp.interview_id join job_application a on a.id=ji.application_id where ji.id=$1 and jp.user_id=$2 and jp.role_code='interviewer'",[interviewId,userId])).rows[0];
+  if(!p) throw error(403,"Only assigned interviewers can submit feedback.","FORBIDDEN");
+  const row=(await db.query("insert into job_interview_feedback(interview_id,interviewer_user_id,scorecard_id,ratings,recommendation,comments) values($1,$2,$3,$4,$5,$6) on conflict(interview_id,interviewer_user_id) do update set ratings=excluded.ratings,recommendation=excluded.recommendation,comments=excluded.comments,submitted_at=now() returning *",[interviewId,userId,input.scorecardId||null,input.ratings||{},input.recommendation||"no_decision",input.comments||null])).rows[0];
+  await audit(db,userId,"job.interview_feedback_submitted","job_interview",interviewId,requestId,{});
+  return row;
+ });
+}
+export async function saveJob(jobId,userId,requestId){
+ const db=getPool(); const j=(await db.query("select id,status from job where id=$1",[jobId])).rows[0]; if(!j) throw error(404,"Job not found.","NOT_FOUND");
+ const row=(await db.query("insert into job_saved(user_id,job_id) values($1,$2) on conflict(user_id,job_id) do nothing returning *",[userId,jobId])).rows[0]||{job_id:jobId,user_id:userId};
+ await db.query("insert into audit_log(actor_user_id,action,resource_type,resource_id,request_id,outcome,metadata) values($1,'job.saved','job',$2,$3,'success','{}'::jsonb)",[userId,jobId,requestId]);
+ return row;
+}
+export async function unsaveJob(jobId,userId,requestId){
+ const db=getPool(); await db.query("delete from job_saved where user_id=$1 and job_id=$2",[userId,jobId]);
+ await db.query("insert into audit_log(actor_user_id,action,resource_type,resource_id,request_id,outcome,metadata) values($1,'job.unsaved','job',$2,$3,'success','{}'::jsonb)",[userId,jobId,requestId]);
+ return {jobId,saved:false};
+}
+export async function listSavedJobs(userId){
+ return (await getPool().query("select j.*,o.display_name organization_name from job_saved s join job j on j.id=s.job_id join organization o on o.id=j.organization_id where s.user_id=$1 order by s.created_at desc",[userId])).rows;
+}
+export async function createJobAlert(userId,input,requestId){
+ if(!input.name) throw error(400,"name is required.","VALIDATION_ERROR");
+ const db=getPool(); const row=(await db.query("insert into job_alert(user_id,name,criteria,channel,frequency) values($1,$2,$3,$4,$5) returning *",[userId,input.name,input.criteria||{},input.channel||"in_app",input.frequency||"daily"])).rows[0];
+ await db.query("insert into audit_log(actor_user_id,action,resource_type,resource_id,request_id,outcome,metadata) values($1,'job.alert_created','job_alert',$2,$3,'success','{}'::jsonb)",[userId,row.id,requestId]);
+ return row;
+}
+export async function listJobAlerts(userId){ return (await getPool().query("select * from job_alert where user_id=$1 order by created_at desc",[userId])).rows; }
+export async function referCandidate(jobId,userId,input,requestId){
+ return withTransaction(async db=>{
+  await jobRole(db,jobId,userId,["hiring_manager","recruiter"]);
+  if(!input.candidateUserId||input.candidateUserId===userId) throw error(400,"A different candidate is required.","VALIDATION_ERROR");
+  const row=(await db.query("insert into job_referral(job_id,referrer_user_id,candidate_user_id,note) values($1,$2,$3,$4) returning *",[jobId,userId,input.candidateUserId,input.note||null])).rows[0];
+  await audit(db,userId,"job.referral_created","job_referral",row.id,requestId,{});
+  return row;
+ });
+}
+export async function jobDashboard(jobId,userId){
+ const db=getPool(); await jobRole(db,jobId,userId,["hiring_manager","recruiter","interviewer","observer"]);
+ const job=(await db.query("select j.*,o.display_name organization_name from job j join organization o on o.id=j.organization_id where j.id=$1",[jobId])).rows[0];
+ const funnel=(await db.query("select status,count(*)::int count from job_application where job_id=$1 group by status order by status",[jobId])).rows;
+ const interviews=(await db.query("select status,count(*)::int count from job_interview ji join job_application a on a.id=ji.application_id where a.job_id=$1 group by status",[jobId])).rows;
+ const avg=(await db.query("select round(avg(extract(epoch from (coalesce(hired_at,updated_at)-submitted_at))/86400)::numeric,2) avg_days from job_application where job_id=$1 and submitted_at is not null",[jobId])).rows[0];
+ const outcome=(await db.query("select * from job_outcome where job_id=$1 order by recorded_at desc",[jobId])).rows;
+ return {job,funnel,interviews,averageApplicationAgeDays:avg?.avg_days||null,outcomes:outcome};
+}
+export async function organizationRecruitingDashboard(orgId,userId){
+ const db=getPool(); await orgRole(db,orgId,userId,["owner","administrator","recruiter","read_only"]);
+ const summary=(await db.query("select count(*) filter(where j.status='published')::int open_jobs,count(*) filter(where j.status='draft')::int draft_jobs,count(*) filter(where j.status='closed')::int closed_jobs,count(distinct a.id)::int applications,count(distinct a.id) filter(where a.status='hired')::int hires from job j left join job_application a on a.job_id=j.id where j.organization_id=$1",[orgId])).rows[0];
+ const pipeline=(await db.query("select j.id job_id,j.title,j.status,count(a.id)::int applications,count(a.id) filter(where a.status in ('screening','shortlisted','interview'))::int active_pipeline,count(a.id) filter(where a.status='offer')::int offers,count(a.id) filter(where a.status='accepted')::int accepted,count(a.id) filter(where a.status='hired')::int hired from job j left join job_application a on a.job_id=j.id where j.organization_id=$1 group by j.id,j.title,j.status order by j.created_at desc",[orgId])).rows;
+ return {summary,pipeline};
+}
+export async function recordJobOutcome(jobId,userId,input,requestId){
+ return withTransaction(async db=>{
+  const j=(await jobRole(db,jobId,userId,["hiring_manager","recruiter"])).job;
+  if(!["filled","partially_filled","cancelled","expired","reopened","quality_issue"].includes(input.outcomeCode)) throw error(400,"Invalid job outcome.","VALIDATION_ERROR");
+  const row=(await db.query("insert into job_outcome(job_id,recorded_by,outcome_code,positions_filled,outcome_note) values($1,$2,$3,$4,$5) returning *",[jobId,userId,input.outcomeCode,Number(input.positionsFilled||0),input.note||null])).rows[0];
+  await audit(db,userId,"job.outcome_recorded","job_outcome",row.id,requestId,{});
+  return row;
+ });
+}
+
 export async function listApplicationAttachments(applicationId,userId){
  const db=getPool();
  const a=(await db.query("select a.id,a.applicant_user_id,j.organization_id from job_application a join job j on j.id=a.job_id where a.id=$1",[applicationId])).rows[0];
