@@ -183,7 +183,7 @@ export async function verifyPayment(paymentId,verifierId,input,requestId){
     const decision=input.decision;
     if(!["approved","rejected","needs_correction"].includes(decision)) throw httpError(400,"Invalid payment verification decision.","VALIDATION_ERROR");
     const next=decision==="approved"?"succeeded":decision==="rejected"?"failed":"pending";
-    await db.query("insert into payment_verification(payment_transaction_id,verifier_user_id,decision,evidence_checked,note) values($1,$2,$3,$4,$5)",[paymentId,verifierId,input.evidenceChecked||[],input.note||null]);
+    await db.query("insert into payment_verification(payment_transaction_id,verifier_user_id,decision,evidence_checked,note) values($1,$2,$3,$4,$5)",[paymentId,verifierId,decision,JSON.stringify(input.evidenceChecked||[]),input.note||null]);
     await db.query("update payment_transaction set status=$1,verified_by=$2,verified_at=now(),verification_note=$3,completed_at=case when $1 in ('succeeded','failed') then now() else completed_at end,updated_at=now() where id=$4",[next,verifierId,input.note||null,paymentId]);
     const appStatus=decision==="approved"?"paid":"payment_pending";
     await db.query("update membership_application set status=$1,updated_at=now() where id=$2",[appStatus,p.application_id]);
