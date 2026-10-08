@@ -83,3 +83,18 @@ High-risk changes require explicit security and regression testing.
 | Eligibility engine | centralized evaluateEligibility() with controlled rule vocabulary |
 | Applications | job_application, application events, attachments and contracted candidate state transitions |
 | Privacy | safe profile/eligibility snapshots; no Phase 2 private evidence copied into applications |
+
+
+## Phase 4 traceability
+
+| Requirement | Implementation |
+|---|---|
+| Service listings | Migration 011, service listing lifecycle and member-owned service API |
+| Service requests | service_request + service_request_event, participant authorization and controlled transitions |
+| Mentor profiles | mentor_profile with active-membership and verified-professional eligibility |
+| Availability | mentor_availability and mentor_time_off with session-time enforcement |
+| Matching | explicit goals/preferences, topic/language/mode/day scoring and capacity checks |
+| Mentorship lifecycle | mentorship_request, mentorship_match, mentorship and audited lifecycle transitions |
+| Sessions | mentorship_session with controlled state and availability-aware scheduling |
+| Feedback | mentorship_feedback with completed-session/program gates and self-rating prevention |
+| Privacy | no private verification evidence copied into services, mentor or mentorship records |
