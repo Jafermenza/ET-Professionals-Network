@@ -28,10 +28,10 @@ test("rejects hierarchy cycles", () => {
   assert.ok(result.diagnostics.some((d) => d.errors.some((e) => e.includes("cycle"))));
 });
 
-test("flags unknown status without silently publishing it", () => {
+test("rejects unknown status before publication", () => {
   const result = validateReferenceRows([
     { code: "A", name: "A", type: "root", status: "retired" }
   ]);
-  assert.equal(result.valid, true);
-  assert.equal(result.diagnostics[0].warnings.length, 1);
+  assert.equal(result.valid, false);
+  assert.equal(result.diagnostics[0].errors.length, 1);
 });
