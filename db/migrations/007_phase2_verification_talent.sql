@@ -27,7 +27,7 @@ create table if not exists professional_experience (
   role_title text not null,
   start_date date,
   end_date date,
-  current_role boolean not null default false,
+  is_current boolean not null default false,
   description text,
   visibility text not null default 'members' check (visibility in ('private','members','public')),
   verified_claim_id uuid references verification_claim(id) on delete restrict,
