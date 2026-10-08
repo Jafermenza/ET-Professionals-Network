@@ -177,7 +177,7 @@ const server=http.createServer(async (req,res)=>{
     if(req.method==="POST" && parts.length===5 && p.startsWith("api/v1/mentorship/") && parts[4]==="feedback") return ok(res,await servicesMentorship.submitMentorshipFeedback(parts[3],identity.sub,await body(req),requestId),requestId,201);
     if(req.method==="GET" && p==="api/v1/me/outcomes") return ok(res,await stakeholderOutcomes.getMyOutcomeWorkspace(identity.sub),requestId);
     if(req.method==="GET" && p==="api/v1/opportunity-inquiries") { const identity=await auth(req); return ok(res,await publicOpportunity.listInquiries(identity.sub,{type:query(req.url).get("type"),status:query(req.url).get("status")}),requestId); }
-    if(req.method==="PATCH" && parts.length===4 && p.startsWith("api/v1/opportunity-inquiries/") { const identity=await auth(req); const b=await body(req); return ok(res,await publicOpportunity.decideInquiry(parts[3],identity.sub,b,requestId),requestId); }
+    if(req.method==="PATCH" && parts.length===4 && p.startsWith("api/v1/opportunity-inquiries/")) { const identity=await auth(req); const b=await body(req); return ok(res,await publicOpportunity.decideInquiry(parts[3],identity.sub,b,requestId),requestId); }
     if(req.method==="GET" && p==="api/v1/me/application-tracking") return ok(res,await applicationTracking.getApplicationTracking(identity.sub),requestId);
     if(req.method==="GET" && p==="api/v1/me") return ok(res,await membership.getMe(identity.sub),requestId);
     if(req.method==="PATCH" && p==="api/v1/me/profile") return ok(res,await membership.updateProfile(identity.sub,await body(req),requestId),requestId);
