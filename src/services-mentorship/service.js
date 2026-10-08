@@ -134,20 +134,118 @@ export async function listMyServiceRequests(userId){
 }
 
 export async function changeServiceRequestStatus(requestId,userId,status,note,requestIdHeader){
-  if(!allowedServiceRequestTransition("x",status) && !["requested"].includes(status)){}
   return withTransaction(async db=>{
     const r=(await db.query("select * from service_request where id=$1 for update",[requestId])).rows[0];
     if(!r) throw error(404,"Service request not found.","NOT_FOUND");
     if(r.provider_user_id!==userId && r.requester_user_id!==userId) throw error(403,"You are not a participant in this service request.","FORBIDDEN");
-    if(r.status==="requested" && r.requester_user_id!==userId && !["accepted","declined"].includes(status)) throw error(409,"The provider may accept or decline a new request.","INVALID_STATE");
-    if(r.status==="accepted" && r.requester_user_id!==userId && status==="cancelled") throw error(409,"Only the requester may cancel after acceptance.","INVALID_STATE");
+    if(r.status==="requested" && r.provider_user_id!==userId) throw error(403,"Only the provider can accept or decline a service request.","FORBIDDEN");
+    if(r.status==="accepted" && status==="in_progress" && r.provider_user_id!==userId) throw error(403,"Only the provider can start service delivery.","FORBIDDEN");
+    if(r.status==="in_progress" && status==="completed" && r.provider_user_id!==userId) throw error(403,"Only the provider can mark delivery complete; the requester must accept the outcome separately.","FORBIDDEN");
+    if(r.status==="accepted" && status==="cancelled" && r.provider_user_id!==userId) {
+      // requester cancellation is allowed before delivery starts
+    } else if(r.status==="accepted" && status==="cancelled" && r.provider_user_id===userId) {
+      throw error(409,"The provider cannot cancel an accepted engagement; use the dispute path if delivery is blocked.","INVALID_STATE");
+    }
     if(!allowedServiceRequestTransition(r.status,status)) throw error(409,"Invalid service request transition.","INVALID_STATE");
-    const updated=(await db.query("update service_request set status=$1,provider_note=case when $2::uuid=provider_user_id then $3 else provider_note end,requester_note=case when $2::uuid=requester_user_id then $3 else requester_note end,completed_at=case when $1='completed' then now() else completed_at end,cancelled_at=case when $1='cancelled' then now() else cancelled_at end,updated_at=now() where id=$4 returning *",[status,userId,note||null,requestId])).rows[0];
+    if(status==="completed"){
+      const pending=(await db.query("select count(*)::int count from service_request_milestone where request_id=$1 and status not in ('accepted','completed','cancelled')",[requestId])).rows[0].count;
+      if(Number(pending)>0) throw error(409,"All active delivery milestones must be accepted or completed before completion.","OUTCOMES_INCOMPLETE");
+      const updated=(await db.query("update service_request set provider_completed_at=now(),provider_note=coalesce($1,provider_note),updated_at=now() where id=$2 returning *",[note||null,requestId])).rows[0];
+      await db.query("insert into service_request_event(request_id,actor_user_id,from_status,to_status,note) values($1,$2,$3,$4,$5)",[requestId,userId,r.status,r.status,note||"Provider submitted completion; requester acceptance is still required."]);
+      await audit(db,userId,"service.request_completion_submitted","service_request",requestId,requestIdHeader,{status:r.status});
+      return updated;
+    }
+    const updated=(await db.query("update service_request set status=$1,provider_note=case when $2::uuid=provider_user_id then $3 else provider_note end,requester_note=case when $2::uuid=requester_user_id then $3 else requester_note end,accepted_at=case when $1='accepted' then now() else accepted_at end,started_at=case when $1='in_progress' then now() else started_at end,cancelled_at=case when $1='cancelled' then now() else cancelled_at end,updated_at=now() where id=$4 returning *",[status,userId,note||null,requestId])).rows[0];
     await db.query("insert into service_request_event(request_id,actor_user_id,from_status,to_status,note) values($1,$2,$3,$4,$5)",[requestId,userId,r.status,status,note||null]);
     await audit(db,userId,"service.request_status_changed","service_request",requestId,requestIdHeader,{from:r.status,to:status});
     return updated;
   });
 }
+
+export async function acceptServiceCompletion(requestId,userId,note,requestIdHeader){
+  return withTransaction(async db=>{
+    const r=(await db.query("select * from service_request where id=$1 for update",[requestId])).rows[0];
+    if(!r) throw error(404,"Service request not found.","NOT_FOUND");
+    if(r.requester_user_id!==userId) throw error(403,"Only the requester can accept service delivery.","FORBIDDEN");
+    if(r.status!=="in_progress" || !r.provider_completed_at) throw error(409,"The provider has not submitted completion for this engagement.","COMPLETION_NOT_SUBMITTED");
+    const row=(await db.query("update service_request set requester_accepted_at=now(),status='completed',outcome_summary=coalesce($1,outcome_summary),completed_at=now(),updated_at=now() where id=$2 returning *",[note||null,requestId])).rows[0];
+    await db.query("insert into service_request_event(request_id,actor_user_id,from_status,to_status,note) values($1,$2,'in_progress','completed',$3)",[requestId,userId,note||"Requester accepted the delivered outcome."]);
+    await audit(db,userId,"service.request_completion_accepted","service_request",requestId,requestIdHeader);
+    return row;
+  });
+}
+
+export async function createServiceMilestone(requestId,userId,input,requestIdHeader){
+  return withTransaction(async db=>{
+    const r=(await db.query("select * from service_request where id=$1 for update",[requestId])).rows[0];
+    if(!r) throw error(404,"Service request not found.","NOT_FOUND");
+    if(r.provider_user_id!==userId) throw error(403,"Only the provider can define delivery milestones.","FORBIDDEN");
+    if(!["accepted","in_progress"].includes(r.status)) throw error(409,"Milestones can only be added to an accepted or active engagement.","INVALID_STATE");
+    if(!input.title) throw error(400,"Milestone title is required.","VALIDATION_ERROR");
+    const row=(await db.query("insert into service_request_milestone(request_id,title,description,due_at,created_by) values($1,$2,$3,$4,$5) returning *",[requestId,input.title,input.description||null,input.dueAt||null,userId])).rows[0];
+    await audit(db,userId,"service.milestone_created","service_request_milestone",row.id,requestIdHeader);
+    return row;
+  });
+}
+
+export async function listServiceMilestones(requestId,userId){
+  const db=getPool(); const r=(await db.query("select provider_user_id,requester_user_id from service_request where id=$1",[requestId])).rows[0];
+  if(!r) throw error(404,"Service request not found.","NOT_FOUND");
+  if(r.provider_user_id!==userId&&r.requester_user_id!==userId) throw error(403,"You are not a participant in this service request.","FORBIDDEN");
+  return (await db.query("select * from service_request_milestone where request_id=$1 order by due_at nulls last,created_at",[requestId])).rows;
+}
+
+export async function submitServiceDelivery(requestId,userId,input,requestIdHeader){
+  return withTransaction(async db=>{
+    const r=(await db.query("select * from service_request where id=$1 for update",[requestId])).rows[0];
+    if(!r) throw error(404,"Service request not found.","NOT_FOUND");
+    if(r.provider_user_id!==userId) throw error(403,"Only the provider can submit delivery.","FORBIDDEN");
+    if(r.status!=="in_progress") throw error(409,"Service must be in progress before delivery is submitted.","INVALID_STATE");
+    if(!input.description) throw error(400,"Delivery description is required.","VALIDATION_ERROR");
+    if(input.fileObjectId){
+      const f=(await db.query("select id from file_object where id=$1 and created_by=$2 and visibility='private'",[input.fileObjectId,userId])).rows[0];
+      if(!f) throw error(400,"The delivery file must be a private file owned by the provider.","INVALID_FILE");
+    }
+    if(input.milestoneId){
+      const m=(await db.query("select id from service_request_milestone where id=$1 and request_id=$2",[input.milestoneId,requestId])).rows[0];
+      if(!m) throw error(400,"Milestone does not belong to this service request.","INVALID_MILESTONE");
+      await db.query("update service_request_milestone set status='submitted',updated_at=now() where id=$1",[input.milestoneId]);
+    }
+    const row=(await db.query("insert into service_request_delivery(request_id,milestone_id,submitted_by,description,file_object_id) values($1,$2,$3,$4,$5) returning *",[requestId,input.milestoneId||null,userId,input.description,input.fileObjectId||null])).rows[0];
+    await audit(db,userId,"service.delivery_submitted","service_request_delivery",row.id,requestIdHeader,{requestId});
+    return row;
+  });
+}
+
+export async function reviewServiceDelivery(deliveryId,userId,input,requestIdHeader){
+  return withTransaction(async db=>{
+    const d=(await db.query("select d.*,r.requester_user_id,r.provider_user_id from service_request_delivery d join service_request r on r.id=d.request_id where d.id=$1 for update",[deliveryId])).rows[0];
+    if(!d) throw error(404,"Service delivery not found.","NOT_FOUND");
+    if(d.requester_user_id!==userId) throw error(403,"Only the requester can review a delivery.","FORBIDDEN");
+    if(!["accepted","revision_requested"].includes(input.status)) throw error(400,"Delivery review must be accepted or revision_requested.","VALIDATION_ERROR");
+    const row=(await db.query("update service_request_delivery set status=$1,reviewer_note=$2,reviewed_by=$3,reviewed_at=now() where id=$4 returning *",[input.status,input.note||null,userId,deliveryId])).rows[0];
+    if(d.milestone_id) await db.query("update service_request_milestone set status=$1,completed_at=case when $1='completed' then now() else completed_at end,updated_at=now() where id=$2",[input.status==="accepted"?"completed":"revision_requested",d.milestone_id]);
+    await audit(db,userId,"service.delivery_reviewed","service_request_delivery",deliveryId,requestIdHeader,{status:input.status});
+    return row;
+  });
+}
+
+export async function submitServiceFeedback(requestId,userId,input,requestIdHeader){
+  return withTransaction(async db=>{
+    const r=(await db.query("select * from service_request where id=$1",[requestId])).rows[0];
+    if(!r) throw error(404,"Service request not found.","NOT_FOUND");
+    if(r.requester_user_id!==userId&&r.provider_user_id!==userId) throw error(403,"You are not a participant in this service request.","FORBIDDEN");
+    if(r.status!=="completed") throw error(409,"Service feedback requires a completed engagement.","SERVICE_NOT_COMPLETED");
+    const target=input.targetRole||"service";
+    if(target==="provider"&&r.provider_user_id===userId) throw error(400,"A provider cannot rate themselves.","SELF_RATING");
+    if(target==="requester"&&r.requester_user_id===userId) throw error(400,"A requester cannot rate themselves.","SELF_RATING");
+    if(!["provider","requester","service"].includes(target)) throw error(400,"Unsupported feedback target.","VALIDATION_ERROR");
+    const row=(await db.query("insert into service_request_feedback(request_id,reviewer_user_id,target_role,rating,comments) values($1,$2,$3,$4,$5) on conflict(request_id,reviewer_user_id,target_role) do update set rating=excluded.rating,comments=excluded.comments returning *",[requestId,userId,target,input.rating??null,input.comments||null])).rows[0];
+    await audit(db,userId,"service.feedback_submitted","service_request_feedback",row.id,requestIdHeader);
+    return row;
+  });
+}
+
 
 export async function createMentorProfile(userId,input,requestId){
   return withTransaction(async db=>{
@@ -367,9 +465,37 @@ export async function submitMentorshipFeedback(mentorshipId,userId,input,request
   });
 }
 
+export async function createMentorshipGoal(mentorshipId,userId,input,requestId){
+  return withTransaction(async db=>{
+    const m=await mentorshipParticipant(db,mentorshipId,userId);
+    if(m.status!=="active"&&m.status!=="paused") throw error(409,"Goals can only be managed for an active or paused mentorship.","INVALID_STATE");
+    if(!input.title) throw error(400,"Goal title is required.","VALIDATION_ERROR");
+    if(input.ownerRole&&!["mentor","mentee","shared"].includes(input.ownerRole)) throw error(400,"Invalid goal owner role.","VALIDATION_ERROR");
+    const row=(await db.query("insert into mentorship_goal(mentorship_id,title,description,success_measure,target_date,owner_role,created_at,updated_at) values($1,$2,$3,$4,$5,$6,now(),now()) returning *",[mentorshipId,input.title,input.description||null,input.successMeasure||null,input.targetDate||null,input.ownerRole||"shared"])).rows[0];
+    await audit(db,userId,"mentorship.goal_created","mentorship_goal",row.id,requestId);
+    return row;
+  });
+}
+export async function listMentorshipGoals(mentorshipId,userId){
+  const db=getPool(); await mentorshipParticipant(db,mentorshipId,userId);
+  return (await db.query("select * from mentorship_goal where mentorship_id=$1 order by target_date nulls last,created_at",[mentorshipId])).rows;
+}
+export async function updateMentorshipGoal(goalId,userId,input,requestId){
+  return withTransaction(async db=>{
+    const g=(await db.query("select g.*,m.mentor_user_id,m.mentee_user_id,m.status mentorship_status from mentorship_goal g join mentorship m on m.id=g.mentorship_id where g.id=$1 for update",[goalId])).rows[0];
+    if(!g) throw error(404,"Mentorship goal not found.","NOT_FOUND");
+    if(g.mentor_user_id!==userId&&g.mentee_user_id!==userId) throw error(403,"You are not a participant in this mentorship.","FORBIDDEN");
+    if(!["planned","in_progress","achieved","not_achieved","cancelled"].includes(input.status||g.status)) throw error(400,"Invalid goal status.","VALIDATION_ERROR");
+    const row=(await db.query("update mentorship_goal set title=coalesce($1,title),description=coalesce($2,description),success_measure=coalesce($3,success_measure),target_date=coalesce($4,target_date),status=coalesce($5,status),completed_at=case when $5 in ('achieved','not_achieved','cancelled') then now() else completed_at end,updated_at=now() where id=$6 returning *",[input.title??null,input.description??null,input.successMeasure??null,input.targetDate??null,input.status??null,goalId])).rows[0];
+    await audit(db,userId,"mentorship.goal_updated","mentorship_goal",goalId,requestId,{status:row.status});
+    return row;
+  });
+}
+
 export async function getMentorship(mentorshipId,userId){
   const db=getPool(); const m=await mentorshipParticipant(db,mentorshipId,userId);
   const sessions=(await db.query("select * from mentorship_session where mentorship_id=$1 order by scheduled_start_at",[mentorshipId])).rows;
   const feedback=(await db.query("select id,session_id,reviewer_user_id,target_role,rating,comments,created_at from mentorship_feedback where mentorship_id=$1 order by created_at desc",[mentorshipId])).rows;
-  return {...m,sessions,feedback};
+  const goals=(await db.query("select * from mentorship_goal where mentorship_id=$1 order by target_date nulls last,created_at",[mentorshipId])).rows;
+  return {...m,sessions,feedback,goals};
 }
