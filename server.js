@@ -105,8 +105,7 @@ const server=http.createServer(async (req,res)=>{
     }
     if(req.method==="POST" && parts.length===5 && p.startsWith("api/v1/verification/cases/") && parts[4]==="consent"){ const b=await body(req); return ok(res,await verification.giveConsent(parts[3],identity.sub,b.consentVersion,requestId),requestId); }
     if(req.method==="GET" && parts.length===4 && p.startsWith("api/v1/verification/cases/")){
-      const c=await verification.getCase(parts[3]);
-      if(c.subject_user_id!==identity.sub) anyRole(identity,["verification_reviewer","ethics_reviewer","system_admin","appeal_reviewer"]);
+      const c=await verification.getCase(parts[3],identity.sub);
       return ok(res,c,requestId);
     }
     if(req.method==="GET" && p==="api/v1/review/verification/cases"){
