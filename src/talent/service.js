@@ -4,6 +4,7 @@ function error(status,message,code="BUSINESS_RULE"){ const e=new Error(message);
 function limitValue(v){ return Math.min(Math.max(Number(v)||25,1),100); }
 export const ELIGIBLE_VERIFICATION_CLAIMS=["professional_certification","education","employment","experience","service_capability"];
 export function isEligibleVerifiedClaim(code){ return ELIGIBLE_VERIFICATION_CLAIMS.includes(String(code||"").toLowerCase()); }
+export function allowedTalentInquiryTransition(from,to){ return ({"requested":["accepted","declined","closed"],"accepted":["closed"],"declined":[],"closed":{}}[from]||[]).includes(to); }
 
 async function audit(db,actor,action,type,id,requestId,metadata={}){ await db.query("insert into audit_log(actor_user_id,action,resource_type,resource_id,request_id,outcome,metadata) values($1,$2,$3,$4,$5,'success',$6)",[actor,action,type,id,requestId,metadata]); }
 
