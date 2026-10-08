@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { withTransaction, getPool } from "../platform/db.js";
-import { signToken, newSessionToken, hashSessionToken } from "../platform/auth.js";
+import { signToken, newSessionToken, hashSessionToken, sessionTokenPayload } from "../platform/auth.js";
 import { loadConfig } from "../platform/config.js";
 import { hashPassword, verifyPassword, normalizeEmail, normalizePhone, normalizeName, validatePersonInput } from "./identity.js";
 
@@ -9,8 +9,8 @@ function httpError(status,message,code="BUSINESS_RULE"){
 }
 async function tokenFor(db,user,roles,requestMeta={}){
   const raw=newSessionToken(); const ttl=Number(process.env.AUTH_SESSION_DAYS||7);
-  await db.query("insert into auth_session(user_id,token_hash,expires_at,ip_address,user_agent) values($1,$2,now()+make_interval(days=>$3),$4,$5)",[user.id,hashSessionToken(raw),ttl,requestMeta.ip||null,requestMeta.userAgent||null]);
-  return raw;
+  const row=(await db.query("insert into auth_session(user_id,token_hash,expires_at,ip_address,user_agent) values($1,$2,now()+make_interval(days=>$3),$4,$5) returning id",[user.id,hashSessionToken(raw),ttl,requestMeta.ip||null,requestMeta.userAgent||null])).rows[0];
+  return signToken(sessionTokenPayload(user,roles,row.id),loadConfig().jwtSecret);
 }
 function audit(db,actor,action,type,id,requestId,metadata={}){
   return db.query("insert into audit_log(actor_user_id,action,resource_type,resource_id,request_id,outcome,metadata) values($1,$2,$3,$4,$5,'success',$6)",[actor||null,action,type,id||null,requestId||null,metadata]);
