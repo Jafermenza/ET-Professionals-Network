@@ -86,6 +86,12 @@ export async function updateProfile(userId,input,requestId){
   return getMe(userId);
 }
 
+export async function listMembershipProducts(){
+  const db=getPool();
+  return (await db.query(`select product_code,name,description,billing_model,price,currency,duration_days,renewal_required,benefits
+    from membership_product where active=true order by price asc,name asc`)).rows;
+}
+
 async function product(db,code){
   const r=await db.query("select * from membership_product where product_code=$1 and active=true",[String(code||"").toUpperCase()]);
   if(!r.rows[0]) throw httpError(400,"Unknown or inactive membership product.","INVALID_PRODUCT");

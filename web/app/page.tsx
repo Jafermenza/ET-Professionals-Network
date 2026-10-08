@@ -1,10 +1,57 @@
 "use client";
-import {CalendarDays,ChevronRight,GraduationCap,HeartHandshake,ShieldCheck,TrendingUp} from "lucide-react";
-import type {LucideIcon} from "lucide-react";
-import {Card,Badge,ProgressRing} from "../components/ui";
-import {useQuery} from "@tanstack/react-query";
-import {api} from "../lib/api";
-import {useUiStore} from "../lib/store";
-type FeedItem=[string,string,string,LucideIcon,string];
-const feed:FeedItem[]=[["Mentorship","3 verified mentors are accepting FinTech goals","Browse by sector, language and availability.",HeartHandshake,"Find a mentor"],["Jobs","New member opportunity: Renewable Energy Lead","Eligible verified professionals can apply.",TrendingUp,"View opportunity"],["Learning","Governance & project delivery pathway","Continue your learning plan and keep evidence together.",GraduationCap,"Open learning"]];
-export default function Home(){const token=useUiStore(s=>s.token);const q=useQuery({queryKey:["outcomes"],queryFn:()=>api<any>("/api/v1/me/outcomes",{},token),enabled:Boolean(token)});return <div className="grid" style={{gap:24}}><section className="grid grid-2" style={{alignItems:"stretch"}}><div><div className="eyebrow">Ecosystem home · Ihsan / excellence</div><h1 className="h1">Your professional life, in one trusted place.</h1><p className="muted" style={{fontSize:17,maxWidth:650}}>Discover people, opportunities, services and learning while verification, privacy and accountable decisions stay behind the scenes.</p><div style={{display:"flex",gap:10,marginTop:18}}><a className="btn btn-primary" href="/network">Explore the network</a><a className="btn btn-ghost" href="/jobs">Find opportunities</a></div></div><Card><div className="row"><div><div className="eyebrow">Profile readiness</div><div className="metric">Strong foundation</div><p className="muted">Complete what matters next. Private evidence stays private.</p></div><ProgressRing value={82}/></div><div className="timeline" style={{marginTop:14}}><div><span className="timeline-dot"/><div><b>Verification</b><div className="muted">Eligible professional claims are discoverable.</div></div></div><div><span className="timeline-dot"/><div><b>Opportunity</b><div className="muted">2 saved jobs and 1 mentorship goal in motion.</div></div></div></div></Card></section><section><div className="row" style={{marginBottom:12}}><div><div className="h2">For you</div><div className="muted">Progressive by design — only the next useful action.</div></div><a className="muted" href="/network">See all <ChevronRight size={15} style={{verticalAlign:"middle"}}/></a></div><div className="grid grid-3">{feed.map(([type,title,text,Icon,cta])=><Card key={type}><div className="row"><Badge>{type}</Badge><Icon size={19} color="var(--primary)"/></div><h3 style={{fontSize:18,margin:0}}>{title}</h3><p className="muted" style={{margin:0}}>{text}</p><a className="btn btn-ghost" href={type==="Jobs"?"/jobs":"/mentorship"}>{cta}<ChevronRight size={16}/></a></Card>)}</div></section><section className="grid grid-2"><Card><div className="row"><div><div className="eyebrow">My outcomes</div><div className="h2">What is moving</div></div><ShieldCheck color="var(--primary)"/></div>{q.isLoading?<p className="muted">Loading your real activity…</p>:q.data?<pre style={{whiteSpace:"pre-wrap",fontSize:12,color:"var(--muted)"}}>{JSON.stringify(q.data,null,2).slice(0,1600)}</pre>:<p className="muted">Connect an account token to see live applications, services, mentorship and talent inquiries here.</p>}</Card><Card><div className="eyebrow">Calendar</div><div className="h2">Next important moment</div><div className="row" style={{marginTop:18}}><div><b>Mentorship planning session</b><div className="muted">Thursday · 16:00 · Addis Ababa</div></div><CalendarDays color="var(--primary)"/></div><button className="btn btn-primary" style={{marginTop:16}}>RSVP & add to calendar</button></Card></section><div className="footer-note">Adl (Justice) · Amanah (Trust) · Tabayyun (Verification) · Satr (Confidentiality)</div></div>}
+import {ArrowRight,BriefcaseBusiness,ChartNoAxesCombined,HeartHandshake,ShieldCheck,UsersRound} from "lucide-react";
+import {Card,Badge} from "../components/ui";
+
+const values=[
+  {title:"Trusted professional identity",text:"Build one professional record for membership, capability, experience and contribution.",icon:ShieldCheck},
+  {title:"Verified opportunities",text:"Discover jobs, services and mentorship with clear eligibility and privacy boundaries.",icon:BriefcaseBusiness},
+  {title:"Meaningful relationships",text:"Connect professionals, mentors, employers and partners around useful work.",icon:HeartHandshake},
+  {title:"Visible progress",text:"Track membership, organization and opportunity applications from submission to decision.",icon:ChartNoAxesCombined}
+];
+
+export default function Home(){
+ return <div className="landing grid" style={{gap:34}}>
+  <section className="landing-hero">
+   <div className="hero-copy">
+    <div className="eyebrow">Ethiopian Muslim Professionals Association · Ihsan / excellence</div>
+    <h1 className="h1">Turn professional trust into <span className="hero-accent">real opportunity and impact.</span></h1>
+    <p className="hero-lead">A trusted professional ecosystem for members, employers, organizations, mentors and partners — bringing identity, verification, opportunities, services and measurable outcomes into one accountable place.</p>
+    <div className="landing-actions">
+      <a className="btn btn-primary btn-lg" href="/apply">Apply / Join MPA <ArrowRight size={17}/></a>
+      <a className="btn btn-ghost btn-lg" href="/register">Create account</a>
+      <a className="btn btn-ghost btn-lg" href="/login">Login</a>
+    </div>
+    <div className="landing-trust"><span><ShieldCheck size={16}/> Adl · Justice</span><span><ShieldCheck size={16}/> Amanah · Trust</span><span><ShieldCheck size={16}/> Tabayyun · Verification</span><span><ShieldCheck size={16}/> Satr · Confidentiality</span></div>
+   </div>
+   <Card>
+    <div className="eyebrow">One ecosystem, many journeys</div>
+    <h2 className="h2">Start where your work begins.</h2>
+    <div className="journey-list">
+      <a href="/apply"><b>Professional / Member</b><span>Join, build your profile, verify, find opportunities.</span><ArrowRight size={16}/></a>
+      <a href="/organizations"><b>Organization / Partner</b><span>Register, verify, recruit, source services and collaborate.</span><ArrowRight size={16}/></a>
+      <a href="/track"><b>Existing applicant</b><span>See exactly where your application stands and what happens next.</span><ArrowRight size={16}/></a>
+    </div>
+   </Card>
+  </section>
+
+  <section>
+   <div className="section-heading"><div><div className="eyebrow">Real value, not a directory</div><h2 className="h2">What the platform gives you</h2></div><UsersRound color="var(--primary)"/></div>
+   <div className="grid grid-4">{values.map(({title,text,icon:Icon})=><Card key={title}><Icon size={22} color="var(--primary)"/><h3>{title}</h3><p className="muted">{text}</p></Card>)}</div>
+  </section>
+
+  <section className="landing-split">
+   <Card><Badge>For members</Badge><h2 className="h2">From membership to professional value</h2><p className="muted">Maintain your identity and membership, present verified capability without exposing private evidence, find relevant work, request mentorship, offer services and build a record of contribution.</p><div className="mini-flow"><span>Join</span><i>→</i><span>Build</span><i>→</i><span>Verify</span><i>→</i><span>Participate</span><i>→</i><span>Grow</span></div><a className="btn btn-primary" href="/apply">Start member application</a></Card>
+   <Card><Badge>For organizations & partners</Badge><h2 className="h2">From registration to measurable outcomes</h2><p className="muted">Register your organization, complete verification, recruit eligible professionals, publish opportunities, request expertise and inspect progress across your work on the platform.</p><div className="mini-flow"><span>Register</span><i>→</i><span>Verify</span><i>→</i><span>Engage</span><i>→</i><span>Deliver</span><i>→</i><span>Measure</span></div><a className="btn btn-primary" href="/organizations">Register organization</a></Card>
+  </section>
+
+  <section className="landing-track">
+   <div><div className="eyebrow">No black box</div><h2 className="h2">Always know what happens next.</h2><p className="muted">After you sign in, the tracker brings membership, organization and job applications together with status, last update and the next action. Governance decisions remain auditable rather than hidden.</p></div>
+   <div className="track-preview"><div><span className="timeline-dot"/><div><b>Submitted</b><small>Application received</small></div></div><div><span className="timeline-dot"/><div><b>Under review</b><small>Reviewer is checking your submission</small></div></div><div><span className="timeline-dot"/><div><b>Next action</b><small>We tell you if correction or payment is required</small></div></div><a className="btn btn-ghost" href="/track">Track an application <ArrowRight size={16}/></a></div>
+  </section>
+
+  <section className="landing-final">
+    <div><div className="eyebrow">Begin with confidence</div><h2 className="h2">Your next useful action is one click away.</h2><p className="muted">Apply if you are new, register if you need an account, login if you already belong, or track a submitted application.</p></div>
+    <div className="landing-actions"><a className="btn btn-primary" href="/apply">Apply / Register</a><a className="btn btn-ghost" href="/login">Login</a><a className="btn btn-ghost" href="/track">Track progress</a></div>
+  </section>
+ </div>
+}
