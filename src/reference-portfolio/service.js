@@ -66,13 +66,13 @@ export class ReferencePortfolioService {
     const version = this.repository.getVersion(versionId);
     if (!version) throw new ReferencePortfolioError("NOT_FOUND", "Version not found.");
     requireStatus(version, "validated");
-    return this.repository.transitionVersion(versionId, "approved_pending", actorId, this.clock());
+    return this.repository.transitionVersion(versionId, "submitted", actorId, this.clock());
   }
 
   approve(versionId, actorId) {
     const version = this.repository.getVersion(versionId);
     if (!version) throw new ReferencePortfolioError("NOT_FOUND", "Version not found.");
-    requireStatus(version, "approved_pending");
+    requireStatus(version, "submitted");
     return this.repository.transitionVersion(versionId, "approved", actorId, this.clock());
   }
 
