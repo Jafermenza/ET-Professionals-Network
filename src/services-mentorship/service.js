@@ -38,6 +38,9 @@ const SERVICE_TRANSITIONS={
  cancelled:[]
 };
 export function allowedServiceRequestTransition(from,to){ return (SERVICE_TRANSITIONS[from]||[]).includes(to); }
+export function canAcceptServiceCompletion({status,providerCompleted,paid=false,settled=false}){
+  return status==="in_progress" && providerCompleted===true && (!paid || settled===true);
+}
 
 const MENTORSHIP_TRANSITIONS={
  active:["paused","completed","cancelled"],
