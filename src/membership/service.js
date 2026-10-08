@@ -123,10 +123,10 @@ export async function reviewApplication(applicationId,reviewerId,input,requestId
     await db.query("update membership_application set status='in_review',reviewed_at=now(),updated_at=now() where id=$1",[applicationId]);
     const decision=input.decision;
     if(!["approved","rejected","correction_required"].includes(decision)) throw httpError(400,"Invalid review decision.","VALIDATION_ERROR");
-    const review=(await db.query("insert into membership_application_review(application_id,reviewer_user_id,decision,note,checklist) values($1,$2,$3,$4,$5) returning *",[applicationId,reviewerId,decision,input.note||null,input.checklist||[]])).rows[0];
+    const review=(await db.query("insert into membership_application_review(application_id,reviewer_user_id,decision,note,checklist) values($1,$2,$3,$4,$5) returning *",[applicationId,reviewerId,decision,input.note||null,JSON.stringify(input.checklist||[])])).rows[0];
     let next=decision==="approved"?"payment_pending":decision==="rejected"?"rejected":"correction_required";
     await db.query("update membership_application set status=$1,approved_at=case when $1='payment_pending' then now() else approved_at end,updated_at=now() where id=$2",[next,applicationId]);
-    if(decision==="correction_required") await db.query("insert into membership_correction(application_id,requested_by,requested_fields,reviewer_note) values($1,$2,$3,$4)",[applicationId,reviewerId,input.requestedFields||[],input.note||"Correction required."]);
+    if(decision==="correction_required") await db.query("insert into membership_correction(application_id,requested_by,requested_fields,reviewer_note) values($1,$2,$3,$4)",[applicationId,reviewerId,JSON.stringify(input.requestedFields||[]),input.note||"Correction required."]);
     await audit(db,reviewerId,"membership.application_reviewed","membership_application",applicationId,requestId,{decision});
     await notify(db,row.user_id,`membership_application_${decision}`,"membership_application",applicationId,{note:input.note||null});
     return review;
