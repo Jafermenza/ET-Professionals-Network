@@ -140,9 +140,10 @@ async function evaluateRule(db,userId,rule){
 
 export async function evaluateEligibility(jobId,userId){
  const db=getPool();
- const job=(await db.query("select id,visibility,status,organization_id from job where id=$1",[jobId])).rows[0];
+ const job=(await db.query("select id,visibility,posting_scope,status,organization_id from job where id=$1",[jobId])).rows[0];
  if(!job) throw error(404,"Job not found.","NOT_FOUND");
  if(job.status!=="published") return {eligible:false,results:[],summary:"Job is not currently accepting applications."};
+ if(!(await jobScopeAllowed(db,job,userId))) return {eligible:false,results:[{code:"posting_scope",eligible:false,reason:"You do not have access to this vacancy."}],summary:"You do not have access to this vacancy."};
  const rules=(await db.query("select * from job_eligibility_rule where job_id=$1 order by sort_order,id",[jobId])).rows;
  const results=[];
  if(job.visibility==="exclusive" && !rules.some(r=>r.rule_code==="membership_active")) rules.unshift({rule_code:"membership_active",value:true,required:true,reason_label:"Active MPA membership"});
