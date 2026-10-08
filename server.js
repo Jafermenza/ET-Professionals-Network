@@ -89,6 +89,8 @@ const server=http.createServer(async (req,res)=>{
     if(req.method==="POST" && parts.length===5 && p.startsWith("api/v1/jobs/") && parts[4]==="team") return ok(res,await organizationJobs.addJobTeamMember(parts[3],identity.sub,await body(req),requestId),requestId,201);
     if(req.method==="GET" && parts.length===5 && p.startsWith("api/v1/jobs/") && parts[4]==="team") return ok(res,await organizationJobs.listJobTeam(parts[3],identity.sub),requestId);
     if(req.method==="POST" && parts.length===5 && p.startsWith("api/v1/jobs/") && parts[4]==="screening-questions") return ok(res,await organizationJobs.addScreeningQuestion(parts[3],identity.sub,await body(req),requestId),requestId,201);
+    if(req.method==="GET" && parts.length===5 && p.startsWith("api/v1/jobs/") && parts[4]==="scorecards") return ok(res,await organizationJobs.listInterviewScorecards(parts[3],identity.sub),requestId);
+    if(req.method==="POST" && parts.length===5 && p.startsWith("api/v1/jobs/") && parts[4]==="scorecards") return ok(res,await organizationJobs.createInterviewScorecard(parts[3],identity.sub,await body(req),requestId),requestId,201);
     if(req.method==="GET" && parts.length===5 && p.startsWith("api/v1/jobs/") && parts[4]==="screening-questions") return ok(res,await organizationJobs.listScreeningQuestions(parts[3],identity.sub),requestId);
     if(req.method==="POST" && parts.length===5 && p.startsWith("api/v1/jobs/") && parts[4]==="referrals") return ok(res,await organizationJobs.referCandidate(parts[3],identity.sub,await body(req),requestId),requestId,201);
     if(req.method==="POST" && parts.length===5 && p.startsWith("api/v1/jobs/") && parts[4]==="save") return ok(res,await organizationJobs.saveJob(parts[3],identity.sub,requestId),requestId,201);
