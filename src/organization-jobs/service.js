@@ -68,6 +68,13 @@ export async function submitOrganizationVerification(orgId,userId,requestId){
   const c=(await db.query("select id,status from organization_verification_case where organization_id=$1 for update",[orgId])).rows[0];
   if(!c) throw error(404,"Organization verification case not found.","NOT_FOUND");
   if(!["submitted","correction_required"].includes(c.status)) throw error(409,"Organization verification is not in a submittable state.","INVALID_STATE");
+  const org=(await db.query("select organization_type from organization where id=$1",[orgId])).rows[0];
+  const required=(await db.query("select evidence_type from organization_verification_requirement where active=true and required=true and (organization_type=$1 or organization_type is null) order by sort_order",[org?.organization_type||null])).rows;
+  if(required.length){
+   const evidence=(await db.query("select distinct evidence_type from organization_verification_evidence where case_id=$1",[c.id])).rows.map(x=>x.evidence_type);
+   const missing=required.map(x=>x.evidence_type).filter(x=>!evidence.includes(x));
+   if(missing.length) throw error(400,"Required organization verification evidence is missing.","EVIDENCE_REQUIRED");
+  }
   await db.query("update organization_verification_case set status='submitted',submitted_by=$1,submitted_at=now() where id=$2",[userId,c.id]);
   await db.query("update organization set verification_status='submitted',updated_at=now() where id=$1",[orgId]);
   await audit(db,userId,"organization.verification_submitted","organization",orgId,requestId,{});
