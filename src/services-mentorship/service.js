@@ -164,12 +164,61 @@ export async function changeServiceRequestStatus(requestId,userId,status,note,re
   });
 }
 
+export async function submitServicePayment(requestId,userId,input,requestIdHeader){
+  return withTransaction(async db=>{
+    const r=(await db.query("select * from service_request where id=$1 for update",[requestId])).rows[0];
+    if(!r) throw error(404,"Service request not found.","NOT_FOUND");
+    if(r.requester_user_id!==userId) throw error(403,"Only the requester can submit service payment.","FORBIDDEN");
+    if(!["accepted","in_progress"].includes(r.status)) throw error(409,"Payment can only be submitted after the service request is accepted.","INVALID_STATE");
+    const amount=input.amount===undefined||input.amount===null?r.agreed_price:Number(input.amount);
+    if(!Number.isFinite(Number(amount))||Number(amount)<0) throw error(400,"A valid non-negative payment amount is required.","VALIDATION_ERROR");
+    if(r.agreed_price!==null&&Number(amount)!==Number(r.agreed_price)) throw error(400,"Payment amount does not match the agreed service price.","PAYMENT_AMOUNT_MISMATCH");
+    const currency=String(input.currency||r.agreed_currency||"ETB").toUpperCase();
+    if(currency.length!==3) throw error(400,"A three-letter currency code is required.","VALIDATION_ERROR");
+    const channel=input.channel||"manual";
+    if(!["online","manual","bank_transfer","cash","other"].includes(channel)) throw error(400,"Unsupported payment channel.","VALIDATION_ERROR");
+    const idem=String(input.idempotencyKey||"").trim();
+    if(!idem) throw error(400,"idempotencyKey is required.","VALIDATION_ERROR");
+    const existing=(await db.query("select sp.* from service_payment sp join payment_transaction pt on pt.id=sp.payment_transaction_id where pt.idempotency_key=$1",[idem])).rows[0];
+    if(existing) return existing;
+    const p=(await db.query("insert into payment_transaction(provider,idempotency_key,purpose,amount,currency,status,request_payload,channel,submitted_by,purpose_reference,source) values('manual',$1,'service',$2,$3,'pending',$4::jsonb,$5,$6,$7,'manual_entry') returning *",[idem,amount,currency,JSON.stringify({requestId,channel,input.reference||null}),channel,userId,requestId])).rows[0];
+    if(input.evidenceFileId){
+      const f=(await db.query("select id from file_object where id=$1 and created_by=$2 and visibility='private'",[input.evidenceFileId,userId])).rows[0];
+      if(!f) throw error(400,"Payment evidence must be a private file owned by the payer.","INVALID_EVIDENCE");
+    }
+    const row=(await db.query("insert into service_payment(request_id,payment_transaction_id,payer_user_id,provider_user_id,amount,currency,channel,evidence_file_id,submitted_by) values($1,$2,$3,$4,$5,$6,$7,$8,$9) returning *",[requestId,p.id,userId,r.provider_user_id,amount,currency,channel,input.evidenceFileId||null,userId])).rows[0];
+    await audit(db,userId,"service.payment_submitted","service_payment",row.id,requestIdHeader,{requestId,channel});
+    return row;
+  });
+}
+
+export async function verifyServicePayment(paymentId,verifierId,input,requestIdHeader){
+  return withTransaction(async db=>{
+    const allowed=(await db.query("select 1 from app_user_role ur join app_role r on r.id=ur.role_id where ur.user_id=$1 and r.role_code in ('finance_officer','reviewer','system_admin') limit 1",[verifierId])).rows[0];
+    if(!allowed) throw error(403,"Finance or reviewer authorization is required to verify service payment.","FORBIDDEN");
+    const p=(await db.query("select * from service_payment where id=$1 for update",[paymentId])).rows[0];
+    if(!p) throw error(404,"Service payment not found.","NOT_FOUND");
+    if(!["approved","rejected","needs_correction"].includes(input.decision)) throw error(400,"Invalid payment verification decision.","VALIDATION_ERROR");
+    const next=input.decision==="approved"?"succeeded":input.decision==="rejected"?"failed":"pending";
+    await db.query("insert into payment_verification(payment_transaction_id,verifier_user_id,decision,evidence_checked,note) values($1,$2,$3,$4,$5)",[p.payment_transaction_id,verifierId,input.decision,JSON.stringify(input.evidenceChecked||[]),input.note||null]);
+    await db.query("update payment_transaction set status=$1,verified_by=$2,verified_at=now(),verification_note=$3,completed_at=case when $1 in ('succeeded','failed') then now() else completed_at end,updated_at=now() where id=$4",[next,verifierId,input.note||null,p.payment_transaction_id]);
+    const row=(await db.query("update service_payment set status=$1,verified_by=$2,verified_at=now(),verification_note=$3,updated_at=now() where id=$4 returning *",[next,verifierId,input.note||null,paymentId])).rows[0];
+    await audit(db,verifierId,"service.payment_verified","service_payment",paymentId,requestIdHeader,{decision:input.decision});
+    return row;
+  });
+}
+
 export async function acceptServiceCompletion(requestId,userId,note,requestIdHeader){
   return withTransaction(async db=>{
     const r=(await db.query("select * from service_request where id=$1 for update",[requestId])).rows[0];
     if(!r) throw error(404,"Service request not found.","NOT_FOUND");
     if(r.requester_user_id!==userId) throw error(403,"Only the requester can accept service delivery.","FORBIDDEN");
     if(r.status!=="in_progress" || !r.provider_completed_at) throw error(409,"The provider has not submitted completion for this engagement.","COMPLETION_NOT_SUBMITTED");
+    const paid=(await db.query("select count(*)::int count from service_payment where request_id=$1 and amount>0",[requestId])).rows[0].count;
+    if(Number(paid)>0){
+      const settled=(await db.query("select 1 from service_payment where request_id=$1 and status='succeeded' order by created_at desc limit 1",[requestId])).rows[0];
+      if(!settled) throw error(409,"Payment must be verified before paid service delivery can be accepted.","PAYMENT_NOT_SETTLED");
+    }
     const row=(await db.query("update service_request set requester_accepted_at=now(),status='completed',outcome_summary=coalesce($1,outcome_summary),completed_at=now(),updated_at=now() where id=$2 returning *",[note||null,requestId])).rows[0];
     await db.query("insert into service_request_event(request_id,actor_user_id,from_status,to_status,note) values($1,$2,'in_progress','completed',$3)",[requestId,userId,note||"Requester accepted the delivered outcome."]);
     await audit(db,userId,"service.request_completion_accepted","service_request",requestId,requestIdHeader);
