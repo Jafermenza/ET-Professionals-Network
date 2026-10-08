@@ -1,4 +1,4 @@
-const API_BASE=(process.env.NEXT_PUBLIC_API_BASE_URL||"").replace(/\\/$/,"");
+const API_BASE=(process.env.NEXT_PUBLIC_API_BASE_URL||"").replace(/\/$/,"");
 export async function api<T>(path:string,init:RequestInit={},token?:string):Promise<T>{
   const headers=new Headers(init.headers);
   if(!(init.body instanceof FormData)) headers.set("Content-Type","application/json");
