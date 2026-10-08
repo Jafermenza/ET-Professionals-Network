@@ -72,7 +72,7 @@ export async function getMe(userId){
 
 export async function updateProfile(userId,input,requestId){
   const person=validatePersonInput(input);
-  return withTransaction(async db=>{
+  await withTransaction(async db=>{
     const current=await db.query("select id from person where user_id=$1 for update",[userId]);
     if(!current.rows[0]) throw httpError(404,"Person profile not found.","NOT_FOUND");
     const duplicate=await db.query("select user_id from person where phone=$1 and user_id<>$2",[person.phone,userId]);
@@ -80,10 +80,10 @@ export async function updateProfile(userId,input,requestId){
     const p=(await db.query(`update person set first_name=$1,middle_name=$2,last_name=$3,display_name=$4,phone=$5,date_of_birth=$6,sex=$7,nationality=$8,updated_at=now() where user_id=$9 returning *`,
       [person.firstName,person.middleName,person.lastName,person.displayName,person.phone,person.dateOfBirth,person.sex,person.nationality,userId])).rows[0];
     await db.query(`update professional_profile set headline=coalesce($1,headline),bio=coalesce($2,bio),visibility=coalesce($3,visibility),completion_percent=greatest(completion_percent,$4),updated_at=now() where person_id=$5`,
-      [input.headline||null,input.bio||null,input.visibility||null,input.headline||input.bio?40:20,p.id]);
+      [input.headline||null,input.bio||null,input.visibility||null,(input.headline||input.bio)?40:20,p.id]);
     await audit(db,userId,"profile.updated","person",p.id,requestId);
-    return getMe(userId);
   });
+  return getMe(userId);
 }
 
 async function product(db,code){
