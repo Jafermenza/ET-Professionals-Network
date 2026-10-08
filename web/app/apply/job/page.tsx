@@ -2,7 +2,7 @@
 import {FormEvent,useEffect,useState} from "react";
 import {ArrowRight,BriefcaseBusiness,CheckCircle2} from "lucide-react";
 import {Card,Badge} from "../../components/ui";
-import {api} from "../../lib/api";
+import {api} from "../../../lib/api";
 type Job={id:string;title:string;organization_name?:string;organization_display_name?:string;location_label?:string;posting_scope?:string;status?:string};
 export default function PublicJobApply(){
  const [jobs,setJobs]=useState<Job[]>([]); const [jobId,setJobId]=useState(""); const [form,setForm]=useState({contactName:"",contactEmail:"",contactPhone:"",intent:"",consent:false}); const [result,setResult]=useState<any>(null); const [error,setError]=useState("");
