@@ -81,3 +81,71 @@ export async function saveSearch(userId,input,requestId){
  return withTransaction(async db=>{ const row=(await db.query("insert into talent_saved_search(user_id,name,criteria) values($1,$2,$3) returning *",[userId,input.name,input.criteria||{}])).rows[0]; await audit(db,userId,"talent.saved_search_created","talent_saved_search",row.id,requestId); return row; });
 }
 export async function listSavedSearches(userId){ return (await getPool().query("select * from talent_saved_search where user_id=$1 and active=true order by created_at desc",[userId])).rows; }
+
+
+export async function createTalentInquiry(requesterId,input,requestId){
+  return withTransaction(async db=>{
+    if(!input.professionalUserId||!input.subject||!input.message) throw error(400,"professionalUserId, subject and message are required.","VALIDATION_ERROR");
+    if(requesterId===input.professionalUserId) throw error(400,"You cannot inquire about your own professional profile.","SELF_INQUIRY");
+    const member=(await db.query("select 1 from membership_record where user_id=$1 and status='active'",[requesterId])).rows[0];
+    if(!member) throw error(403,"An active membership is required to contact a professional.","MEMBERSHIP_REQUIRED");
+    const target=(await db.query(`
+      select u.id
+      from app_user u
+      join membership_record m on m.user_id=u.id and m.status='active'
+      join verification_visibility vv on vv.user_id=u.id and vv.directory_visible=true
+      join person p on p.user_id=u.id
+      join professional_profile pp on pp.person_id=p.id and pp.visibility in ('members','public')
+      where u.id=$1
+        and exists (
+          select 1 from verification_claim vc
+          join verification_case c on c.id=vc.case_id
+          where c.subject_user_id=u.id and vc.status='verified'
+            and lower(vc.claim_code_snapshot) in ('professional_certification','education','employment','experience','service_capability')
+        )
+    `,[input.professionalUserId])).rows[0];
+    if(!target) throw error(404,"Verified professional not found or not accepting directory contact.","NOT_FOUND");
+    const duplicate=(await db.query("select id from talent_inquiry where requester_user_id=$1 and professional_user_id=$2 and status='requested'",[requesterId,input.professionalUserId])).rows[0];
+    if(duplicate) throw error(409,"You already have a pending inquiry for this professional.","DUPLICATE_INQUIRY");
+    const row=(await db.query("insert into talent_inquiry(requester_user_id,professional_user_id,organization_id,subject,message) values($1,$2,$3,$4,$5) returning *",[requesterId,input.professionalUserId,input.organizationId||null,input.subject,input.message])).rows[0];
+    await audit(db,requesterId,"talent.inquiry_created","talent_inquiry",row.id,requestId,{professionalUserId:input.professionalUserId});
+    return row;
+  });
+}
+
+export async function listTalentInquiries(userId){
+  const db=getPool();
+  return (await db.query(`
+    select ti.*,rp.display_name requester_name,pp.display_name professional_name
+    from talent_inquiry ti
+    join person rp on rp.user_id=ti.requester_user_id
+    join person pp on pp.user_id=ti.professional_user_id
+    where ti.requester_user_id=$1 or ti.professional_user_id=$1
+    order by ti.created_at desc
+  `,[userId])).rows;
+}
+
+export async function respondToTalentInquiry(inquiryId,userId,input,requestId){
+  return withTransaction(async db=>{
+    const row=(await db.query("select * from talent_inquiry where id=$1 for update",[inquiryId])).rows[0];
+    if(!row) throw error(404,"Talent inquiry not found.","NOT_FOUND");
+    if(row.professional_user_id!==userId) throw error(403,"Only the professional can respond to this inquiry.","FORBIDDEN");
+    if(row.status!=="requested") throw error(409,"This inquiry is no longer awaiting a response.","INVALID_STATE");
+    if(!["accepted","declined"].includes(input.status)) throw error(400,"Inquiry response must be accepted or declined.","VALIDATION_ERROR");
+    const updated=(await db.query("update talent_inquiry set status=$1,response=$2,contact_release=$3,responded_at=now(),updated_at=now() where id=$4 returning *",[input.status,input.response||null,input.status==="accepted"&&input.releaseContact===true,inquiryId])).rows[0];
+    await audit(db,userId,"talent.inquiry_responded","talent_inquiry",inquiryId,requestId,{status:input.status,contactReleased:updated.contact_release});
+    return updated;
+  });
+}
+
+export async function closeTalentInquiry(inquiryId,userId,requestId){
+  return withTransaction(async db=>{
+    const row=(await db.query("select * from talent_inquiry where id=$1 for update",[inquiryId])).rows[0];
+    if(!row) throw error(404,"Talent inquiry not found.","NOT_FOUND");
+    if(row.requester_user_id!==userId&&row.professional_user_id!==userId) throw error(403,"You are not a participant in this inquiry.","FORBIDDEN");
+    if(["closed","declined"].includes(row.status)) throw error(409,"This inquiry is already closed.","INVALID_STATE");
+    const updated=(await db.query("update talent_inquiry set status='closed',closed_at=now(),updated_at=now() where id=$1 returning *",[inquiryId])).rows[0];
+    await audit(db,userId,"talent.inquiry_closed","talent_inquiry",inquiryId,requestId);
+    return updated;
+  });
+}
