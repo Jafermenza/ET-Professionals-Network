@@ -121,7 +121,9 @@ export async function requestService(listingId,requesterId,input,requestId){
     }
     const duplicate=(await db.query("select id from service_request where service_listing_id=$1 and requester_user_id=$2 and status in ('requested','accepted','in_progress')",[listingId,requesterId])).rows[0];
     if(duplicate) throw error(409,"You already have an active request for this service.","DUPLICATE_REQUEST");
-    const row=(await db.query("insert into service_request(service_listing_id,requester_user_id,provider_user_id,status,message,requested_start_at,requested_end_at) values($1,$2,$3,'requested',$4,$5,$6) returning *",[listingId,requesterId,listing.provider_user_id,input.message||null,input.requestedStartAt||null,input.requestedEndAt||null])).rows[0];
+    const proposedPrice=input.proposedPrice===undefined||input.proposedPrice===null?null:Number(input.proposedPrice);
+    if(proposedPrice!==null&&(!Number.isFinite(proposedPrice)||proposedPrice<0)) throw error(400,"proposedPrice must be a non-negative number.","VALIDATION_ERROR");
+    const row=(await db.query("insert into service_request(service_listing_id,requester_user_id,provider_user_id,status,message,scope,agreed_price,agreed_currency,completion_due_at,requested_start_at,requested_end_at) values($1,$2,$3,'requested',$4,$5,$6,$7,$8,$9,$10) returning *",[listingId,requesterId,listing.provider_user_id,input.message||null,input.scope||null,proposedPrice,input.currency?String(input.currency).toUpperCase():listing.currency,input.completionDueAt||null,input.requestedStartAt||null,input.requestedEndAt||null])).rows[0];
     await db.query("insert into service_request_event(request_id,actor_user_id,to_status,note) values($1,$2,'requested',$3)",[row.id,requesterId,input.message||null]);
     await audit(db,requesterId,"service.request_created","service_request",row.id,requestId,{listingId});
     return row;
