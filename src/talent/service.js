@@ -105,6 +105,10 @@ export async function createTalentInquiry(requesterId,input,requestId){
         )
     `,[input.professionalUserId])).rows[0];
     if(!target) throw error(404,"Verified professional not found or not accepting directory contact.","NOT_FOUND");
+    if(input.organizationId){
+      const orgMember=(await db.query("select 1 from organization_membership where organization_id=$1 and user_id=$2 and status='active'",[input.organizationId,requesterId])).rows[0];
+      if(!orgMember) throw error(403,"You must be an active member of the supplied organization to send an organization inquiry.","ORGANIZATION_SCOPE");
+    }
     const duplicate=(await db.query("select id from talent_inquiry where requester_user_id=$1 and professional_user_id=$2 and status='requested'",[requesterId,input.professionalUserId])).rows[0];
     if(duplicate) throw error(409,"You already have a pending inquiry for this professional.","DUPLICATE_INQUIRY");
     const row=(await db.query("insert into talent_inquiry(requester_user_id,professional_user_id,organization_id,subject,message) values($1,$2,$3,$4,$5) returning *",[requesterId,input.professionalUserId,input.organizationId||null,input.subject,input.message])).rows[0];
@@ -116,10 +120,18 @@ export async function createTalentInquiry(requesterId,input,requestId){
 export async function listTalentInquiries(userId){
   const db=getPool();
   return (await db.query(`
-    select ti.*,rp.display_name requester_name,pp.display_name professional_name
+    select ti.*,rp.display_name requester_name,pp.display_name professional_name,
+      case when ti.status='accepted' and ti.contact_release then pu.email else null end professional_email,
+      case when ti.status='accepted' and ti.contact_release then ppers.phone else null end professional_phone,
+      case when ti.status='accepted' and ti.contact_release then ru.email else null end requester_email,
+      case when ti.status='accepted' and ti.contact_release then rpers.phone else null end requester_phone
     from talent_inquiry ti
     join person rp on rp.user_id=ti.requester_user_id
     join person pp on pp.user_id=ti.professional_user_id
+    join app_user pu on pu.id=ti.professional_user_id
+    join app_user ru on ru.id=ti.requester_user_id
+    join person ppers on ppers.user_id=ti.professional_user_id
+    join person rpers on rpers.user_id=ti.requester_user_id
     where ti.requester_user_id=$1 or ti.professional_user_id=$1
     order by ti.created_at desc
   `,[userId])).rows;
