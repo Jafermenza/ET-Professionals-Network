@@ -1,14 +1,16 @@
 import { randomUUID } from "node:crypto";
 import { withTransaction, getPool } from "../platform/db.js";
-import { signToken } from "../platform/auth.js";
+import { signToken, newSessionToken, hashSessionToken } from "../platform/auth.js";
 import { loadConfig } from "../platform/config.js";
 import { hashPassword, verifyPassword, normalizeEmail, normalizePhone, normalizeName, validatePersonInput } from "./identity.js";
 
 function httpError(status,message,code="BUSINESS_RULE"){
   const e=new Error(message); e.statusCode=status; e.code=code; return e;
 }
-function tokenFor(user,roles){
-  return signToken({sub:user.id,roles,email:user.email||null},loadConfig().jwtSecret);
+async function tokenFor(db,user,roles,requestMeta={}){
+  const raw=newSessionToken(); const ttl=Number(process.env.AUTH_SESSION_DAYS||7);
+  await db.query("insert into auth_session(user_id,token_hash,expires_at,ip_address,user_agent) values($1,$2,now()+make_interval(days=>$3),$4,$5)",[user.id,hashSessionToken(raw),ttl,requestMeta.ip||null,requestMeta.userAgent||null]);
+  return raw;
 }
 function audit(db,actor,action,type,id,requestId,metadata={}){
   return db.query("insert into audit_log(actor_user_id,action,resource_type,resource_id,request_id,outcome,metadata) values($1,$2,$3,$4,$5,'success',$6)",[actor||null,action,type,id||null,requestId||null,metadata]);
@@ -50,15 +52,22 @@ export async function register(input,requestId){
   });
 }
 
-export async function login(email,password,requestId){
+export async function login(email,password,requestId,requestMeta={}){
+  const db=getPool(); const identityKey=normalizeEmail(email);
+  const recent=await db.query("select count(*)::int count from auth_login_attempt where identity_key=$1 and attempted_at>now()-interval '15 minutes' and succeeded=false",[identityKey]);
+  if(recent.rows[0].count>=8) throw httpError(429,"Too many unsuccessful sign-in attempts. Try again later.","AUTH_RATE_LIMIT");
   const e=normalizeEmail(email);
   const db=getPool();
   const r=await db.query("select id,email,username,password_hash,status from app_user where lower(email)=lower($1)",[e]);
   const user=r.rows[0];
-  if(!user || user.status!=="active" || !verifyPassword(password,user.password_hash)) throw httpError(401,"Invalid credentials.","UNAUTHENTICATED");
+  if(!user || user.status!=="active" || !verifyPassword(password,user.password_hash)){
+    await db.query("insert into auth_login_attempt(identity_key,ip_address,succeeded) values($1,$2,false)",[identityKey,requestMeta.ip||null]);
+    throw httpError(401,"Invalid credentials.","UNAUTHENTICATED");
+  }
+  await db.query("insert into auth_login_attempt(identity_key,ip_address,succeeded) values($1,$2,true)",[identityKey,requestMeta.ip||null]);
   const rs=await roles(db,user.id);
   await audit(db,user.id,"account.login","account",user.id,requestId);
-  return {token:tokenFor(user,rs),user:{id:user.id,email:user.email,roles:rs}};
+  return {token:await tokenFor(db,user,rs,requestMeta),user:{id:user.id,email:user.email,roles:rs}};
 }
 
 export async function getMe(userId){
