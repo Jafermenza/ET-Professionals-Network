@@ -99,6 +99,9 @@ export async function reviewOrganization(orgId,reviewerId,input,requestId){
  });
 }
 
+export const JOB_POSTING_SCOPES=["public","mpa_members","organization_internal","partner_network"];
+export function isAllowedJobPostingScope(scope){ return JOB_POSTING_SCOPES.includes(String(scope||"")); }
+export function canCandidateAcceptOffer({status,approval}){ return status==="offer" && approval==="approved"; }
 export const ELIGIBILITY_RULES=[
  "membership_active","professional_verified","verified_claim","occupation","industry","education_level",
  "qualification_type","field_of_study","years_experience","availability","location_contains"
