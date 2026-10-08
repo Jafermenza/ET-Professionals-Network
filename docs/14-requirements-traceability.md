@@ -109,3 +109,25 @@ High-risk changes require explicit security and regression testing.
 | Service settlement | service_payment plus existing payment_transaction/payment_verification foundation |
 | Mentorship outcomes | mentorship_goal plus session outcome/next-step fields |
 | Outcome audit | audit events for inquiry, offer, delivery, payment and goal changes |
+
+
+## Phase 3 comprehensive job portal traceability
+
+| Capability | Implementation |
+| --- | --- |
+| Internal vacancy | job.posting_scope=organization_internal with discovery/application enforcement |
+| Partner/network vacancy | job.posting_scope=partner_network |
+| MPA-member vacancy | job.posting_scope=mpa_members |
+| Requisition/headcount approval | job_requisition |
+| Hiring team collaboration | job_team_member |
+| Screening | job_screening_question + job_application_answer |
+| Candidate notes | job_application_note |
+| Interviews | job_interview + participants |
+| Structured evaluation | job_interview_scorecard + job_interview_feedback |
+| Offer governance | offer fields + offer_approval_status |
+| Candidate consent | candidate-owned offer response |
+| Saved jobs | job_saved |
+| Job alerts | job_alert |
+| Referrals | job_referral |
+| Vacancy outcomes | job_outcome |
+| Progress inspection | candidate progress, job dashboard, organization recruiting dashboard, stakeholder outcome workspace |
