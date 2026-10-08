@@ -6,8 +6,8 @@ export function loadConfig(env = process.env) {
     logLevel: env.LOG_LEVEL ?? "info",
     jwtSecret: env.JWT_SECRET,
     authSessionDays: Number(env.AUTH_SESSION_DAYS ?? 7),
-    bootstrapAdminEmail: env.BOOTSTRAP_ADMIN_EMAIL,
-    bootstrapAdminPassword: env.BOOTSTRAP_ADMIN_PASSWORD,
+    bootstrapAdminEmail: env.BOOTSTRAP_SUPER_ADMIN_EMAIL ?? env.BOOTSTRAP_ADMIN_EMAIL,
+    bootstrapAdminPassword: env.BOOTSTRAP_SUPER_ADMIN_PASSWORD ?? env.BOOTSTRAP_ADMIN_PASSWORD,
     bootstrapAdminName: env.BOOTSTRAP_ADMIN_NAME ?? "System Administrator",
     corsOrigin: env.CORS_ORIGIN ?? "",
     databaseUrl: env.DATABASE_URL
