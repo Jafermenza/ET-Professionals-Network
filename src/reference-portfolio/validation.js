@@ -23,7 +23,7 @@ export function validateReferenceRows(rows) {
     parentByCode.set(row.code, row.parent_code ?? null);
     if (row.parent_code === row.code) d.errors.push("An item cannot be its own parent.");
     if (row.status !== undefined && !VALID_STATUSES.has(row.status)) {
-      d.warnings.push("Unknown status will require mapping before publication.");
+      d.errors.push("Unknown status is not publishable; map it to an allowed status.");
     }
     if (d.errors.length) d.classification = "invalid";
   });
