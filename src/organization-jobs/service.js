@@ -595,6 +595,20 @@ export async function listScreeningQuestions(jobId,userId){
  const db=getPool(); await jobRole(db,jobId,userId,["hiring_manager","recruiter","interviewer","observer"]);
  return (await db.query("select * from job_screening_question where job_id=$1 order by sort_order,id",[jobId])).rows;
 }
+export async function createInterviewScorecard(jobId,userId,input,requestId){
+ return withTransaction(async db=>{
+  await jobRole(db,jobId,userId,["hiring_manager","recruiter"]);
+  if(!input.title) throw error(400,"title is required.","VALIDATION_ERROR");
+  if(!Array.isArray(input.criteria)||!input.criteria.length) throw error(400,"At least one scorecard criterion is required.","VALIDATION_ERROR");
+  const row=(await db.query("insert into job_interview_scorecard(job_id,title,instructions,criteria) values($1,$2,$3,$4) returning *",[jobId,input.title,input.instructions||null,input.criteria])).rows[0];
+  await audit(db,userId,"job.scorecard_created","job_interview_scorecard",row.id,requestId,{});
+  return row;
+ });
+}
+export async function listInterviewScorecards(jobId,userId){
+ const db=getPool(); await jobRole(db,jobId,userId,["hiring_manager","recruiter","interviewer","observer"]);
+ return (await db.query("select * from job_interview_scorecard where job_id=$1 and active=true order by created_at",[jobId])).rows;
+}
 export async function addApplicationNote(applicationId,userId,input,requestId){
  return withTransaction(async db=>{
   const a=(await db.query("select a.*,j.id job_id from job_application a join job j on j.id=a.job_id where a.id=$1",[applicationId])).rows[0]; if(!a) throw error(404,"Application not found.","NOT_FOUND");
