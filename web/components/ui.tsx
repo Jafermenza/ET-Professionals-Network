@@ -1,0 +1,5 @@
+import {motion} from "framer-motion";
+import type {ReactNode} from "react";
+export function Card({children,className=""}:{children:ReactNode;className?:string}){return <motion.section initial={{opacity:0,y:6}} animate={{opacity:1,y:0}} className={"card "+className}>{children}</motion.section>}
+export function Badge({children,tone="green"}:{children:ReactNode;tone?:"green"|"gold"|"slate"}){return <span className={"badge badge-"+tone}>{children}</span>}
+export function ProgressRing({value}:{value:number}){const r=28,c=2*Math.PI*r,d=c*(1-Math.min(100,Math.max(0,value))/100);return <div className="ring"><svg viewBox="0 0 64 64"><circle className="ring-track" cx="32" cy="32" r={r}/><circle className="ring-value" cx="32" cy="32" r={r} strokeDasharray={c} strokeDashoffset={d}/></svg><b>{value}</b></div>}
