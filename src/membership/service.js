@@ -74,7 +74,6 @@ export async function login(email,password,requestId,requestMeta={}){
   const recent=await db.query("select count(*)::int count from auth_login_attempt where identity_key=$1 and attempted_at>now()-interval '15 minutes' and succeeded=false",[identityKey]);
   if(recent.rows[0].count>=8) throw httpError(429,"Too many unsuccessful sign-in attempts. Try again later.","AUTH_RATE_LIMIT");
   const e=normalizeEmail(email);
-  const db=getPool();
   const r=await db.query("select id,email,username,password_hash,status from app_user where lower(email)=lower($1)",[e]);
   const user=r.rows[0];
   if(!user || user.status!=="active" || !verifyPassword(password,user.password_hash)){
