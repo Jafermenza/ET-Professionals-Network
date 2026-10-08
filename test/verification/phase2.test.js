@@ -29,3 +29,9 @@ test("talent eligibility filters reject non-professional claim types",()=>{
   assert.equal(isEligibleVerifiedClaim("professional_certification"),true);
   assert.equal(isEligibleVerifiedClaim("service_capability"),true);
 });
+
+test("consent boundary keeps substantive work closed until consent",()=>{
+  assert.equal(allowedTransition("consent_pending","submitted"),true);
+  assert.equal(allowedTransition("consent_pending","review"),false);
+  assert.equal(allowedTransition("consent_pending","decision_pending"),false);
+});
