@@ -142,3 +142,11 @@ Do not mark P0 complete from a code change alone. Attach build/test evidence and
 The inspected app route list does not contain dedicated `/events`, `/projects`, or `/learning` pages, although these are product requirements. These are route/module gaps, not just visual polish. They need real discovery/detail pages and scoped workflows, or must be explicitly moved out of the release scope in an approved product decision. Do not imply these capabilities are available through links to nonexistent pages.
 
 The route inventory also shows only a small subset of the roles defined in the product contract has a dedicated operational workspace. A dashboard must be driven by an authoritative server response describing the user's current account status, roles, permissions and scope—not by trusting a client-side role string or guessing from the URL.
+
+## Subsequent remediation recorded on the audit branch
+
+- Added authenticated `GET /api/v1/me`, which first validates the session, then reads active account status and current roles from the database. The dashboard uses this endpoint rather than trusting role names from a client-side field.
+- The dashboard now displays server-confirmed roles and only shows the admin entry for accounts with the system/super-admin role. Specialized reviewer, finance, event, learning and project workspaces remain incomplete and are intentionally called out rather than represented as finished.
+- Registration now supports a safe same-origin `next` destination, checks for a session token, uses in-app navigation, and provides success/error feedback and a home link.
+- Logout now attempts the API's session-revocation endpoint before clearing local session state and returning to login. If the API is unavailable, local credentials are still cleared; server revocation cannot be claimed in that failure case.
+- The bootstrap bind-parameter fix is included in the branch. Database verification and deployed runtime verification remain required.
