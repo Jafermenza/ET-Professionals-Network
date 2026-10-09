@@ -137,3 +137,8 @@ A route is not “ready” until these all pass:
 **P3 — Finish quality:** polished responsive design system, localization, accessibility, error observability, analytics based on real events, performance and full end-to-end regression.
 
 Do not mark P0 complete from a code change alone. Attach build/test evidence and verify against the deployed API before release.
+
+### Missing route coverage confirmed in the inspected `web/app` route inventory
+The inspected app route list does not contain dedicated `/events`, `/projects`, or `/learning` pages, although these are product requirements. These are route/module gaps, not just visual polish. They need real discovery/detail pages and scoped workflows, or must be explicitly moved out of the release scope in an approved product decision. Do not imply these capabilities are available through links to nonexistent pages.
+
+The route inventory also shows only a small subset of the roles defined in the product contract has a dedicated operational workspace. A dashboard must be driven by an authoritative server response describing the user's current account status, roles, permissions and scope—not by trusting a client-side role string or guessing from the URL.
