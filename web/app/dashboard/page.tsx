@@ -21,11 +21,15 @@ export default function Dashboard(){
     if(!token)return;
     setLoading(true);setError("");
     try{
-      const [me,items]=await Promise.all([
-        api<Profile>("/api/v1/me",{},token),
-        api<Tracking>("/api/v1/me/application-tracking",{},token)
-      ]);
-      setProfile(me);setTracking(items);
+      const me=await api<Profile>("/api/v1/me",{},token);
+      setProfile(me);
+      try {
+        const items=await api<Tracking>("/api/v1/me/application-tracking",{},token);
+        setTracking(items);
+      } catch (trackingError) {
+        setTracking(null);
+        setError(trackingError instanceof Error?trackingError.message:"Your profile loaded, but application tracking is temporarily unavailable.");
+      }
     }catch(e){
       setError(e instanceof Error?e.message:"We could not load your workspace. Please try again.");
     }finally{setLoading(false)}
