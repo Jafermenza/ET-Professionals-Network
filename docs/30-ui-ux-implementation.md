@@ -4,7 +4,7 @@ The repository now contains a real Next.js 14 presentation layer under web/. It 
 
 ## Implemented
 - Light default / dark option with semantic design tokens.
-- Ihsan palette: Emerald #059669, Obsidian #0f172a, Gold #d97706.
+- Ihsan palette: Navy #123B6D / deep navy #0E2F57, Lemon #D9E85B, Obsidian #0f172a. Brand colors are defined as shared semantic tokens and applied across light/dark modes, Tailwind utilities, navigation, actions, badges, guides, and forms.
 - Inter + Noto Sans Ethiopic.
 - Tailwind utilities and bespoke responsive CSS.
 - Framer Motion for purposeful card transitions.
