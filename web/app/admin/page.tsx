@@ -11,18 +11,20 @@ type User={id:string;email:string;username:string;status:string;roles:string[]};
 type Inquiry={id:string;public_reference:string;inquiry_type:string;status:string;consider_non_member:boolean;contact_name:string;contact_email?:string;contact_phone?:string;intent:string;details:any;job_title?:string;preferred_mentor_name?:string};
 
 export default function AdminExperience(){
- const token=useUiStore(s=>s.token);
+ const token=useUiStore(s=>s.token); const hydrated=useUiStore(s=>s.hydrated);
  const [tab,setTab]=useState<"cases"|"guides"|"inquiries"|"users">("cases");
  const [cases,setCases]=useState<Demo[]>([]),[guides,setGuides]=useState<Guide[]>([]),[inquiries,setInquiries]=useState<Inquiry[]>([]),[users,setUsers]=useState<User[]>([]);
  const [error,setError]=useState(""),[editing,setEditing]=useState<Demo|null>(null);
  async function load(){setError("");try{const [d,g,i,u]=await Promise.all([api<Demo[]>("/api/v1/experience/demo-cases"),api<Guide[]>("/api/v1/experience/guides"),api<Inquiry[]>("/api/v1/opportunity-inquiries",{},token),api<User[]>("/api/v1/admin/users",{},token)]);setCases(d);setGuides(g);setInquiries(i);setUsers(u)}catch(e){setError(e instanceof Error?e.message:"Unable to load administration workspace.")}}
- useEffect(()=>{load()},[]);
+ useEffect(()=>{if(!hydrated)return;if(!token){setError("");return;}load()},[token,hydrated]);
  async function patchCase(d:Demo,active:boolean){try{await api("/api/v1/admin/experience/demo-cases/"+d.id,{method:"PATCH",body:JSON.stringify({active})},token);await load()}catch(e){setError(e instanceof Error?e.message:"Update failed.")}}
  async function patchGuide(g:Guide,active:boolean){try{await api("/api/v1/admin/experience/guides/"+g.id,{method:"PATCH",body:JSON.stringify({active})},token);await load()}catch(e){setError(e instanceof Error?e.message:"Update failed.")}}
  async function decideInquiry(i:Inquiry,status:string,considerNonMember:boolean){try{await api("/api/v1/opportunity-inquiries/"+i.id,{method:"PATCH",body:JSON.stringify({status,considerNonMember})},token);await load()}catch(e){setError(e instanceof Error?e.message:"Inquiry decision failed.")}}
  async function userAction(u:User,input:any){try{await api("/api/v1/admin/users/"+u.id,{method:"PATCH",body:JSON.stringify(input)},token);await load()}catch(e){setError(e instanceof Error?e.message:"User update failed.")}}
  async function revokeUserSessions(u:User){try{await api("/api/v1/admin/users/"+u.id+"/revoke-sessions",{method:"POST"},token);await load()}catch(e){setError(e instanceof Error?e.message:"Session revocation failed.")}}
  function launch(d:Demo){localStorage.setItem("mpa-demo-case",JSON.stringify({key:d.case_key,title:d.title,persona:d.persona,startedAt:new Date().toISOString()}));location.href=d.start_path}
+ if(!hydrated)return <div className="auth-page"><Card><h1 className="h1">Restoring your session…</h1><p className="muted">Please wait while we check your sign-in.</p></Card></div>;
+ if(!token)return <div className="auth-page"><Card><div className="eyebrow">Administration workspace</div><h1 className="h1">Administrator sign-in required.</h1><p className="muted">Sign in with an authorized administrator or reviewer account to access this workspace. A regular member account does not grant administrative access.</p><a className="btn btn-primary" href="/login?next=/admin">Sign in to continue</a><a className="btn btn-ghost" href="/dashboard" style={{marginLeft:8}}>Member dashboard</a></Card></div>;
  return <div className="grid">
   <div><div className="eyebrow">System administration · Experience lab</div><h1 className="h1">Make every business scenario feel real.</h1><p className="muted">Manage demo cases, contextual guides, public opportunity inquiries and user access without changing application code.</p></div>
   {error&&<div className="field-banner"><ShieldCheck size={18}/><span>{error}</span></div>}
