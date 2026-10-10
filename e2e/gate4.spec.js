@@ -151,6 +151,55 @@ async function createPublishedJob(api,token){
   return {title,jobId:job.id};
 }
 
+test("verification case ownership, reviewer assignment and state transitions are enforced",async()=>{
+ const {api,token:adminToken}=await apiContext();
+ const suffix=randomUUID();
+ try{
+   const registered=await api.post("/api/v1/auth/register",{data:{email:"gate4-verification-"+suffix+"@example.test",password:"gate4-verification-password-12345",firstName:"Gate4",lastName:"Verify"+suffix.slice(0,6)}});
+   expect(registered.status()).toBe(201);
+   const member=(await registered.json()).data;
+   const memberHeaders={authorization:"Bearer "+member.token};
+   const outsiderRegistration=await api.post("/api/v1/auth/register",{data:{email:"gate4-verification-outsider-"+suffix+"@example.test",password:"gate4-verification-password-12345",firstName:"Gate4",lastName:"Outsider"+suffix.slice(0,6)}});
+   expect(outsiderRegistration.status()).toBe(201);
+   const outsiderHeaders={authorization:"Bearer "+(await outsiderRegistration.json()).data.token};
+   const reviewerToken=await independentReviewerToken(api,adminToken);
+   const reviewerMe=await api.get("/api/v1/me",{headers:{authorization:"Bearer "+reviewerToken}});
+   expect(reviewerMe.status()).toBe(200);
+   const reviewerId=(await reviewerMe.json()).data.user_id;
+   const adminMe=await api.get("/api/v1/me",{headers:{authorization:"Bearer "+adminToken}});
+   expect(adminMe.status()).toBe(200);
+   const adminId=(await adminMe.json()).data.user_id;
+   await getPool().query("insert into app_user_role(user_id,role_id,assigned_by) select $1,id,$2 from app_role where role_code='verification_reviewer' on conflict do nothing",[reviewerId,adminId]);
+   const programCode=("G4_VERIFY_"+suffix.replace(/-/g,"").slice(0,12)).toUpperCase();
+   await getPool().query("insert into verification_program(program_code,name,purpose,requires_consent,active) values($1,$2,'Gate 4 state-machine fixture',false,true)",[programCode,"Gate 4 Verification "+suffix.slice(0,8)]);
+   const created=await api.post("/api/v1/verification/cases",{headers:memberHeaders,data:{programCode}});
+   expect(created.status()).toBe(201);
+   const verificationCase=(await created.json()).data;
+   expect(verificationCase.status).toBe("submitted");
+   const retried=await api.post("/api/v1/verification/cases",{headers:memberHeaders,data:{programCode}});
+   expect(retried.status()).toBe(201);
+   expect((await retried.json()).data.id).toBe(verificationCase.id,"retries must return the open case rather than create duplicates");
+   const ownerRead=await api.get("/api/v1/verification/cases/"+verificationCase.id,{headers:memberHeaders});
+   expect(ownerRead.status()).toBe(200);
+   const foreignRead=await api.get("/api/v1/verification/cases/"+verificationCase.id,{headers:outsiderHeaders});
+   expect(foreignRead.status(),"another member must not read private verification evidence").toBe(403);
+   const memberReviewQueue=await api.get("/api/v1/review/verification/cases",{headers:memberHeaders});
+   expect(memberReviewQueue.status(),"members cannot enumerate the private verification queue").toBe(403);
+   const assigned=await api.post("/api/v1/verification/cases/"+verificationCase.id+"/assign",{headers:{authorization:"Bearer "+reviewerToken},data:{reviewerId}});
+   expect(assigned.status()).toBe(200);
+   const transition=await api.post("/api/v1/verification/cases/"+verificationCase.id+"/transition",{headers:{authorization:"Bearer "+reviewerToken},data:{status:"review"}});
+   expect(transition.status()).toBe(200);
+   expect((await transition.json()).data.status).toBe("review");
+   const invalidTransition=await api.post("/api/v1/verification/cases/"+verificationCase.id+"/transition",{headers:{authorization:"Bearer "+reviewerToken},data:{status:"submitted"}});
+   expect(invalidTransition.status(),"a review case cannot transition backwards to submitted").toBe(409);
+   const memberTransition=await api.post("/api/v1/verification/cases/"+verificationCase.id+"/transition",{headers:memberHeaders,data:{status:"decision_pending"}});
+   expect(memberTransition.status(),"members cannot execute reviewer-only state transitions").toBe(403);
+   const persisted=await api.get("/api/v1/verification/cases/"+verificationCase.id,{headers:memberHeaders});
+   expect(persisted.status()).toBe(200);
+   expect((await persisted.json()).data.status).toBe("review");
+ }finally{await api.dispose();}
+});
+
 test("membership application, correction, fee verification and activation persist in order",async()=>{
  const {api,token:adminToken}=await apiContext();
  const suffix=randomUUID();
