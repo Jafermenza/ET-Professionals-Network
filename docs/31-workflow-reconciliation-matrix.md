@@ -36,6 +36,20 @@
 4. **Organization onboarding** — test duplicate legal names, owner membership, organization-scoped reads/writes, private file ownership, required verification evidence and failed/missing-evidence paths. Complete a secure upload UI only after confirming the repository's file-object creation/upload contract.
 5. Add browser E2E and service/API assertions for successful, unauthorized, invalid-state, duplicate/retry, not-found and empty-result paths where applicable. Update this matrix in the same branch as fixes; a connected UI is not considered acceptance evidence until its state transitions are tested.
 
+## Gate 3 migration evidence
+
+The migration runner and CI now cover the following on isolated PostgreSQL 16:
+
+- Fresh install of the full migration chain and a no-op rerun.
+- Legacy schema adoption from the known test baseline `010_phase3_hardening.sql` after applying migrations 001–010 without a ledger.
+- Fail-closed behavior when an existing schema has no migration history and no explicit baseline.
+- Preservation of a pre-existing sentinel row while migrations 011–018 are applied.
+- A synthetic failing migration proving the DDL and its ledger row roll back together.
+- Complete ledger population (18 SQL migrations), followed by a no-op rerun.
+- CI push run [38050311573](https://github.com/Jafermenza/ET-Professionals-Network/actions/runs/38050311573) and PR run [38050314006](https://github.com/Jafermenza/ET-Professionals-Network/actions/runs/38050314006), commit `b28574fc20b7ad0407bba2968e2f48ffae961445`.
+
+**Boundary:** these are disposable-database results only. The real production schema and baseline remain unverified; use the mandatory [migration operations runbook](32-migration-operations-runbook.md) before any production migration.
+
 ## Acceptance record
 
 | Evidence | Result |
@@ -43,7 +57,8 @@
 | CI run `38046124168`, commit `e6ad212a847cb3597688e4bbfc6f56aa3787b11b` | PASS: install, fresh migrations, migration rerun, test suite, web build, API smoke including public/member mentor discovery |
 | CI PR run `38045220106` | PASS: same configured pipeline |
 | Browser E2E for jobs/services/mentorship/organization journeys | NOT RUN — connected screens still require persisted-state and negative-path browser verification |
-| Existing production schema baseline verified | NOT RUN |
+| Disposable PostgreSQL legacy adoption + data sentinel + rollback + rerun | PASS — push run [38050311573](https://github.com/Jafermenza/ET-Professionals-Network/actions/runs/38050311573), PR run [38050314006](https://github.com/Jafermenza/ET-Professionals-Network/actions/runs/38050314006), commit `b28574fc20b7ad0407bba2968e2f48ffae961445` |
+| Existing production schema baseline verified | NOT RUN — mandatory before production migration |
 | Committed dependency lockfile / `npm ci` | OPEN |
 | Production deployment | NOT PERFORMED |
 
