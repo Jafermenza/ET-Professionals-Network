@@ -73,6 +73,10 @@ export async function updatePublicInquiryDetails(reference,token,input,requestId
 
 async function visibleInquiries(db,userId,filters={}){
  const admin=await hasRole(db,userId,["system_admin","admin","supporting_staff"]);
+ if(!admin){
+   const scope=(await db.query("select exists(select 1 from organization_membership om where om.user_id=$1 and om.status='active' and om.role_code in ('owner','administrator','recruiter','project_manager','read_only')) or exists(select 1 from mentor_profile mp where mp.user_id=$1)",[userId])).rows[0];
+   if(!scope||!scope.exists) throw error(403,"An active organization role or mentor profile is required to inspect opportunity inquiries.","FORBIDDEN");
+ }
  const params=admin?[]:[userId]; const clauses=[];
  if(admin){ clauses.push("true"); }
  else {

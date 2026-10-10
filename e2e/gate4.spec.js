@@ -656,7 +656,9 @@ test("talent directory uses live consent-scoped profiles and inquiry contact-rel
    expect(consent.status()).toBe(200);
    const anonymousSearch=await api.get("/api/v1/talent?q=Gate%204%20talent%20discovery");
    expect(anonymousSearch.status()).toBe(200);
-   expect((await anonymousSearch.json()).data.items.some(row=>row.user_id===professionalId)).toBeTruthy();
+   expect((await api.get("/api/v1/me/talent-visibility",{headers:{authorization:"Bearer "+professional.token}})).status()).toBe(200);
+   expect((await (await api.get("/api/v1/me/talent-visibility",{headers:{authorization:"Bearer "+professional.token}})).json()).data.directory_visible).toBe(true);
+   expect((await anonymousSearch.json()).data.items.some(row=>row.user_id===professionalId),"an opted-in active member with a verified professional claim and public profile must be discoverable anonymously").toBeTruthy();
    const memberHeaders={authorization:"Bearer "+professional.token};
    const hiddenByTitle=await api.get("/api/v1/talent?q=Gate%204%20talent%20discovery",{headers:memberHeaders});
    expect(hiddenByTitle.status()).toBe(200);

@@ -410,7 +410,7 @@ async function mentorCandidates(db,request){
   for(const m of mentors){
     const active=(await db.query("select count(*)::int count from mentorship where mentor_user_id=$1 and status in ('active','paused')",[m.user_id])).rows[0].count;
     if(active>=m.max_active_mentees) continue;
-    const topics=JSON.parse(m.expertise||"[]"), langs=JSON.parse(m.languages||"[]"), modes=JSON.parse(m.mentoring_modes||"[]");
+    const topics=normalizeArray(m.expertise), langs=normalizeArray(m.languages), modes=normalizeArray(m.mentoring_modes);
     const topicScore=overlap(topics,request.topics)*10;
     const languageScore=overlap(langs,request.preferred_languages)*5;
     const modeScore=overlap(modes,request.preferred_modes)*3;
