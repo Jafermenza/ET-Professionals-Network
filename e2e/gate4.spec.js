@@ -153,6 +153,9 @@ test("organization screen uploads private evidence and submits verification",asy
     const detail=await api.get("/api/v1/organizations/"+organization.id,{headers:{authorization:"Bearer "+token}});
     expect(detail.status()).toBe(200);
     expect((await detail.json()).data.verification_status).toBe("pending");
+    const tracking=await api.get("/api/v1/me/application-tracking",{headers:{authorization:"Bearer "+token}});
+    expect(tracking.status(),"organization application tracking must not reference nonexistent schema columns").toBe(200);
+    expect((await tracking.json()).data.items.some(item=>item.type==="organization"&&item.id===organization.id&&item.status==="pending")).toBeTruthy();
   }finally{await api.dispose();}
 });
 
