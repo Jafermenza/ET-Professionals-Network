@@ -482,16 +482,16 @@ test("organization public inquiry decisions persist and remain organization-auth
    const listed=await api.get("/api/v1/opportunity-inquiries?type=job",{headers:{authorization:"Bearer "+token}});
    expect(listed.status()).toBe(200);
    expect((await listed.json()).data.some(row=>row.id===inquiry.id&&row.status==="contacted")).toBeTruthy();
-   expect(gate4RegisteredAccount).toBeTruthy();
-   const unauthorized=await api.get("/api/v1/opportunity-inquiries?type=job",{headers:{authorization:"Bearer "+gate4RegisteredAccount.token}});
+   const outsider=await api.post("/api/v1/auth/register",{data:{email:"gate4-inquiry-outsider-"+randomUUID()+"@example.test",password:"gate4-outsider-password-12345",firstName:"No",lastName:"OrganizationScope"}});
+   expect(outsider.status()).toBe(201);
+   const unauthorized=await api.get("/api/v1/opportunity-inquiries?type=job",{headers:{authorization:"Bearer "+(await outsider.json()).data.token}});
    expect(unauthorized.status()).toBe(403,"accounts without organization scope cannot inspect private inquiries");
  }finally{await api.dispose();}
 });
 
 test("mentor eligibility, profile lifecycle, availability, match acceptance, sessions and feedback persist",async({page})=>{
  const {api,token:adminToken}=await apiContext();
- expect(gate4RegisteredAccount,"the earlier profile persistence fixture supplies the mentor account").toBeTruthy();
- const mentor=gate4RegisteredAccount;
+ const mentor=await createActiveMember(api,"MENTOR");
  try{
    const adminMe=await api.get("/api/v1/me",{headers:{authorization:"Bearer "+adminToken}});
    expect(adminMe.status()).toBe(200);
@@ -511,11 +511,7 @@ test("mentor eligibility, profile lifecycle, availability, match acceptance, ses
    }
    await ensureActiveMembership(mentorId);
    await ensureActiveMembership(adminId);
-   await db.query("insert into verification_claim_type(claim_code,name,active) values('professional_certification','Professional certification',true) on conflict(claim_code) do update set active=true");
-   const claimType=(await db.query("select id from verification_claim_type where claim_code='professional_certification'")).rows[0];
-   const program=(await db.query("insert into verification_program(program_code,name,purpose,requires_consent,active) values('GATE4_MENTOR_FIXTURE','Gate 4 mentor fixture','Test-only professional eligibility fixture',false,true) on conflict(program_code) do update set active=true returning id")).rows[0];
-   const verificationCase=(await db.query("insert into verification_case(program_id,subject_user_id,status,purpose_snapshot,opened_by) values($1,$2,'review','Gate 4 test fixture: pre-verified professional claim',$2) returning id",[program.id,mentorId])).rows[0];
-   await db.query("insert into verification_claim(case_id,claim_type_id,claim_code_snapshot,claimed_value,status,verified_at) values($1,$2,'professional_certification',$3,'verified',now())",[verificationCase.id,claimType.id,JSON.stringify({fixture:"Gate 4 automated test"})]);
+   await addVerifiedProfessionalClaim(mentorId,"GATE4_MENTOR_FIXTURE");
    await browserLogin(page,mentor.email,mentor.password);
    await page.goto("/mentorship");
    await page.getByLabel("Mentor headline").fill("Gate 4 leadership mentor");
@@ -589,20 +585,36 @@ test("mentor eligibility, profile lifecycle, availability, match acceptance, ses
 
 test("talent directory uses live consent-scoped profiles and inquiry contact-release lifecycle",async({page})=>{
  const {api,token:adminToken}=await apiContext();
- expect(gate4RegisteredAccount,"the earlier profile fixture supplies a directory professional").toBeTruthy();
- const professional=gate4RegisteredAccount;
+ const professional=await createActiveMember(api,"TALENT");
  try{
    const me=await api.get("/api/v1/me",{headers:{authorization:"Bearer "+professional.token}});
    expect(me.status()).toBe(200);
    const professionalId=(await me.json()).data.user_id;
    const displayName=(await me.json()).data.display_name;
+   await addVerifiedProfessionalClaim(professionalId,"GATE4_TALENT_FIXTURE");
    const profileSave=await api.patch("/api/v1/me/talent-profile",{headers:{authorization:"Bearer "+professional.token},data:{professionalTitle:"Gate 4 talent discovery specialist",headline:"Gate 4 talent discovery fixture",bio:"Profile for consent-controlled directory acceptance.",directorySummary:"Live profile fixture; no private evidence is exposed.",yearsExperience:8,availabilityStatus:"available",locationLabel:"Addis Ababa",visibility:"public"}});
    expect(profileSave.status()).toBe(200);
-   const consent=await api.patch("/api/v1/me/talent-visibility",{headers:{authorization:"Bearer "+professional.token},data:{directoryVisible:true,showIdentityBadge:false,showProfessionalBadge:true,showExperienceBadge:false,showLocation:true,showExperience:true,showContact:true}});
+   const consent=await api.patch("/api/v1/me/talent-visibility",{headers:{authorization:"Bearer "+professional.token},data:{directoryVisible:true,showIdentityBadge:false,showProfessionalBadge:true,showExperienceBadge:false,showLocation:false,showExperience:true,showContact:true}});
    expect(consent.status()).toBe(200);
    const anonymousSearch=await api.get("/api/v1/talent?q=Gate%204%20talent%20discovery");
    expect(anonymousSearch.status()).toBe(200);
    expect((await anonymousSearch.json()).data.items.some(row=>row.user_id===professionalId)).toBeTruthy();
+   const memberHeaders={authorization:"Bearer "+professional.token};
+   const hiddenByTitle=await api.get("/api/v1/talent?q=Gate%204%20talent%20discovery",{headers:memberHeaders});
+   expect(hiddenByTitle.status()).toBe(200);
+   const hiddenTalent=(await hiddenByTitle.json()).data.items.find(row=>row.user_id===professionalId);
+   expect(hiddenTalent,"eligible talent should be discoverable without exposing hidden location").toBeTruthy();
+   expect(hiddenTalent.show_location).toBe(false);
+   expect(hiddenTalent.location_label).toBeNull();
+   const hiddenLocationSearch=await api.get("/api/v1/talent?location=Addis%20Ababa",{headers:memberHeaders});
+   expect(hiddenLocationSearch.status()).toBe(200);
+   expect((await hiddenLocationSearch.json()).data.items.some(row=>row.user_id===professionalId)).toBe(false,"hidden location must not influence directory results");
+   const locationConsent=await api.patch("/api/v1/me/talent-visibility",{headers:memberHeaders,data:{directoryVisible:true,showIdentityBadge:false,showProfessionalBadge:true,showExperienceBadge:false,showLocation:true,showExperience:true,showContact:true}});
+   expect(locationConsent.status()).toBe(200);
+   const visibleByTitle=await api.get("/api/v1/talent?q=Gate%204%20talent%20discovery",{headers:memberHeaders});
+   const visibleTalent=(await visibleByTitle.json()).data.items.find(row=>row.user_id===professionalId);
+   expect(visibleTalent.show_location).toBe(true);
+   expect(visibleTalent.location_label).toBe("Addis Ababa");
    await browserLogin(page);
    await page.goto("/network");
    await page.getByPlaceholder("Professional title, headline or summary").fill("Gate 4 talent discovery");
