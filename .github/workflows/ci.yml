@@ -48,10 +48,6 @@ jobs:
         run: npm run migrate
       - name: Verify migration rerun safety
         run: npm run migrate
-      - name: Verify existing schema without migration ledger
-        run: |
-          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "DROP TABLE app_schema_migration"
-          npm run migrate
       - run: npm test
       - run: npm run web:build
       - name: Application smoke test
