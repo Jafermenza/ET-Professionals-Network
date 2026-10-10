@@ -73,7 +73,7 @@ export async function updatePublicInquiryDetails(reference,token,input,requestId
 
 async function visibleInquiries(db,userId,filters={}){
  const admin=await hasRole(db,userId,["system_admin","admin","supporting_staff"]);
- const params=[userId]; const clauses=[];
+ const params=admin?[]:[userId]; const clauses=[];
  if(admin){ clauses.push("true"); }
  else {
    clauses.push("(i.inquiry_type='job' and exists (select 1 from job j join organization_membership om on om.organization_id=j.organization_id where j.id=i.job_id and om.user_id=$1 and om.status='active' and om.role_code in ('owner','administrator','recruiter','project_manager','read_only')) or i.inquiry_type='mentorship' and (i.preferred_mentor_user_id=$1))");

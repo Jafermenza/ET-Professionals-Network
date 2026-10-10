@@ -84,6 +84,9 @@ for(const userId of [me.payload.data.user_id,memberId]){
   const active=(await db.query("select id from membership_record where user_id=$1 and status='active' limit 1",[userId])).rows[0];
   if(!active) await db.query("insert into membership_record(user_id,membership_product_id,membership_number,status,start_date,end_date,source) values($1,$2,$3,'active',current_date,current_date+365,'admin')",[userId,membershipProduct.id,"CI-"+userId.slice(0,8)+"-"+Date.now()]);
 }
+const adminInquiryList=await request("/api/v1/opportunity-inquiries?type=job",{token});
+assert.equal(adminInquiryList.status,200,"admin inquiry filtering must bind SQL parameters without type ambiguity");
+
 const orgName="Gate 4 CI Organization "+Date.now();
 const orgCreated=await request("/api/v1/organizations",{method:"POST",token,body:{legalName:orgName,displayName:orgName,organizationType:"company"}});
 assert.equal(orgCreated.status,201,"organization registration should create a scoped owner membership");
