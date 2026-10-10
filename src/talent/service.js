@@ -17,7 +17,7 @@ export async function updateProfessionalProfile(userId,input,requestId){
   if(years!==null&&(!Number.isInteger(years)||years<0)) throw error(400,"yearsExperience must be a non-negative integer.","VALIDATION_ERROR");
   if(input.availabilityStatus!==undefined&&input.availabilityStatus!==null&&input.availabilityStatus!==""&&!["not_specified","available","limited","unavailable"].includes(input.availabilityStatus)) throw error(400,"availabilityStatus must be not_specified, available, limited or unavailable.","VALIDATION_ERROR");
   if(input.visibility!==undefined&&input.visibility!==null&&!["private","members","public"].includes(input.visibility)) throw error(400,"visibility must be private, members or public.","VALIDATION_ERROR");
-  await db.query("update professional_profile set professional_title=coalesce($1,professional_title),years_experience=coalesce($2,years_experience),availability_status=coalesce($3,availability_status),location_label=coalesce($4,location_label),directory_summary=coalesce($5,directory_summary),headline=coalesce($6,headline),bio=coalesce($7,bio),visibility=coalesce($8,visibility),updated_at=now() where id=$9",[input.professionalTitle||null,years,input.availabilityStatus||null,input.locationLabel||null,input.directorySummary||null,input.headline||null,input.bio||null,input.visibility||null,p.id]);
+  await db.query("update professional_profile set professional_title=coalesce($1,professional_title),years_experience=coalesce($2,years_experience),availability_status=coalesce($3,availability_status),location_label=coalesce($4,location_label),directory_summary=coalesce($5,directory_summary),headline=coalesce($6,headline),bio=coalesce($7,bio),directory_visibility=coalesce($8,directory_visibility),updated_at=now() where id=$9",[input.professionalTitle||null,years,input.availabilityStatus||null,input.locationLabel||null,input.directorySummary||null,input.headline||null,input.bio||null,input.visibility||null,p.id]);
   if(Array.isArray(input.references)){
    for(const ref of input.references){
     const allowed=["occupation","industry","education_level","qualification_type","field_of_study"];
@@ -33,13 +33,13 @@ export async function updateProfessionalProfile(userId,input,requestId){
    for(const item of input.experience) await db.query("insert into professional_experience(profile_id,employer_name,role_title,start_date,end_date,is_current,description,visibility) values($1,$2,$3,$4,$5,$6,$7,$8)",[p.id,item.employerName||null,item.roleTitle,item.startDate||null,item.endDate||null,Boolean(item.currentRole),item.description||null,item.visibility||"members"]);
   }
   await audit(db,userId,"talent.profile_updated","professional_profile",p.id,requestId,{referenceCount:Array.isArray(input.references)?input.references.length:0,experienceCount:Array.isArray(input.experience)?input.experience.length:0});
-  return (await db.query("select id,professional_title,headline,bio,years_experience,availability_status,location_label,directory_summary,visibility,completion_percent from professional_profile where id=$1",[p.id])).rows[0];
+  return (await db.query("select id,professional_title,headline,bio,years_experience,availability_status,location_label,directory_summary,directory_visibility as visibility,completion_percent from professional_profile where id=$1",[p.id])).rows[0];
  });
 }
 
 export async function getProfessionalProfile(userId){
  const db=getPool();
- const row=(await db.query("select pp.id,pp.professional_title,pp.years_experience,pp.availability_status,pp.location_label,pp.directory_summary,pp.headline,pp.bio,pp.visibility,pp.completion_percent from professional_profile pp join person p on p.id=pp.person_id where p.user_id=$1",[userId])).rows[0];
+ const row=(await db.query("select pp.id,pp.professional_title,pp.years_experience,pp.availability_status,pp.location_label,pp.directory_summary,pp.headline,pp.bio,pp.directory_visibility as visibility,pp.completion_percent from professional_profile pp join person p on p.id=pp.person_id where p.user_id=$1",[userId])).rows[0];
  if(!row) throw error(404,"Professional profile not found.","NOT_FOUND");
  return row;
 }
@@ -54,7 +54,7 @@ export async function updateVisibility(userId,input,requestId){
 
 export async function getVisibility(userId){ const db=getPool(); const r=await db.query("select * from verification_visibility where user_id=$1",[userId]); return r.rows[0]||{user_id:userId,directory_visible:false}; }
 
-function viewerVisibilityClause(viewerIsMember){ return viewerIsMember ? "(pp.visibility in ('members','public'))" : "pp.visibility='public'"; }
+function viewerVisibilityClause(viewerIsMember){ return viewerIsMember ? "(pp.directory_visibility in ('members','public'))" : "pp.directory_visibility='public'"; }
 
 export async function searchTalent(viewerId,filters={}){
  const db=getPool();
@@ -80,7 +80,7 @@ export async function searchTalent(viewerId,filters={}){
 export async function getTalent(userId,viewerId){
  const db=getPool();
  const viewerMember=viewerId?Boolean((await db.query("select 1 from membership_record where user_id=$1 and status='active' limit 1",[viewerId])).rows[0]):false;
- const where=viewerMember?"pp.visibility in ('members','public')":"pp.visibility='public'";
+ const where=viewerMember?"pp.directory_visibility in ('members','public')":"pp.visibility='public'";
  const row=(await db.query("select u.id user_id,p.display_name,pp.id profile_id,pp.professional_title,pp.headline,pp.bio,pp.directory_summary,pp.years_experience,pp.availability_status,case when vv.show_location then pp.location_label else null end location_label,case when vv.show_contact and u.id=$2 then p.phone else null end phone,vv.show_identity_badge,vv.show_professional_badge,vv.show_experience_badge,vv.show_experience from app_user u join person p on p.user_id=u.id join professional_profile pp on pp.person_id=p.id join membership_record m on m.user_id=u.id and m.status='active' join verification_visibility vv on vv.user_id=u.id where u.id=$1 and vv.directory_visible=true and "+where+" and exists (select 1 from verification_claim vc join verification_case vcase on vcase.id=vc.case_id where vcase.subject_user_id=u.id and vc.status='verified' and lower(vc.claim_code_snapshot) in ('professional_certification','education','employment','experience','service_capability'))",[userId,viewerId||null])).rows[0];
  if(!row) throw error(404,"Professional not found or not visible.","NOT_FOUND");
  const refs=(await db.query("select prf.relation_type,ri.code,ri.label,ri.dataset_version_id from professional_profile_reference prf join reference_item ri on ri.id=prf.reference_item_id where prf.profile_id=$1 order by prf.relation_type,prf.is_primary desc,ri.label",[row.profile_id])).rows;
