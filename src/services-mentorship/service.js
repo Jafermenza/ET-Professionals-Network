@@ -564,3 +564,9 @@ export async function getMentorship(mentorshipId,userId){
   const goals=(await db.query("select * from mentorship_goal where mentorship_id=$1 order by target_date nulls last,created_at",[mentorshipId])).rows;
   return {...m,sessions,feedback,goals};
 }
+
+
+export async function listMyMentorshipRequests(userId){
+ const db=getPool();
+ return (await db.query("select id,mentee_user_id,preferred_mentor_user_id,goals,topics,preferred_modes,preferred_languages,preferred_days,status,created_at,updated_at from mentorship_request where mentee_user_id=$1 order by created_at desc",[userId])).rows;
+}

@@ -6,11 +6,12 @@ import {api,ApiError} from "../../lib/api";
 import {useUiStore} from "../../lib/store";
 
 type Mentor={id:string;user_id:string;display_name:string;headline?:string;bio?:string;expertise?:string[]|string;languages?:string[]|string;mentoring_modes?:string[]|string;max_active_mentees?:number};
-type RequestResult={id:string;status:string;goals?:string};
+type RequestResult={id:string;status:string;goals?:string;created_at?:string;preferred_mentor_user_id?:string|null};
 function values(value:unknown):string[]{if(Array.isArray(value))return value.map(String);if(typeof value==="string"){try{const parsed=JSON.parse(value);if(Array.isArray(parsed))return parsed.map(String)}catch{}return value?[value]:[]}return []}
 export default function Mentorship(){
  const token=useUiStore(s=>s.token);
  const [mentors,setMentors]=useState<Mentor[]>([]);
+ const [myRequests,setMyRequests]=useState<RequestResult[]>([]);
  const [loading,setLoading]=useState(true);
  const [error,setError]=useState("");
  const [notice,setNotice]=useState("");
@@ -35,6 +36,8 @@ export default function Mentorship(){
    finally{setLoading(false);}
  },[query,topic,token]);
  useEffect(()=>{void load()},[load]);
+ const loadMyRequests=useCallback(async()=>{if(!token){setMyRequests([]);return;}try{const result=await api<RequestResult[]>("/api/v1/me/mentorship-requests",{},token);setMyRequests(Array.isArray(result)?result:[]);}catch(e){setError(e instanceof ApiError?e.message:"We couldn't load your mentorship requests.");}},[token]);
+ useEffect(()=>{void loadMyRequests()},[loadMyRequests]);
 
  async function submit(e:FormEvent){
    e.preventDefault();setError("");setNotice("");
@@ -49,7 +52,7 @@ export default function Mentorship(){
        preferredModes:[mode],
        preferredLanguages:languages.split(",").map(x=>x.trim()).filter(Boolean)
      })},token);
-     setCreated(result);setNotice("Your mentorship request was recorded. Matching and mentor acceptance remain explicit next steps.");
+     setCreated(result);setNotice("Your mentorship request was recorded. Matching and mentor acceptance remain explicit next steps.");await loadMyRequests();
      setSelected(null);setShowRequestForm(false);setGoals("");setTopics("");setLanguages("");
    }catch(e){setError(e instanceof ApiError?e.message:"We couldn't submit your mentorship request.");}
    finally{setSubmitting(false);}
@@ -87,6 +90,7 @@ export default function Mentorship(){
        <button className="btn btn-primary" type="submit" disabled={submitting}>{submitting?"Submitting…":"Submit mentorship request"} <Target size={16}/></button>
      </form>}
    </Card>}
+   {token&&<Card><div className="row"><div><div className="h2">Your mentorship requests</div><p className="muted">Persisted requests are reloaded from your account, including after a refresh.</p></div><button className="btn btn-ghost" type="button" onClick={()=>void loadMyRequests()}>Refresh</button></div>{myRequests.length===0?<p className="muted">No mentorship requests are recorded for this account yet.</p>:<div className="grid">{myRequests.map(request=><div className="case-row" key={request.id}><div className="row"><b>Mentorship goal</b><Badge>{request.status.replaceAll("_"," ")}</Badge></div><p className="muted">{request.goals}</p><small className="muted">Reference: {request.id}{request.created_at?" · "+new Date(request.created_at).toLocaleString():""}</small></div>)}</div>}</Card>}
    <div className="footer-note">The matching score is not invented in this interface. Human governance and explicit acceptance remain authoritative.</div>
  </div>;
 }
