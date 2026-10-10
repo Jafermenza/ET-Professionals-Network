@@ -15,6 +15,8 @@ export async function updateProfessionalProfile(userId,input,requestId){
   if(!p) throw error(404,"Professional profile not found.","NOT_FOUND");
   const years=input.yearsExperience===null||input.yearsExperience===undefined?null:Number(input.yearsExperience);
   if(years!==null&&(!Number.isInteger(years)||years<0)) throw error(400,"yearsExperience must be a non-negative integer.","VALIDATION_ERROR");
+  if(input.availabilityStatus!==undefined&&input.availabilityStatus!==null&&input.availabilityStatus!==""&&!["not_specified","available","limited","unavailable"].includes(input.availabilityStatus)) throw error(400,"availabilityStatus must be not_specified, available, limited or unavailable.","VALIDATION_ERROR");
+  if(input.visibility!==undefined&&input.visibility!==null&&!["private","members","public"].includes(input.visibility)) throw error(400,"visibility must be private, members or public.","VALIDATION_ERROR");
   await db.query("update professional_profile set professional_title=coalesce($1,professional_title),years_experience=coalesce($2,years_experience),availability_status=coalesce($3,availability_status),location_label=coalesce($4,location_label),directory_summary=coalesce($5,directory_summary),headline=coalesce($6,headline),bio=coalesce($7,bio),visibility=coalesce($8,visibility),updated_at=now() where id=$9",[input.professionalTitle||null,years,input.availabilityStatus||null,input.locationLabel||null,input.directorySummary||null,input.headline||null,input.bio||null,input.visibility||null,p.id]);
   if(Array.isArray(input.references)){
    for(const ref of input.references){
