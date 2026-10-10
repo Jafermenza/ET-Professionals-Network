@@ -64,7 +64,9 @@ export default function Organizations(){
  }
  async function uploadEvidence(e:FormEvent){
    e.preventDefault();
-   if(!token||!evidenceOrg||!evidenceFile)return;
+   if(!token){setError("Sign in before uploading verification evidence.");return;}
+   if(!evidenceOrg){setError("Choose an organization before uploading evidence.");return;}
+   if(!evidenceFile){setError("Choose a document before uploading evidence.");return;}
    setUploading(true);setError("");setNotice("");
    try{
      const allowed=["application/pdf","image/png","image/jpeg","text/plain"];

@@ -109,8 +109,9 @@ test("organization screen uploads private evidence and submits verification",asy
       buffer:Buffer.from("%PDF-1.7\nBrowser private evidence fixture\n%%EOF")
     });
     await page.getByRole("button",{name:"Upload and attach private evidence"}).click();
-    await expect.poll(async()=>await page.getByRole("status").count()+await page.getByRole("alert").count()).toBeGreaterThan(0);
-    if(await page.getByRole("alert").count()) throw new Error("Private evidence upload failed: "+(await page.getByRole("alert").first().textContent()||"No error text")+". Network: "+uploadDiagnostics.join(" | "));
+    await expect.poll(async()=>await page.getByRole("status").count()+((await page.getByRole("alert").allTextContents()).filter(text=>text.trim()).length)).toBeGreaterThan(0);
+    const uploadErrors=(await page.getByRole("alert").allTextContents()).filter(text=>text.trim());
+    if(uploadErrors.length) throw new Error("Private evidence upload failed: "+uploadErrors.join(" | ")+". Network: "+uploadDiagnostics.join(" | "));
     await expect(page.getByRole("status")).toContainText("Private evidence uploaded, checksum-verified and attached");
     await page.getByRole("button",{name:"Submit for verification"}).first().click();
     await expect(page.getByRole("status")).toContainText("Verification submission was accepted by the server.");
