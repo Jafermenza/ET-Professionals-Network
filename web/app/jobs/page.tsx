@@ -36,6 +36,7 @@ export default function Jobs(){
  const [expanded,setExpanded]=useState<Record<string,boolean>>({});
  const [loading,setLoading]=useState(true);
  const [savingId,setSavingId]=useState("");
+ const [creatingAlert,setCreatingAlert]=useState(false);
  const [error,setError]=useState("");
  const [notice,setNotice]=useState("");
 
@@ -54,8 +55,25 @@ export default function Jobs(){
  },[token]);
 
  useEffect(()=>{void loadJobs(initialFilters)},[loadJobs]);
+ useEffect(()=>{
+   if(!token){setSaved([]);return;}
+   let active=true;
+   api<Job[]>("/api/v1/me/saved-jobs",{},token).then(rows=>{if(active)setSaved(Array.isArray(rows)?rows.map(row=>row.id):[])}).catch(e=>{if(active)setError(e instanceof ApiError?e.message:"We couldn't load saved opportunities.")});
+   return ()=>{active=false};
+ },[token]);
 
  async function submitFilters(e:FormEvent){e.preventDefault();await loadJobs(filters);}
+ async function createAlert(){
+   if(!token){setNotice("Sign in to save a job alert for these search criteria.");return;}
+   setCreatingAlert(true);setError("");setNotice("");
+   try{
+     const parts=[filters.q,filters.location].filter(Boolean);
+     const name=parts.length?`Job alert: ${parts.join(" · ")}`:"Job alert: all matching opportunities";
+     await api("/api/v1/me/job-alerts",{method:"POST",body:JSON.stringify({name,criteria:filters,channel:"in_app",frequency:"daily"})},token);
+     setNotice("Your daily in-app job alert was saved with the current search criteria.");
+   }catch(e){setError(e instanceof ApiError?e.message:"We couldn't save this job alert.");}
+   finally{setCreatingAlert(false);}
+ }
  async function toggleSave(job:Job){
    if(!token){setNotice("Sign in to save opportunities. Your search results remain available without signing in.");return;}
    setSavingId(job.id);setError("");setNotice("");
@@ -94,6 +112,7 @@ export default function Jobs(){
          <label style={{display:"grid",gap:6,marginTop:16,fontSize:13,fontWeight:700}}>Scope<select value={filters.postingScope} onChange={e=>setFilters({...filters,postingScope:e.target.value})}><option value="">All opportunities visible to me</option><option value="public">Public</option><option value="partner_network">Member network</option><option value="organization_internal">Organization internal</option></select></label>
          <button className="btn btn-primary" type="submit" disabled={loading} style={{width:"100%",marginTop:18}}>{loading?"Searching…":"Apply filters"}</button>
          <button className="btn btn-ghost" type="button" onClick={()=>{setFilters(initialFilters);void loadJobs(initialFilters)}} disabled={loading} style={{width:"100%",marginTop:8}}>Clear filters</button>
+         <button className="btn btn-ghost" type="button" onClick={()=>void createAlert()} disabled={creatingAlert||loading} style={{width:"100%",marginTop:8}}>{creatingAlert?"Saving alert…":"Save job alert"}</button>
        </form>
      </Card>
      <div id="job-card" className="grid">
