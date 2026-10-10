@@ -95,8 +95,8 @@ This section supersedes stale “latest CI pending” wording above where the cu
 
 - The 2026-10-10 CI failure on SHA `3b44e101ff16d763ddf74382c5aa474960d9f068` was a real E2E fixture defect: mentorship search criteria changed while the UI auto-requested on each keystroke, and the explicit submit could be disabled while loading. The screen now separates draft criteria from submitted criteria; the browser test requires the submit action and asserts both 503 requests (initial and retry). The assertion has not been removed or weakened.
 - Membership workflow coverage was added for the application/correction/payment/activation chain, including exact fee validation, idempotent retry, premature activation denial and persisted history.
-- Verification case-detail routing had an incorrect path-segment count/identifier. The route now resolves the case ID from the correct segment, with owner, outsider, reviewer and invalid-transition regression assertions.
-- Latest code changes before this matrix update: `e2c0d73a2f17b20d57420fd923cd0d0121cebcc9`. The CI runs triggered by earlier commits were superseded/cancelled; **do not mark this SHA or the documentation commit PASS until fresh push and PR runs finish successfully**.
+- Verification case-detail and case-action routes had incorrect path-segment counts/identifiers. Case detail, consent, assignment, transition, claims, evidence, decision, member response and appeal paths now match the actual URL segments; owner, outsider, reviewer and invalid-transition regression assertions exercise the corrected routes.
+- Latest workflow code change before this matrix correction: `40dc3ffab21faf75f7272df2558300ed73ad1e07`. The CI runs triggered by earlier commits were superseded/cancelled; **do not mark this SHA or the documentation commit PASS until fresh push and PR runs finish successfully**.
 - Push and PR run links must be written here after verification, with the exact head SHA, run IDs, and conclusions. If one fails, preserve the failure and fix its root cause without relaxing assertions.
 
 ### G4 exit boundary
