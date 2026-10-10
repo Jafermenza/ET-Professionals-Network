@@ -75,10 +75,10 @@ test("jobs search, saved state and alert criteria persist across browser reload"
     await expect(page.getByRole("heading",{name:title,exact:true})).toBeVisible();
     await page.getByRole("button",{name:"Save opportunity"}).click();
     await expect(page.getByRole("status")).toContainText("Opportunity saved to your account.");
-    await page.reload();
-    await expect(page.getByRole("button",{name:"Remove saved opportunity"})).toBeVisible();
     await page.getByRole("button",{name:"Save job alert"}).click();
     await expect(page.getByRole("status")).toContainText("daily in-app job alert was saved");
+    await page.reload();
+    await expect(page.getByRole("button",{name:"Remove saved opportunity"})).toBeVisible();
     const headers={authorization:"Bearer "+token};
     const saved=await api.get("/api/v1/me/saved-jobs",{headers});
     expect(saved.status()).toBe(200);
@@ -106,6 +106,8 @@ test("organization screen uploads private evidence and submits verification",asy
       buffer:Buffer.from("%PDF-1.7\nBrowser private evidence fixture\n%%EOF")
     });
     await page.getByRole("button",{name:"Upload and attach private evidence"}).click();
+    await expect.poll(async()=>await page.getByRole("status").count()+await page.getByRole("alert").count()).toBeGreaterThan(0);
+    if(await page.getByRole("alert").count()) throw new Error("Private evidence upload failed: "+await page.getByRole("alert").first().innerText());
     await expect(page.getByRole("status")).toContainText("Private evidence uploaded, checksum-verified and attached");
     await page.getByRole("button",{name:"Submit for verification"}).first().click();
     await expect(page.getByRole("status")).toContainText("Verification submission was accepted by the server.");
