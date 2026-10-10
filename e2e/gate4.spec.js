@@ -41,9 +41,8 @@ async function independentReviewerToken(api,adminToken){
     reviewerId=(await me.json()).data.user_id;
   } else {
     expect(existingLogin.status(),"unknown reviewer fixture should fail as unauthenticated before registration").toBe(401);
-    const registration=await api.post("/api/v1/auth/register",{data:{email:reviewerEmail,password:reviewerPassword,firstName:"Gate4",lastName:"Reviewer"}});
-    expect(registration.status(),"independent reviewer fixture registration").toBe(201);
-    reviewerId=(await registration.json()).data.user.id;
+    const registration=await registerMember({email:reviewerEmail,password:reviewerPassword,firstName:"Gate4",lastName:"Reviewer"},randomUUID());
+    reviewerId=registration.user.id;
   }
   const adminProfile=await api.get("/api/v1/me",{headers:{authorization:"Bearer "+adminToken}});
   expect(adminProfile.status(),"admin identity for reviewer fixture audit").toBe(200);
@@ -65,14 +64,8 @@ async function ensureGate4Professional(api){
   const login=await api.post("/api/v1/auth/login",{data:{email,password}});
   if(login.status()===200) token=(await login.json()).data.token;
   else if(login.status()===401){
-   const registration=await api.post("/api/v1/auth/register",{data:{email,password,firstName:"Gate4",lastName:"Professional"}});
-   if(registration.status()===201) token=(await registration.json()).data.token;
-   else {
-    expect(registration.status(),"existing professional fixture must be recoverable without masking auth errors").toBe(409);
-    const retry=await api.post("/api/v1/auth/login",{data:{email,password}});
-    expect(retry.status()).toBe(200);
-    token=(await retry.json()).data.token;
-   }
+   const registration=await registerMember({email,password,firstName:"Gate4",lastName:"Professional"},randomUUID());
+   token=registration.token;
   } else {
    expect(login.status(),"professional fixture login must not be rate-limited or silently bypassed").toBe(200);
   }
@@ -496,9 +489,8 @@ test("formal job application is distinct from public inquiry and persists submit
    const submitted=rows.find(item=>item.job_id===jobId&&item.status==="submitted");
    expect(submitted,"persisted formal application rows: "+JSON.stringify(rows)).toBeTruthy();
    expect(submitted.cover_letter,"submitted cover letter must persist").toBe("I am applying through the formal application workflow.");
-   const outsider=await api.post("/api/v1/auth/register",{data:{email:"gate4-outsider-"+randomUUID()+"@example.test",password:"gate4-outsider-password-12345",firstName:"Other",lastName:"Candidate"}});
-   expect(outsider.status()).toBe(201);
-   const outsiderToken=(await outsider.json()).data.token;
+   const outsider=await registerMember({email:"gate4-outsider-"+randomUUID()+"@example.test",password:"gate4-outsider-password-12345",firstName:"Other",lastName:"Candidate"},randomUUID());
+   const outsiderToken=outsider.token;
    const privateProgress=await api.get("/api/v1/job-applications/"+submitted.id+"/progress",{headers:{authorization:"Bearer "+outsiderToken}});
    expect(privateProgress.status(),"another applicant must not read private application progress").toBe(404);
    const tracking=await api.get("/api/v1/me/application-tracking",{headers:{authorization:"Bearer "+account.token}});
