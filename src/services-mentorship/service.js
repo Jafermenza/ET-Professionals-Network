@@ -305,9 +305,19 @@ export async function createMentorProfile(userId,input,requestId){
   return withTransaction(async db=>{
     if(!(await activeMember(db,userId))) throw error(403,"An active membership is required to mentor.","MEMBERSHIP_REQUIRED");
     if(!(await professionalVerified(db,userId))) throw error(403,"A verified professional claim is required to become a mentor.","PROFESSIONAL_VERIFICATION_REQUIRED");
-    if(!input.headline) throw error(400,"headline is required.","VALIDATION_ERROR");
-    const row=(await db.query("insert into mentor_profile(user_id,headline,bio,expertise,languages,mentoring_modes,max_active_mentees,visibility) values($1,$2,$3,$4,$5,$6,$7,$8) on conflict(user_id) do update set headline=excluded.headline,bio=excluded.bio,expertise=excluded.expertise,languages=excluded.languages,mentoring_modes=excluded.mentoring_modes,max_active_mentees=excluded.max_active_mentees,visibility=excluded.visibility,status='active',updated_at=now() returning *",[userId,input.headline,input.bio||null,JSON.stringify(normalizeArray(input.expertise)),JSON.stringify(normalizeArray(input.languages)),JSON.stringify(normalizeArray(input.mentoringModes||["remote"])),input.maxActiveMentees||3,input.visibility||"members"])).rows[0];
-    await audit(db,userId,"mentorship.profile_updated","mentor_profile",row.id,requestId);
+    const headline=String(input.headline||"").trim();
+    if(!headline) throw error(400,"headline is required.","VALIDATION_ERROR");
+    const maxActiveMentees=input.maxActiveMentees===undefined?3:Number(input.maxActiveMentees);
+    if(!Number.isInteger(maxActiveMentees)||maxActiveMentees<1||maxActiveMentees>50) throw error(400,"maxActiveMentees must be an integer from 1 to 50.","VALIDATION_ERROR");
+    const visibility=input.visibility||"members";
+    if(!["members","public"].includes(visibility)) throw error(400,"visibility must be members or public.","VALIDATION_ERROR");
+    const existing=(await db.query("select id,status from mentor_profile where user_id=$1 for update",[userId])).rows[0];
+    if(existing?.status==="closed") throw error(409,"Closed mentor profiles cannot be reopened.","INVALID_STATE");
+    const values=[headline,String(input.bio||"").trim()||null,JSON.stringify(normalizeArray(input.expertise)),JSON.stringify(normalizeArray(input.languages)),JSON.stringify(normalizeArray(input.mentoringModes||["remote"])),maxActiveMentees,visibility];
+    const row=existing
+      ? (await db.query("update mentor_profile set headline=$1,bio=$2,expertise=$3,languages=$4,mentoring_modes=$5,max_active_mentees=$6,visibility=$7,updated_at=now() where id=$8 returning *",[...values,existing.id])).rows[0]
+      : (await db.query("insert into mentor_profile(user_id,headline,bio,expertise,languages,mentoring_modes,max_active_mentees,visibility) values($1,$2,$3,$4,$5,$6,$7,$8) returning *",[userId,...values])).rows[0];
+    await audit(db,userId,"mentorship.profile_updated","mentor_profile",row.id,requestId,{status:row.status});
     return row;
   });
 }
@@ -343,9 +353,15 @@ export async function setMentorAvailability(profileId,userId,input,requestId){
     if(!p) throw error(404,"Mentor profile not found.","NOT_FOUND");
     if(p.user_id!==userId) throw error(403,"Only the mentor can manage availability.","FORBIDDEN");
     if(!Array.isArray(input.slots)) throw error(400,"slots must be an array.","VALIDATION_ERROR");
-    await db.query("delete from mentor_availability where mentor_profile_id=$1",[profileId]);
     for(const s of input.slots){
       if(!Number.isInteger(Number(s.dayOfWeek))||Number(s.dayOfWeek)<0||Number(s.dayOfWeek)>6) throw error(400,"dayOfWeek must be 0-6.","VALIDATION_ERROR");
+      const start=String(s.startTime||""),end=String(s.endTime||"");
+      const validTime=v=>/^([01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d)?$/.test(v);
+      if(!validTime(start)||!validTime(end)||start>=end) throw error(400,"Availability start and end times must be valid and end after start on the same day.","VALIDATION_ERROR");
+      if(s.timezone!==undefined&&(!String(s.timezone).trim()||String(s.timezone).length>80)) throw error(400,"timezone must be a valid non-empty timezone identifier.","VALIDATION_ERROR");
+    }
+    await db.query("delete from mentor_availability where mentor_profile_id=$1",[profileId]);
+    for(const s of input.slots){
       await db.query("insert into mentor_availability(mentor_profile_id,day_of_week,start_time,end_time,timezone) values($1,$2,$3,$4,$5)",[profileId,Number(s.dayOfWeek),s.startTime,s.endTime,s.timezone||"Africa/Addis_Ababa"]);
     }
     await audit(db,userId,"mentorship.availability_updated","mentor_profile",profileId,requestId,{slotCount:input.slots.length});
