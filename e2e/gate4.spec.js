@@ -1,5 +1,6 @@
 import { test, expect, request as playwrightRequest } from "@playwright/test";
 import { createHash } from "node:crypto";
+let gate4RegisteredAccount=null;
 import { getPool, closePool } from "../src/platform/db.js";
 
 const API_BASE = process.env.API_BASE_URL || "http://127.0.0.1:3000";
@@ -238,6 +239,7 @@ test("profile and notification preferences save to PostgreSQL and survive reload
    const registered=await api.post("/api/v1/auth/register",{data:{email,password,firstName:"Profile",lastName:"Acceptance"+suffix}});
    expect(registered.status()).toBe(201);
    const registeredData=(await registered.json()).data;
+   gate4RegisteredAccount={email,password,token:registeredData.token};
    await browserLogin(page,email,password);
    await page.goto("/profile");
    await expect(page.getByLabel("Professional headline")).toBeVisible();
@@ -269,10 +271,14 @@ test("formal job application is distinct from public inquiry and persists submit
  const email="browser-applicant-"+suffix+"@example.test",password="browser-applicant-password-12345";
  try{
    const {title,jobId}=await createPublishedJob(api,token);
-   const registered=await api.post("/api/v1/auth/register",{data:{email,password,firstName:"Formal",lastName:"Applicant"+suffix}});
-   expect(registered.status()).toBe(201);
-   const account=(await registered.json()).data;
-   await browserLogin(page,email,password);
+   let account=gate4RegisteredAccount;
+   if(!account){
+     const registered=await api.post("/api/v1/auth/register",{data:{email,password,firstName:"Formal",lastName:"Applicant"+suffix}});
+     expect(registered.status()).toBe(201);
+     account=(await registered.json()).data;
+     gate4RegisteredAccount={email,password,token:account.token};
+   }
+   await browserLogin(page,account.email,account.password);
    await page.goto("/jobs");
    await page.getByPlaceholder("Search job title or description").fill(title);
    await page.getByRole("button",{name:"Apply filters"}).click();
