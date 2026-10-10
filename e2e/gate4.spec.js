@@ -211,6 +211,18 @@ test("mentorship request form supports a goal without a preferred mentor",async(
     expect(detail.status()).toBe(200);
     expect((await detail.json()).data.goals).toBe("Browser E2E goal: improve professional leadership.");
     expect((await detail.json()).data.preferred_mentor_user_id).toBeNull();
+    const mine=await api.get("/api/v1/me/mentorship-requests",{headers:{authorization:"Bearer "+token}});
+    expect(mine.status()).toBe(200);
+    expect((await mine.json()).data.some(row=>row.id===id&&row.goals==="Browser E2E goal: improve professional leadership.")).toBeTruthy();
+    const other=await api.post("/api/v1/auth/register",{data:{email:"mentorship-private-"+Date.now()+"@example.test",password:"mentorship-private-password-12345",firstName:"Private",lastName:"Requester"+Date.now()}});
+    expect(other.status()).toBe(201);
+    const otherToken=(await other.json()).data.token;
+    const privateRead=await api.get("/api/v1/mentorship/requests/"+id,{headers:{authorization:"Bearer "+otherToken}});
+    expect(privateRead.status()).toBe(404,"another user's mentorship request must not be disclosed");
+    const missingGoal=await api.post("/api/v1/mentorship/requests",{headers:{authorization:"Bearer "+token},data:{goals:"   "}});
+    expect(missingGoal.status()).toBe(400,"a formal mentorship request must include a meaningful goal");
+    await page.reload();
+    await expect(page.getByText("Browser E2E goal: improve professional leadership.")).toBeVisible();
   }finally{await api.dispose();}
 });
 
@@ -275,7 +287,7 @@ test("formal job application is distinct from public inquiry and persists submit
  }finally{await api.dispose();}
 });
 
-test("service requests enforce membership, self-request, duplicate, and participant transitions",async()=>{
+test("service requests enforce membership, self-request, duplicate, and participant transitions",async({page})=>{
  const {api,token}=await apiContext();
  const suffix=Date.now()+"-"+Math.random().toString(16).slice(2),password="browser-service-password-12345";
  try{
@@ -305,8 +317,11 @@ test("service requests enforce membership, self-request, duplicate, and particip
    expect(duplicate.status()).toBe(409);
    const requesterCannotAccept=await api.post("/api/v1/service-requests/"+request.id+"/status",{headers,data:{status:"accepted"}});
    expect(requesterCannotAccept.status()).toBe(403);
-   const providerAccept=await api.post("/api/v1/service-requests/"+request.id+"/status",{headers:{authorization:"Bearer "+token},data:{status:"accepted"}});
-   expect(providerAccept.status()).toBe(200);
+   await browserLogin(page);
+   await page.goto("/services");
+   await expect(page.getByRole("button",{name:"Accept request"})).toBeVisible();
+   await page.getByRole("button",{name:"Accept request"}).click();
+   await expect(page.getByRole("status")).toContainText("Service request updated: accepted");
    const list=await api.get("/api/v1/me/service-requests",{headers});
    expect(list.status()).toBe(200);
    expect((await list.json()).data.some(row=>row.id===request.id&&row.status==="accepted")).toBeTruthy();
