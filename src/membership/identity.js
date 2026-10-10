@@ -18,8 +18,18 @@ export function normalizeName(value){
   return String(value||"").trim().toLowerCase().normalize("NFKC").replace(/[^\p{L}\p{N}]+/gu," ").replace(/\s+/g," ").trim();
 }
 
+export function validatePassword(password){
+  if(typeof password!=="string" || password.length<10){
+    const error=new Error("Use a password with at least 10 characters.");
+    error.statusCode=400;
+    error.code="PASSWORD_TOO_SHORT";
+    throw error;
+  }
+  return password;
+}
+
 export function hashPassword(password){
-  if(typeof password!=="string" || password.length<10) throw new Error("Password must be at least 10 characters.");
+  validatePassword(password);
   const salt=crypto.randomBytes(16);
   const hash=crypto.scryptSync(password,salt,64);
   return `scrypt$${salt.toString("base64url")}$${hash.toString("base64url")}`;
@@ -35,6 +45,7 @@ export function verifyPassword(password,encoded){
 }
 
 export function validatePersonInput(input={}){
+  if(Object.prototype.hasOwnProperty.call(input,"password")) validatePassword(input.password);
   const firstName=String(input.firstName||"").trim();
   const middleName=String(input.middleName||"").trim()||null;
   const lastName=String(input.lastName||"").trim();

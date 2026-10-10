@@ -1,22 +1,59 @@
 "use client";
-import Link from "next/link";
 import {useEffect,useState} from "react";
-import {ArrowRight,BriefcaseBusiness,Building2,ClipboardList,ShieldCheck,UserRound,UsersRound,LayoutDashboard} from "lucide-react";
+import {useRouter} from "next/navigation";
+import {ArrowRight,BriefcaseBusiness,ClipboardList,LogOut,RefreshCw,ShieldCheck,UserRound} from "lucide-react";
 import {Card,Badge} from "../../components/ui";
 import {api} from "../../lib/api";
 import {useUiStore} from "../../lib/store";
-type CurrentUser={id:string;email:string;status:string;roles:string[]};
-const tiles=[{href:"/profile",title:"My professional profile",description:"Manage your professional identity and profile.",icon:UserRound},{href:"/apply",title:"Membership & applications",description:"Apply for membership or register an organization.",icon:ClipboardList},{href:"/track",title:"Track progress",description:"View your own applications when signed in, or use public inquiry tracking.",icon:ArrowRight},{href:"/jobs",title:"Jobs & opportunities",description:"Explore published opportunities and start an inquiry.",icon:BriefcaseBusiness},{href:"/mentorship",title:"Mentorship",description:"Explore mentoring and request support.",icon:UsersRound},{href:"/organizations",title:"Organization workspace",description:"Register an organization or access authorized partner functions.",icon:Building2}];
-const roleLabels:Record<string,string>={system_admin:"System administrator",super_admin:"Super administrator",member:"Member",mentor:"Mentor",mentee:"Mentee",reviewer:"Reviewer",finance_officer:"Finance officer",field_officer:"Field officer",content_event_manager:"Content & event manager",learning_admin:"Learning administrator",project_manager:"Project manager"};
+
+type Profile={email:string;display_name?:string;first_name?:string;last_name?:string;completion_percent?:number;status?:string};
+type TrackingItem={id:string;type:string;title:string;subtitle?:string;status:string;statusLabel?:string;updatedAt?:string;nextAction?:string};
+type Tracking={summary?:{total?:number;active?:number;jobApplications?:number};items?:TrackingItem[]};
+
 export default function Dashboard(){
- const token=useUiStore(s=>s.token);const [user,setUser]=useState<CurrentUser|null>(null);const [error,setError]=useState("");const [loading,setLoading]=useState(false);
- useEffect(()=>{let live=true;if(!token){setUser(null);setError("");return;}setLoading(true);api<CurrentUser>("/api/v1/me",{},token).then(value=>{if(live)setUser(value)}).catch(err=>{if(live){setUser(null);setError(err instanceof Error?err.message:"Could not verify your session. Please sign in again.")}}).finally(()=>{if(live)setLoading(false)});return()=>{live=false}},[token]);
- const roles=user?.roles||[];const isAdmin=roles.includes("system_admin")||roles.includes("super_admin");
- return <div className="grid" style={{gap:20}}>
-  <div><div className="eyebrow">MPA workspace</div><h1 className="h1">{user?"Welcome back":"Your next step starts here"}</h1><p className="muted">{user?"Signed in as "+user.email+". Your workspace links are shown below.":"A simple starting point for professional, application and partner activities."}</p>{loading&&<div className="muted" role="status">Checking your session and permissions…</div>}{user&&<div className="row" style={{justifyContent:"flex-start",flexWrap:"wrap"}}><Badge>Account active</Badge>{roles.map(role=><Badge key={role}>{roleLabels[role]||role.replace(/_/g," ")}</Badge>)}</div>}{error&&<div className="form-error" role="alert">{error} <Link href="/login?next=/dashboard">Sign in again</Link></div>}{!token&&<div className="form-success">You are browsing publicly. <Link href="/login?next=/dashboard">Login</Link> to access private records.</div>}</div>
- <div className="grid grid-3">{tiles.map(({href,title,description,icon:Icon})=><Card key={href}><Icon size={23} color="var(--primary)"/><h2 className="h2">{title}</h2><p className="muted">{description}</p><Link className="btn btn-ghost" href={href}>Open <ArrowRight size={16}/></Link></Card>)}</div>
- {isAdmin&&<Card><div className="row"><div><h2 className="h2">Administration</h2><p className="muted">System administration is available because your verified account has an administrator role. Protected operations are still checked by the API.</p></div><ShieldCheck color="var(--primary)"/></div><Link className="btn btn-ghost" href="/admin">Open admin workspace</Link></Card>}
- {user&&roles.some(r=>["reviewer","finance_officer","field_officer","content_event_manager","learning_admin","project_manager"].includes(r))&&<Card><div className="row"><LayoutDashboard color="var(--primary)"/><div><h2 className="h2">Assigned operations</h2><p className="muted">Your account has operational roles. Only implemented workspaces are linked here; specialized review, finance, learning, event and project queues still need their own scoped screens before those workflows can be considered complete.</p></div></div><div className="row" style={{justifyContent:"flex-start",flexWrap:"wrap"}}>{roles.filter(r=>["field_officer"].includes(r)).map(r=><Link key={r} className="btn btn-ghost" href="/field">Open field workspace <ArrowRight size={16}/></Link>)}</div></Card>}
- <p className="muted">Public pages remain available without signing in. Private records and administrative actions still require authorization and resource-scope checks.</p>
- </div>
+  const router=useRouter();
+  const token=useUiStore(s=>s.token),hydrated=useUiStore(s=>s.hydrated),clearToken=useUiStore(s=>s.clearToken);
+  const [profile,setProfile]=useState<Profile|null>(null);
+  const [tracking,setTracking]=useState<Tracking|null>(null);
+  const [error,setError]=useState("");
+  const [loading,setLoading]=useState(false);
+  async function load(){
+    if(!token)return;
+    setLoading(true);setError("");
+    try{
+      const me=await api<Profile>("/api/v1/me",{},token);
+      setProfile(me);
+      try {
+        const items=await api<Tracking>("/api/v1/me/application-tracking",{},token);
+        setTracking(items);
+      } catch (trackingError) {
+        setTracking(null);
+        setError(trackingError instanceof Error?trackingError.message:"Your profile loaded, but application tracking is temporarily unavailable.");
+      }
+    }catch(e){
+      setError(e instanceof Error?e.message:"We could not load your workspace. Please try again.");
+    }finally{setLoading(false)}
+  }
+  useEffect(()=>{if(hydrated&&token)void load();else if(hydrated){setProfile(null);setTracking(null)}},[token,hydrated]);
+  async function logout(){
+    try{if(token)await api("/api/v1/auth/logout",{method:"POST"},token)}catch{/* Clear the local session even if the server session has already expired. */}
+    clearToken();router.replace("/login");
+  }
+  if(!hydrated)return <div className="auth-page"><Card><h1 className="h1">Restoring your session…</h1><p className="muted">Please wait while we check this browser session.</p></Card></div>;
+  if(!token)return <div className="auth-page"><Card><div className="eyebrow">Member workspace</div><h1 className="h1">Sign in to your dashboard.</h1><p className="muted">Your dashboard brings your profile and application progress together. Sign in to see your private information.</p><div className="landing-actions"><a className="btn btn-primary" href="/login">Sign in</a><a className="btn btn-ghost" href="/register">Create account</a></div></Card></div>;
+  const name=profile?.display_name||[profile?.first_name,profile?.last_name].filter(Boolean).join(" ")||profile?.email||"Your workspace";
+  return <div className="grid" style={{gap:20}}>
+    <div className="row"><div><div className="eyebrow">Member workspace</div><h1 className="h1">Welcome, {name}.</h1><p className="muted">Your account, applications and next steps in one place.</p></div><button className="btn btn-ghost" onClick={logout}><LogOut size={16}/> Sign out</button></div>
+    {error&&<div className="form-error" role="alert">{error} <button className="btn btn-ghost" onClick={load} disabled={loading}><RefreshCw size={15}/> Try again</button></div>}
+    <div className="grid grid-3">
+      <Card><UserRound color="var(--primary)"/><div className="eyebrow">Profile completion</div><div className="metric">{profile?.completion_percent??0}%</div><a className="btn btn-ghost" href="/profile">Review profile <ArrowRight size={15}/></a></Card>
+      <Card><ClipboardList color="var(--primary)"/><div className="eyebrow">Applications</div><div className="metric">{tracking?.summary?.total??tracking?.items?.length??0}</div><a className="btn btn-ghost" href="/track">View application tracking <ArrowRight size={15}/></a></Card>
+      <Card><ShieldCheck color="var(--primary)"/><div className="eyebrow">Account status</div><div className="h2">{profile?.status||"Loading…"}</div><p className="muted">Private profile and application details are available only to your authenticated account.</p></Card>
+    </div>
+    <div className="row"><div><h2 className="h2">Your recent applications</h2><p className="muted">Current status and the next useful action.</p></div><button className="btn btn-ghost" onClick={load} disabled={loading}><RefreshCw size={15}/> {loading?"Refreshing…":"Refresh"}</button></div>
+    {!tracking&&!error&&<Card><p className="muted">{loading?"Loading your applications…":"Your application summary will appear here."}</p></Card>}
+    {tracking?.items?.length? <div className="grid">{tracking.items.slice(0,5).map(item=><Card key={item.type+item.id}><div className="row"><div><Badge>{item.type}</Badge><h3 className="h2" style={{margin:"8px 0 4px"}}>{item.title}</h3><p className="muted">{item.subtitle||"Application progress"}</p></div><Badge tone="slate">{item.statusLabel||item.status}</Badge></div><div className="row"><span className="muted">Next action: {item.nextAction||"Check tracking for updates"}</span></div></Card>)}</div>:null}
+    {tracking&&(!tracking.items||tracking.items.length===0)&&<Card><h2 className="h2">No applications yet</h2><p className="muted">Choose a path to begin. Your application status will appear here after submission.</p><div className="landing-actions"><a className="btn btn-primary" href="/apply">Start membership application</a><a className="btn btn-ghost" href="/apply/job"><BriefcaseBusiness size={16}/> Explore job applications</a></div></Card>}
+    <div className="landing-actions"><a className="btn btn-primary" href="/apply">Apply / membership</a><a className="btn btn-ghost" href="/jobs">Browse opportunities</a><a className="btn btn-ghost" href="/profile">Profile settings</a><a className="btn btn-ghost" href="/track">Application tracking</a></div>
+  </div>;
 }
