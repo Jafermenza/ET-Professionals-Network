@@ -264,8 +264,8 @@ const server=http.createServer(async (req,res)=>{
       return ok(res,await verification.createCase(b.subjectUserId||identity.sub,b.programCode,identity.sub,requestId),requestId,201);
     }
     if(req.method==="POST" && parts.length===5 && p.startsWith("api/v1/verification/cases/") && parts[4]==="consent"){ const b=await body(req); return ok(res,await verification.giveConsent(parts[3],identity.sub,b.consentVersion,requestId),requestId); }
-    if(req.method==="GET" && parts.length===4 && p.startsWith("api/v1/verification/cases/")){
-      const c=await verification.getCase(parts[3],identity.sub);
+    if(req.method==="GET" && parts.length===5 && p.startsWith("api/v1/verification/cases/")){
+      const c=await verification.getCase(parts[4],identity.sub);
       return ok(res,c,requestId);
     }
     if(req.method==="GET" && p==="api/v1/review/verification/cases"){
