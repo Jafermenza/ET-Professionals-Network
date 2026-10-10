@@ -52,6 +52,44 @@ async function independentReviewerToken(api,adminToken){
   return cachedReviewerToken;
 }
 
+async function ensureGate4Professional(api){
+ const email="gate4-professional-ci@example.test",password="gate4-professional-password-12345";
+ let token;
+ const login=await api.post("/api/v1/auth/login",{data:{email,password}});
+ if(login.status()===200) token=(await login.json()).data.token;
+ else {
+  expect(login.status()).toBe(401);
+  const registration=await api.post("/api/v1/auth/register",{data:{email,password,firstName:"Gate4",lastName:"Professional"}});
+  if(registration.status()===201) token=(await registration.json()).data.token;
+  else {
+   expect(registration.status()).toBe(409);
+   const retry=await api.post("/api/v1/auth/login",{data:{email,password}});
+   expect(retry.status()).toBe(200);
+   token=(await retry.json()).data.token;
+  }
+ }
+ const meResponse=await api.get("/api/v1/me",{headers:{authorization:"Bearer "+token}});
+ expect(meResponse.status()).toBe(200);
+ const me=(await meResponse.json()).data,userId=me.user_id,db=getPool();
+ const product=(await db.query("select id from membership_product where product_code='BASIC'")).rows[0];
+ expect(product).toBeTruthy();
+ const active=(await db.query("select id from membership_record where user_id=$1 and status='active' limit 1",[userId])).rows[0];
+ if(!active){
+  const existing=(await db.query("select id from membership_record where user_id=$1 order by created_at desc limit 1",[userId])).rows[0];
+  if(existing) await db.query("update membership_record set status='active',start_date=current_date,end_date=current_date+365 where id=$1",[existing.id]);
+  else await db.query("insert into membership_record(user_id,membership_product_id,membership_number,status,start_date,end_date,source) values($1,$2,$3,'active',current_date,current_date+365,'admin')",[userId,product.id,"G4-PROFESSIONAL-"+userId.slice(0,8)]);
+ }
+ await db.query("insert into verification_claim_type(claim_code,name,active) values('professional_certification','Professional certification',true) on conflict(claim_code) do update set active=true");
+ const claimType=(await db.query("select id from verification_claim_type where claim_code='professional_certification'")).rows[0];
+ const verified=(await db.query("select vc.id from verification_claim vc join verification_case c on c.id=vc.case_id where c.subject_user_id=$1 and lower(vc.claim_code_snapshot)='professional_certification' and vc.status='verified' limit 1",[userId])).rows[0];
+ if(!verified){
+  const program=(await db.query("insert into verification_program(program_code,name,purpose,requires_consent,active) values('GATE4_PROFESSIONAL_FIXTURE','Gate 4 professional fixture','Test-only verified professional fixture',false,true) on conflict(program_code) do update set active=true returning id")).rows[0];
+  const verificationCase=(await db.query("insert into verification_case(program_id,subject_user_id,status,purpose_snapshot,opened_by) values($1,$2,'review','Gate 4 test fixture: verified professional claim',$2) returning id",[program.id,userId])).rows[0];
+  await db.query("insert into verification_claim(case_id,claim_type_id,claim_code_snapshot,claimed_value,status,verified_at) values($1,$2,'professional_certification',$3,'verified',now())",[verificationCase.id,claimType.id,JSON.stringify({fixture:"Gate 4 automated test"})]);
+ }
+ return {email,password,token,userId,displayName:me.display_name};
+}
+
 async function createVerifiedOrganization(api,token,prefix){
   const suffix=Date.now()+"-"+Math.random().toString(16).slice(2);
   const name=prefix+" "+suffix;
@@ -268,12 +306,10 @@ test("mentorship request form supports a goal without a preferred mentor",async(
 test("profile and notification preferences save to PostgreSQL and survive reload",async({page})=>{
  const {api}=await apiContext();
  const suffix=Date.now()+"-"+Math.random().toString(16).slice(2);
- const email="browser-profile-"+suffix+"@example.test",password="browser-profile-password-12345";
  try{
-   const registered=await api.post("/api/v1/auth/register",{data:{email,password,firstName:"Profile",lastName:"Acceptance"+suffix}});
-   expect(registered.status()).toBe(201);
-   const registeredData=(await registered.json()).data;
-   await browserLogin(page,email,password);
+   const account=await ensureGate4Professional(api);
+   const registeredData={token:account.token,user:{id:account.userId}};
+   await browserLogin(page,account.email,account.password);
    await page.goto("/profile");
    await expect(page.getByLabel("Professional headline")).toBeVisible();
    await page.getByLabel("Professional headline").fill("Gate 4 persisted profile "+suffix);
@@ -498,7 +534,7 @@ test("mentor eligibility, profile lifecycle, availability, match acceptance, ses
    const adminId=(await adminMe.json()).data.user_id;
    const mentorMe=await api.get("/api/v1/me",{headers:{authorization:"Bearer "+mentor.token}});
    expect(mentorMe.status()).toBe(200);
-   const mentorId=(await mentorMe.json()).data.user_id;
+   const mentorId=mentor.userId;
    const db=getPool();
    const product=(await db.query("select id from membership_product where product_code='BASIC'")).rows[0];
    expect(product).toBeTruthy();
