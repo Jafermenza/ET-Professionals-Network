@@ -545,3 +545,64 @@ test("mentor eligibility, profile lifecycle, availability, match acceptance, ses
    expect(reopen.status()).toBe(409,"closed mentor profiles cannot be reopened through create/upsert");
  }finally{await api.dispose();await closePool();}
 });
+
+test("talent directory uses live consent-scoped profiles and inquiry contact-release lifecycle",async({page})=>{
+ const {api,token:adminToken}=await apiContext();
+ expect(gate4RegisteredAccount,"the earlier profile fixture supplies a directory professional").toBeTruthy();
+ const professional=gate4RegisteredAccount;
+ try{
+   const me=await api.get("/api/v1/me",{headers:{authorization:"Bearer "+professional.token}});
+   expect(me.status()).toBe(200);
+   const professionalId=(await me.json()).data.user_id;
+   const displayName=(await me.json()).data.display_name;
+   const profileSave=await api.patch("/api/v1/me/talent-profile",{headers:{authorization:"Bearer "+professional.token},data:{professionalTitle:"Gate 4 talent discovery specialist",headline:"Gate 4 talent discovery fixture",bio:"Profile for consent-controlled directory acceptance.",directorySummary:"Live profile fixture; no private evidence is exposed.",yearsExperience:8,availabilityStatus:"open_to_opportunities",locationLabel:"Addis Ababa",visibility:"public"}});
+   expect(profileSave.status()).toBe(200);
+   const consent=await api.patch("/api/v1/me/talent-visibility",{headers:{authorization:"Bearer "+professional.token},data:{directoryVisible:true,showIdentityBadge:false,showProfessionalBadge:true,showExperienceBadge:false,showLocation:true,showExperience:true,showContact:true}});
+   expect(consent.status()).toBe(200);
+   const anonymousSearch=await api.get("/api/v1/talent?q=Gate%204%20talent%20discovery");
+   expect(anonymousSearch.status()).toBe(200);
+   expect((await anonymousSearch.json()).data.items.some(row=>row.user_id===professionalId)).toBeTruthy();
+   await browserLogin(page);
+   await page.goto("/network");
+   await page.getByPlaceholder("Professional title, headline or summary").fill("Gate 4 talent discovery");
+   await page.getByRole("button",{name:"Search professionals"}).click();
+   await expect(page.getByRole("heading",{name:displayName,exact:true})).toBeVisible();
+   await page.getByRole("button",{name:"View professional profile"}).click();
+   await expect(page.getByText("Gate 4 talent discovery fixture",{exact:true})).toBeVisible();
+   await page.getByLabel("Saved search name").fill("Gate 4 live talent search");
+   await page.getByRole("button",{name:"Save search"}).click();
+   await expect(page.getByRole("status")).toContainText("Talent search saved");
+   await page.getByLabel("Subject").fill("Gate 4 opportunity inquiry");
+   await page.getByLabel("Message").fill("Please discuss an opportunity that fits the verified professional profile.");
+   await page.getByRole("button",{name:"Send opportunity inquiry"}).click();
+   await expect(page.getByRole("status")).toContainText("professional inquiry was recorded");
+   const duplicate=await api.post("/api/v1/talent/inquiries",{headers:{authorization:"Bearer "+adminToken},data:{professionalUserId:professionalId,subject:"Gate 4 opportunity inquiry",message:"Duplicate pending inquiry."}});
+   expect(duplicate.status()).toBe(409);
+   const beforeResponse=await api.get("/api/v1/talent/inquiries",{headers:{authorization:"Bearer "+adminToken}});
+   expect(beforeResponse.status()).toBe(200);
+   const inquiry=(await beforeResponse.json()).data.find(row=>row.subject==="Gate 4 opportunity inquiry"&&row.requester_user_id===(await api.get("/api/v1/me",{headers:{authorization:"Bearer "+adminToken}}).then(r=>r.json())).data.user_id);
+   expect(inquiry).toBeTruthy();
+   expect(inquiry.contact_release).toBeFalsy();
+   await page.getByRole("button",{name:"Logout"}).click();
+   await browserLogin(page,professional.email,professional.password);
+   await page.goto("/network");
+   const incoming=page.locator(".case-row").filter({hasText:"Gate 4 opportunity inquiry"});
+   await expect(incoming.getByRole("button",{name:"Accept and release contact"})).toBeVisible();
+   await incoming.getByRole("button",{name:"Accept and release contact"}).click();
+   await expect(page.getByRole("status")).toContainText("Inquiry accepted. Contact release was explicitly approved.");
+   const afterResponse=await api.get("/api/v1/talent/inquiries",{headers:{authorization:"Bearer "+adminToken}});
+   expect(afterResponse.status()).toBe(200);
+   const accepted=(await afterResponse.json()).data.find(row=>row.id===inquiry.id);
+   expect(accepted.status).toBe("accepted");
+   expect(accepted.contact_release).toBeTruthy();
+   expect(typeof accepted.professional_email).toBe("string");
+   const memberOnly=await api.patch("/api/v1/me/talent-profile",{headers:{authorization:"Bearer "+professional.token},data:{visibility:"members"}});
+   expect(memberOnly.status()).toBe(200);
+   const hiddenFromPublic=await api.get("/api/v1/talent?q=Gate%204%20talent%20discovery");
+   expect(hiddenFromPublic.status()).toBe(200);
+   expect((await hiddenFromPublic.json()).data.items.some(row=>row.user_id===professionalId)).toBeFalsy();
+   const visibleToMember=await api.get("/api/v1/talent?q=Gate%204%20talent%20discovery",{headers:{authorization:"Bearer "+adminToken}});
+   expect(visibleToMember.status()).toBe(200);
+   expect((await visibleToMember.json()).data.items.some(row=>row.user_id===professionalId)).toBeTruthy();
+ }finally{await api.dispose();await closePool();}
+});
