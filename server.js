@@ -119,7 +119,7 @@ const server=http.createServer(async (req,res)=>{
       const viewer=req.headers.authorization?.startsWith("Bearer ")?await auth(req):null;
       return ok(res,await talent.searchTalent(viewer?.sub||null,{q:q.get("q"),occupation:q.get("occupation"),industry:q.get("industry"),educationLevel:q.get("educationLevel"),qualificationType:q.get("qualificationType"),fieldOfStudy:q.get("fieldOfStudy"),availability:q.get("availability"),location:q.get("location"),verifiedClaim:q.get("verifiedClaim"),limit:q.get("limit"),offset:q.get("offset")}),requestId);
     }
-    if(req.method==="GET" && parts.length===4 && p.startsWith("api/v1/talent/")){
+    if(req.method==="GET" && parts.length===4 && p.startsWith("api/v1/talent/") && !["inquiries","saved-searches"].includes(parts[3])){
       const viewer=req.headers.authorization?.startsWith("Bearer ")?await auth(req):null;
       return ok(res,await talent.getTalent(parts[3],viewer?.sub||null),requestId);
     }

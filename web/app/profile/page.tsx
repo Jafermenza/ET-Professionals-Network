@@ -14,7 +14,7 @@ export default function Profile(){
  const token=useUiStore(s=>s.token),setToken=useUiStore(s=>s.setToken),clearToken=useUiStore(s=>s.clearToken),language=useUiStore(s=>s.language);
  const [profile,setProfile]=useState<Profile|null>(null),[form,setForm]=useState(blank),[tokenDraft,setTokenDraft]=useState("");
  const [preferences,setPreferences]=useState<Preferences>({email_enabled:true,sms_enabled:true,push_enabled:true,in_app_enabled:true});
- const [talentProfile,setTalentProfile]=useState<TalentProfile|null>(null);
+ const [,setTalentProfile]=useState<TalentProfile|null>(null);
  const [talentForm,setTalentForm]=useState({professionalTitle:"",yearsExperience:"",availabilityStatus:"",locationLabel:"",directorySummary:"",headline:"",bio:"",visibility:"members"});
  const [talentVisibility,setTalentVisibility]=useState<TalentVisibility>(emptyTalentVisibility);
  const [savingTalent,setSavingTalent]=useState(false),[savingVisibility,setSavingVisibility]=useState(false);
