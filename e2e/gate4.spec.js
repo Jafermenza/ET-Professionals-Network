@@ -1,4 +1,5 @@
 import { test, expect, request as playwrightRequest } from "@playwright/test";
+import { createHash } from "node:crypto";
 import { getPool, closePool } from "../src/platform/db.js";
 
 const API_BASE = process.env.API_BASE_URL || "http://127.0.0.1:3000";
@@ -211,4 +212,133 @@ test("mentorship request form supports a goal without a preferred mentor",async(
     expect((await detail.json()).data.goals).toBe("Browser E2E goal: improve professional leadership.");
     expect((await detail.json()).data.preferred_mentor_user_id).toBeNull();
   }finally{await api.dispose();}
+});
+
+
+test("profile and notification preferences save to PostgreSQL and survive reload",async({page})=>{
+ const {api}=await apiContext();
+ const suffix=Date.now()+"-"+Math.random().toString(16).slice(2);
+ const email="browser-profile-"+suffix+"@example.test",password="browser-profile-password-12345";
+ try{
+   const registered=await api.post("/api/v1/auth/register",{data:{email,password,firstName:"Profile",lastName:"Acceptance"+suffix}});
+   expect(registered.status()).toBe(201);
+   const registeredData=(await registered.json()).data;
+   await browserLogin(page,email,password);
+   await page.goto("/profile");
+   await expect(page.getByLabel("Professional headline")).toBeVisible();
+   await page.getByLabel("Professional headline").fill("Gate 4 persisted profile "+suffix);
+   await page.getByLabel("Professional bio").fill("Profile update must persist through the account API.");
+   await page.getByLabel("Professional directory visibility").selectOption("members");
+   await page.getByRole("button",{name:"Save profile"}).click();
+   await expect(page.getByRole("status")).toContainText("Profile changes were saved");
+   await page.getByLabel("Email",{exact:true}).uncheck();
+   await page.getByRole("button",{name:"Save notification preferences"}).click();
+   await expect(page.getByRole("status")).toContainText("Notification preferences were saved");
+   await page.reload();
+   await expect(page.getByLabel("Professional headline")).toHaveValue("Gate 4 persisted profile "+suffix);
+   await expect(page.getByLabel("Professional directory visibility")).toHaveValue("members");
+   await expect(page.getByLabel("Email",{exact:true})).not.toBeChecked();
+   const headers={authorization:"Bearer "+registeredData.token};
+   const me=await api.get("/api/v1/me",{headers});
+   expect(me.status()).toBe(200);
+   expect((await me.json()).data.headline).toBe("Gate 4 persisted profile "+suffix);
+   const prefs=await api.get("/api/v1/notifications/preferences",{headers});
+   expect(prefs.status()).toBe(200);
+   expect((await prefs.json()).data.email_enabled).toBe(false);
+ }finally{await api.dispose();}
+});
+
+test("formal job application is distinct from public inquiry and persists submitted state",async({page})=>{
+ const {api,token}=await apiContext();
+ const suffix=Date.now()+"-"+Math.random().toString(16).slice(2);
+ const email="browser-applicant-"+suffix+"@example.test",password="browser-applicant-password-12345";
+ try{
+   const {title,jobId}=await createPublishedJob(api,token);
+   const registered=await api.post("/api/v1/auth/register",{data:{email,password,firstName:"Formal",lastName:"Applicant"+suffix}});
+   expect(registered.status()).toBe(201);
+   const account=(await registered.json()).data;
+   await browserLogin(page,email,password);
+   await page.goto("/jobs");
+   await page.getByPlaceholder("Search job title or description").fill(title);
+   await page.getByRole("button",{name:"Apply filters"}).click();
+   await expect(page.getByRole("heading",{name:title,exact:true})).toBeVisible();
+   await page.getByRole("button",{name:"View details"}).click();
+   await page.getByLabel("Cover letter (optional)").fill("I am applying through the formal application workflow.");
+   await page.getByRole("button",{name:"Submit formal application"}).click();
+   await expect(page.getByRole("status")).toContainText("Formal application submitted");
+   const applications=await api.get("/api/v1/me/job-applications",{headers:{authorization:"Bearer "+account.token}});
+   expect(applications.status()).toBe(200);
+   const rows=(await applications.json()).data;
+   expect(rows.some(item=>item.job_id===jobId&&item.status==="submitted"&&item.cover_letter==="I am applying through the formal application workflow.")).toBeTruthy();
+   const duplicate=await api.post("/api/v1/jobs/"+jobId+"/application-drafts",{headers:{authorization:"Bearer "+account.token},data:{coverLetter:"duplicate attempt"}});
+   expect(duplicate.status()).toBe(409,"submitted applications must not be duplicated");
+ }finally{await api.dispose();}
+});
+
+test("service requests enforce membership, self-request, duplicate, and participant transitions",async()=>{
+ const {api,token}=await apiContext();
+ const suffix=Date.now()+"-"+Math.random().toString(16).slice(2),password="browser-service-password-12345";
+ try{
+   const title="Browser Service Lifecycle "+suffix;
+   const listing=await api.post("/api/v1/services",{headers:{authorization:"Bearer "+token},data:{title,description:"Provider/requester transition fixture",serviceCategory:"consulting",pricingModel:"quote",visibility:"public"}});
+   expect(listing.status()).toBe(201);
+   const listingId=(await listing.json()).data.id;
+   expect((await api.post("/api/v1/services/"+listingId+"/status",{headers:{authorization:"Bearer "+token},data:{status:"published"}})).status()).toBe(200);
+   const self=await api.post("/api/v1/services/"+listingId+"/requests",{headers:{authorization:"Bearer "+token},data:{message:"self request must fail"}});
+   expect(self.status()).toBe(409);
+   const unmember=await api.post("/api/v1/auth/register",{data:{email:"service-unmember-"+suffix+"@example.test",password,firstName:"Service",lastName:"Unmember"+suffix}});
+   expect(unmember.status()).toBe(201);
+   const unmemberToken=(await unmember.json()).data.token;
+   const denied=await api.post("/api/v1/services/"+listingId+"/requests",{headers:{authorization:"Bearer "+unmemberToken},data:{message:"membership required"}});
+   expect(denied.status()).toBe(403);
+   const registered=await api.post("/api/v1/auth/register",{data:{email:"service-member-"+suffix+"@example.test",password,firstName:"Service",lastName:"Member"+suffix}});
+   expect(registered.status()).toBe(201);
+   const member=(await registered.json()).data;
+   const db=getPool(),product=(await db.query("select id from membership_product where product_code='BASIC'")).rows[0];
+   expect(product).toBeTruthy();
+   await db.query("insert into membership_record(user_id,membership_product_id,membership_number,status,start_date,end_date,source) values($1,$2,$3,'active',current_date,current_date+365,'admin')",[member.user.id,product.id,"G4-SVC-"+member.user.id.slice(0,8)]);
+   const headers={authorization:"Bearer "+member.token};
+   const created=await api.post("/api/v1/services/"+listingId+"/requests",{headers,data:{message:"Please scope a consulting engagement."}});
+   expect(created.status()).toBe(201);
+   const request=(await created.json()).data;
+   const duplicate=await api.post("/api/v1/services/"+listingId+"/requests",{headers,data:{message:"retry duplicate"}});
+   expect(duplicate.status()).toBe(409);
+   const requesterCannotAccept=await api.post("/api/v1/service-requests/"+request.id+"/status",{headers,data:{status:"accepted"}});
+   expect(requesterCannotAccept.status()).toBe(403);
+   const providerAccept=await api.post("/api/v1/service-requests/"+request.id+"/status",{headers:{authorization:"Bearer "+token},data:{status:"accepted"}});
+   expect(providerAccept.status()).toBe(200);
+   const list=await api.get("/api/v1/me/service-requests",{headers});
+   expect(list.status()).toBe(200);
+   expect((await list.json()).data.some(row=>row.id===request.id&&row.status==="accepted")).toBeTruthy();
+ }finally{await api.dispose();await closePool();}
+});
+
+test("organization onboarding rejects duplicate names, cross-organization reads and foreign private evidence",async()=>{
+ const {api,token}=await apiContext();
+ const suffix=Date.now()+"-"+Math.random().toString(16).slice(2),password="browser-org-owner-password-12345";
+ try{
+   const registered=await api.post("/api/v1/auth/register",{data:{email:"org-owner-"+suffix+"@example.test",password,firstName:"Organization",lastName:"Owner"+suffix}});
+   expect(registered.status()).toBe(201);
+   const owner=(await registered.json()).data,headers={authorization:"Bearer "+owner.token};
+   const name="Scoped Organization "+suffix;
+   const created=await api.post("/api/v1/organizations",{headers,data:{legalName:name,displayName:name,organizationType:"company"}});
+   expect(created.status()).toBe(201);
+   const organization=(await created.json()).data;
+   const duplicate=await api.post("/api/v1/organizations",{headers,data:{legalName:name,displayName:name,organizationType:"company"}});
+   expect(duplicate.status()).toBe(409);
+   const crossRead=await api.get("/api/v1/organizations/"+organization.id,{headers:{authorization:"Bearer "+token}});
+   expect(crossRead.status()).toBe(404);
+   const bytes=Buffer.from("%PDF-1.7\nprivate ownership fixture\n%%EOF");
+   const checksum=createHash("sha256").update(bytes).digest("hex");
+   const authorization=await api.post("/api/v1/files/uploads",{headers:{authorization:"Bearer "+token},data:{fileName:"admin-owned.pdf",contentType:"application/pdf",byteSize:bytes.length,checksumSha256:checksum}});
+   expect(authorization.status()).toBe(201);
+   const upload=(await authorization.json()).data;
+   const uploaded=await api.put(upload.uploadUrl,{headers:{authorization:"Bearer "+token,"content-type":"application/octet-stream","x-upload-token":upload.uploadToken},data:bytes});
+   expect(uploaded.status()).toBe(201);
+   const confirmed=await api.post("/api/v1/files/uploads/"+upload.uploadId+"/confirm",{headers:{authorization:"Bearer "+token}});
+   expect(confirmed.status()).toBe(201);
+   const fileId=(await confirmed.json()).data.id;
+   const foreignEvidence=await api.post("/api/v1/organizations/"+organization.id+"/verification-evidence",{headers,data:{fileObjectId:fileId,evidenceType:"registration_document"}});
+   expect(foreignEvidence.status()).toBe(400);
+ }finally{await api.dispose();}
 });
