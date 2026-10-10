@@ -385,5 +385,5 @@ test("jobs discovery presents explicit empty and API failure states",async({page
  await expect(page.getByRole("heading",{name:"No matching opportunities"})).toBeVisible();
  await page.route("**/api/v1/jobs**",route=>route.abort());
  await page.reload();
- await expect(page.locator('[role="alert"].form-error')).toContainText("couldn't load opportunities");
+ await expect(page.locator('[role="alert"].form-error')).toContainText("could not reach the service");
 });
