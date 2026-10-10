@@ -7,7 +7,8 @@ on:
     branches: ["main"]
 
 permissions:
-  contents: read
+  # Temporary Gate 1 bootstrap permission; removed as soon as the lockfile is committed.
+  contents: write
 
 concurrency:
   group: reconciliation-ci-${{ github.event.pull_request.number || github.ref }}
@@ -49,6 +50,19 @@ jobs:
       # once package-lock.json is committed and the job uses npm ci.
       - name: Generate workspace lockfile for Gate 1
         run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+      - name: Commit generated lockfile on the reconciliation branch (one-time bootstrap)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/reconciliation/holistic-gates'
+        shell: bash
+        run: |
+          if git status --porcelain -- package-lock.json | grep -q .; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add package-lock.json
+            git commit -m "build(gate1): pin npm workspace dependency graph"
+            git push origin HEAD:reconciliation/holistic-gates
+          else
+            echo "Committed lockfile already matches the generated dependency graph."
+          fi
       - name: Publish Gate 1 lockfile bootstrap artifact
         uses: actions/upload-artifact@v4
         with:
