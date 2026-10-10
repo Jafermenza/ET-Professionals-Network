@@ -10,23 +10,46 @@ if(!url){console.error("DATABASE_URL is required.");process.exit(1);}
 const dir=fileURLToPath(new URL("../db/migrations/",import.meta.url));
 const files=readdirSync(dir).filter(x=>x.endsWith(".sql")).sort();
 const ledger="app_schema_migration";
+const migrations=files.map(filename=>{
+  const sql=readFileSync(join(dir,filename),"utf8");
+  return {filename,sql,checksum:createHash("sha256").update(sql).digest("hex")};
+});
 
-function psql(args,options={}){
-  return execFileSync("psql",[url,"-X","-v","ON_ERROR_STOP=1",...args],{stdio:"inherit",...options});
+function query(sql){
+  return execFileSync("psql",[url,"-X","-A","-t","-q","-v","ON_ERROR_STOP=1","-c",sql],{encoding:"utf8"}).trim();
 }
+function execute(sql){
+  execFileSync("psql",[url,"-X","-v","ON_ERROR_STOP=1","-1","-c",sql],{stdio:"inherit"});
+}
+function quote(value){return "'"+String(value).replace(/'/g,"''")+"'";}
 
-psql(["-c",`create table if not exists ${ledger} (
+execute(`create table if not exists ${ledger} (
   filename text primary key,
   checksum text not null,
   applied_at timestamptz not null default now()
-)`]);
+)`);
 
-for(const filename of files){
-  const path=join(dir,filename);
-  const sql=readFileSync(path,"utf8");
-  const checksum=createHash("sha256").update(sql).digest("hex");
-  const existing=execFileSync("psql",[url,"-X","-A","-t","-q","-v","ON_ERROR_STOP=1","-c",
-    `select checksum from ${ledger} where filename='${filename.replace(/'/g,"''")}'`],{encoding:"utf8"}).trim();
+const recordedCount=Number(query(`select count(*) from ${ledger}`));
+const existingSchema=query("select case when to_regclass('public.app_user') is null then 'no' else 'yes' end")==="yes";
+
+// The original repository did not track migration history. Never replay the full
+// historical chain against an existing schema: older SQL may contain non-idempotent
+// constraint changes. Require an explicit operator-confirmed baseline exactly once.
+if(recordedCount===0 && existingSchema){
+  const baseline=process.env.MIGRATION_BASELINE;
+  const baselineIndex=files.indexOf(baseline||"");
+  if(baselineIndex<0){
+    throw new Error("Existing application schema found without migration history. Set MIGRATION_BASELINE to the last migration verified as applied after reviewing the database; refusing to replay historical migrations automatically.");
+  }
+  const baselineRows=migrations.slice(0,baselineIndex+1);
+  const values=baselineRows.map(m=>`(${quote(m.filename)},${quote(m.checksum)})`).join(",");
+  execute(`insert into ${ledger}(filename,checksum) values ${values} on conflict(filename) do nothing`);
+  console.log("Recorded operator-confirmed legacy migration baseline through",baseline);
+}
+
+for(const migration of migrations){
+  const {filename,sql,checksum}=migration;
+  const existing=query(`select checksum from ${ledger} where filename=${quote(filename)}`);
 
   if(existing){
     if(existing!==checksum){
@@ -39,6 +62,6 @@ for(const filename of files){
   console.log("Applying",filename);
   // Execute the migration and its ledger write in one transaction. A failed migration
   // rolls back both schema changes and the history entry, so retries are safe.
-  const record=`insert into ${ledger}(filename,checksum) values ('${filename.replace(/'/g,"''")}','${checksum}')`;
-  psql(["-1","-c",`${sql}\n\n${record};`]);
+  const record=`insert into ${ledger}(filename,checksum) values (${quote(filename)},${quote(checksum)})`;
+  execute(`${sql}\n\n${record};`);
 }
