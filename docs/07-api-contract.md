@@ -138,7 +138,7 @@ Recommended flow:
 
 Never trust client MIME type alone.
 
-## 9. Payment contract
+### Private upload API contract (Gate 4 implementation)\n\n- `POST /api/v1/files/uploads` — authenticated upload authorization. Body: `fileName`, `contentType`, `byteSize`, optional `checksumSha256`. Returns a one-use token and relative upload URL; token expires after 10 minutes.\n- `PUT /api/v1/files/uploads/{id}/content` — authenticated binary upload using `application/octet-stream` and `X-Upload-Token`. Maximum 10 MiB; only PDF, PNG, JPEG and plain text are accepted. Server validates size, optional SHA-256 and file signature for PDF/images.\n- `POST /api/v1/files/uploads/{id}/confirm` — authenticated confirmation. Creates a private `file_object` only after upload metadata/checksum validation; operation is idempotent for a confirmed upload.\n- `GET /api/v1/files/{fileObjectId}` — authenticated private download; owner, authorized organization owner/administrator for linked verification evidence, or a verification reviewer for linked evidence only. Response is `private, no-store` with `nosniff`.\n- Storage root is `PRIVATE_FILE_STORAGE_ROOT` (defaults to `.private-files` for development). It must be a private persistent directory outside any web-served directory in deployed environments. No public URL is stored or returned.\n\n## 9. Payment contract
 
 The domain uses a provider-neutral Payment record.
 

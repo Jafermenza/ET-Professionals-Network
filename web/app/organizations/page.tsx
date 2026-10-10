@@ -19,6 +19,11 @@ export default function Organizations(){
  const [submitting,setSubmitting]=useState(false);
  const [error,setError]=useState("");
  const [notice,setNotice]=useState("");
+ const [evidenceOrg,setEvidenceOrg]=useState("");
+ const [evidenceType,setEvidenceType]=useState("registration_document");
+ const [evidenceNote,setEvidenceNote]=useState("");
+ const [evidenceFile,setEvidenceFile]=useState<File|null>(null);
+ const [uploading,setUploading]=useState(false);
 
  const load=useCallback(async()=>{
    if(!token){setOrganizations([]);setInquiries([]);return;}
@@ -57,6 +62,25 @@ export default function Organizations(){
    }catch(e){setError(e instanceof ApiError?e.message:"We couldn't register this organization.");}
    finally{setSubmitting(false);}
  }
+ async function uploadEvidence(e:FormEvent){
+   e.preventDefault();
+   if(!token||!evidenceOrg||!evidenceFile)return;
+   setUploading(true);setError("");setNotice("");
+   try{
+     const allowed=["application/pdf","image/png","image/jpeg","text/plain"];
+     if(!allowed.includes(evidenceFile.type))throw new Error("Choose a PDF, PNG, JPEG or plain-text file.");
+     if(evidenceFile.size<1||evidenceFile.size>10*1024*1024)throw new Error("Choose a file between 1 byte and 10 MiB.");
+     const authorization=await api<{uploadId:string;uploadToken:string;uploadUrl:string}>("/api/v1/files/uploads",{method:"POST",body:JSON.stringify({fileName:evidenceFile.name,contentType:evidenceFile.type,byteSize:evidenceFile.size})},token);
+     const base=(process.env.NEXT_PUBLIC_API_BASE_URL||"").replace(/\/$/,"");
+     const uploaded=await fetch(base+authorization.uploadUrl,{method:"PUT",headers:{"Authorization":"Bearer "+token,"Content-Type":"application/octet-stream","X-Upload-Token":authorization.uploadToken},body:evidenceFile,cache:"no-store"});
+     if(!uploaded.ok)throw new Error(uploaded.status===413?"The file is too large.":uploaded.status===403?"The upload authorization was rejected.":"The file upload failed. Please retry.");
+     const confirmed=await api<{id:string}>("/api/v1/files/uploads/"+encodeURIComponent(authorization.uploadId)+"/confirm",{method:"POST"},token);
+     await api("/api/v1/organizations/"+encodeURIComponent(evidenceOrg)+"/verification-evidence",{method:"POST",body:JSON.stringify({fileObjectId:confirmed.id,evidenceType,note:evidenceNote.trim()||undefined})},token);
+     setEvidenceFile(null);setEvidenceNote("");setNotice("Private evidence uploaded, checksum-verified and attached to the selected organization. Submit the verification case when its required evidence is complete.");
+     await load();
+   }catch(e){setError(e instanceof ApiError?e.message:e instanceof Error?e.message:"Evidence upload failed. Please retry.");}
+   finally{setUploading(false);}
+ }
  async function submitVerification(org:Organization){
    if(!token)return;
    setError("");setNotice("");
@@ -93,7 +117,16 @@ export default function Organizations(){
          <button className="btn btn-ghost" type="button" onClick={()=>void submitVerification(org)}>Submit for verification</button>
        </div>)}</div>
      </Card>
-     <Card id="org-evidence"><div className="row"><div><div className="h2">Verification evidence</div><p className="muted">The API accepts only a private file object owned by the submitting user. This screen does not yet provide a complete file-upload flow, so do not paste public URLs or mark evidence as uploaded. The UI upload integration remains an open Gate 4 item.</p></div><FileCheck2 color="var(--primary)"/></div><Badge>Tabayyun · Verification / due diligence</Badge></Card>
+     <Card id="org-evidence"><div className="row"><div><div className="h2">Verification evidence</div><p className="muted">Upload a private PDF, PNG, JPEG or plain-text file (maximum 10 MiB). The server checks the upload token, size, declared content against file signature where applicable, and SHA-256 checksum before attaching it. Public URLs are not accepted as evidence.</p></div><FileCheck2 color="var(--primary)"/></div>
+       {organizations.length===0?<p className="muted">Register an organization before attaching evidence.</p>:<form className="form-stack" onSubmit={uploadEvidence} style={{marginTop:14}}>
+         <label>Organization<select required value={evidenceOrg} onChange={e=>setEvidenceOrg(e.target.value)}><option value="">Choose organization</option>{organizations.map(org=><option key={org.id} value={org.id}>{org.display_name}</option>)}</select></label>
+         <label>Evidence type<select required value={evidenceType} onChange={e=>setEvidenceType(e.target.value)}><option value="registration_document">Registration / legal existence</option><option value="representative_authorization">Representative authorization</option><option value="tax_document">Tax document</option><option value="trade_license">Trade or sector license</option><option value="supporting_document">Other supporting document</option></select></label>
+         <label>Private document<input required type="file" accept=".pdf,.png,.jpg,.jpeg,.txt,application/pdf,image/png,image/jpeg,text/plain" onChange={e=>setEvidenceFile(e.target.files?.[0]||null)}/></label>
+         <label>Note (optional)<textarea rows={2} value={evidenceNote} onChange={e=>setEvidenceNote(e.target.value)} maxLength={500}/></label>
+         <p className="muted">Upload authorization expires after 10 minutes and is one-use. Evidence remains private; successful upload does not verify the organization.</p>
+         <button className="btn btn-primary" type="submit" disabled={uploading||!evidenceFile||!evidenceOrg}>{uploading?"Uploading and verifying…":"Upload and attach private evidence"}</button>
+       </form>}
+       <Badge>Tabayyun · Verification / due diligence</Badge></Card>
      <Card><div className="row"><div><div className="h2">Public job inquiries</div><p className="muted">First-stage public interest is not a formal eligible application. Only authorized organization users can inspect and decide inquiries.</p></div><UsersRound color="var(--primary)"/></div>
        {loading?<p className="muted">Loading inquiries…</p>:inquiries.length===0?<p className="muted">No public job inquiries are currently visible to this account.</p>:<div className="grid">{inquiries.map(i=><div className="case-row" key={i.id}><div><div className="row" style={{justifyContent:"flex-start"}}><b>{i.contact_name}</b><Badge>{i.status}</Badge>{i.consider_non_member&&<Badge tone="gold">Non-member considered</Badge>}</div><div className="muted">{i.job_title||"General public job interest"} · {i.contact_email||i.contact_phone}</div><p className="muted" style={{margin:"6px 0"}}>{i.intent}</p><small className="muted">Reference {i.public_reference}</small></div></div>)}</div>}
      </Card>
