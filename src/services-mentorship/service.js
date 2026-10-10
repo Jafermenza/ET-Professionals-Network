@@ -366,7 +366,11 @@ export async function addMentorTimeOff(profileId,userId,input,requestId){
 }
 
 export async function listMentors(viewerId,filters={}){
-  const db=getPool(); const args=[viewerId]; const where=["mp.status='active'","m.status='active'","mp.visibility in ('members','public')"];
+  const db=getPool();
+  // The public endpoint must not disclose member-only mentor profiles. $1 is
+  // always bound so the query is valid with or without optional filters.
+  const args=[viewerId||null];
+  const where=["mp.status='active'","m.status='active'","(mp.visibility='public' or ($1::uuid is not null and mp.visibility='members'))"];
   if(filters.q){ args.push("%"+String(filters.q).trim()+"%"); where.push("(mp.headline ilike $"+args.length+" or mp.bio ilike $"+args.length+")"); }
   if(filters.topic){ args.push("%"+String(filters.topic).trim().toLowerCase()+"%"); where.push("mp.expertise::text ilike $"+args.length); }
   const rows=(await db.query("select mp.id,mp.user_id,p.display_name,mp.headline,mp.bio,mp.expertise,mp.languages,mp.mentoring_modes,mp.max_active_mentees from mentor_profile mp join app_user u on u.id=mp.user_id join person p on p.user_id=u.id join membership_record m on m.user_id=u.id where "+where.join(" and ")+" order by p.display_name",args)).rows;
