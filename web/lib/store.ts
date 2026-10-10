@@ -1,7 +1,7 @@
 "use client";
 import {create} from "zustand";
 type Mode="light"|"dark";
-type State={mode:Mode;token:string;hydrated:boolean;language:string;queue:number;setMode:(mode:Mode)=>void;setToken:(token:string)=>void;clearToken:()=>void;hydrateToken:()=>void;setLanguage:(language:string)=>void;addQueue:()=>void};
+type State={mode:Mode;token:string;hydrated:boolean;language:string;queue:number;setMode:(mode:Mode)=>void;setToken:(token:string)=>void;clearToken:()=>void;clearSession:()=>void;hydrateToken:()=>void;setLanguage:(language:string)=>void;addQueue:()=>void};
 const TOKEN_KEY="mpa-session-token";
 export const useUiStore=create<State>((set)=>({
   mode:"light",
@@ -18,6 +18,10 @@ export const useUiStore=create<State>((set)=>({
     set({token,hydrated:true});
   },
   clearToken:()=>{
+    if(typeof window!=="undefined")window.sessionStorage.removeItem(TOKEN_KEY);
+    set({token:"",hydrated:true});
+  },
+  clearSession:()=>{
     if(typeof window!=="undefined")window.sessionStorage.removeItem(TOKEN_KEY);
     set({token:"",hydrated:true});
   },
