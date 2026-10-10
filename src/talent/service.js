@@ -57,7 +57,7 @@ function viewerVisibilityClause(viewerIsMember){ return viewerIsMember ? "(pp.vi
 export async function searchTalent(viewerId,filters={}){
  const db=getPool();
  const viewerIsMember=viewerId?Boolean((await db.query("select 1 from membership_record where user_id=$1 and status='active' limit 1",[viewerId])).rows[0]):false;
- const args=[viewerId]; const where=["m.status='active'", "vv.directory_visible=true", viewerVisibilityClause(viewerIsMember)];
+ const args=[]; const where=["m.status='active'", "vv.directory_visible=true", viewerVisibilityClause(viewerIsMember)];
  if(filters.q){ args.push("%"+String(filters.q).trim()+"%"); where.push("(pp.professional_title ilike $"+args.length+" or pp.headline ilike $"+args.length+" or pp.directory_summary ilike $"+args.length+" or p.display_name ilike $"+args.length+")"); }
  const refFilter=(param,relation)=>{ if(filters[param]){ args.push(String(filters[param])); where.push("exists (select 1 from professional_profile_reference prf join reference_item ri on ri.id=prf.reference_item_id where prf.profile_id=pp.id and prf.relation_type='"+relation+"' and (ri.code=$"+args.length+" or ri.id::text=$"+args.length+"))"); } };
  refFilter("occupation","occupation"); refFilter("industry","industry"); refFilter("educationLevel","education_level"); refFilter("qualificationType","qualification_type"); refFilter("fieldOfStudy","field_of_study");
