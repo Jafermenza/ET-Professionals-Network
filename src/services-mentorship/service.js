@@ -13,7 +13,14 @@ async function activeMember(db,userId){
 async function professionalVerified(db,userId){
   return (await db.query("select 1 from verification_claim vc join verification_case c on c.id=vc.case_id where c.subject_user_id=$1 and vc.status='verified' and lower(vc.claim_code_snapshot)=any($2::text[]) limit 1",[userId,PROFESSIONAL_CLAIMS])).rowCount>0;
 }
-function normalizeArray(v){ return Array.isArray(v)?v.map(x=>String(x).trim().toLowerCase()).filter(Boolean):[]; }
+function normalizeArray(v){
+  // pg commonly decodes json/jsonb columns to arrays already. Accept legacy JSON text
+  // too, but never JSON.parse an already-decoded array or let malformed text crash matching.
+  if(typeof v==="string"){
+    try { v=JSON.parse(v); } catch { return []; }
+  }
+  return Array.isArray(v)?v.map(x=>String(x).trim().toLowerCase()).filter(Boolean):[];
+}
 function overlap(a,b){ const set=new Set(normalizeArray(a)); return normalizeArray(b).filter(x=>set.has(x)).length; }
 async function hasPlatformRole(db,userId,roles){
   const row=(await db.query("select 1 from app_user_role ur join app_role r on r.id=ur.role_id where ur.user_id=$1 and r.role_code=any($2::text[]) limit 1",[userId,roles])).rows[0];
