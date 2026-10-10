@@ -5,14 +5,19 @@ import { getPool, closePool } from "../src/platform/db.js";
 const API_BASE = process.env.API_BASE_URL || "http://127.0.0.1:3000";
 const ADMIN_EMAIL = process.env.BOOTSTRAP_ADMIN_EMAIL;
 const ADMIN_PASSWORD = process.env.BOOTSTRAP_ADMIN_PASSWORD;
+let cachedAdminToken=null;
+let cachedProfessionalAccount=null;
 
 async function apiContext(){
   const api = await playwrightRequest.newContext({baseURL:API_BASE});
-  const login = await api.post("/api/v1/auth/login",{data:{email:ADMIN_EMAIL,password:ADMIN_PASSWORD}});
-  expect(login.status(),"CI administrator login").toBe(200);
-  const payload=await login.json();
-  expect(typeof payload?.data?.token).toBe("string");
-  return {api,token:payload.data.token};
+  if(!cachedAdminToken){
+    const login = await api.post("/api/v1/auth/login",{data:{email:ADMIN_EMAIL,password:ADMIN_PASSWORD}});
+    expect(login.status(),"CI administrator login").toBe(200);
+    const payload=await login.json();
+    expect(typeof payload?.data?.token).toBe("string");
+    cachedAdminToken=payload.data.token;
+  }
+  return {api,token:cachedAdminToken};
 }
 async function browserLogin(page,email=ADMIN_EMAIL,password=ADMIN_PASSWORD){
   await page.goto("/login");
@@ -54,19 +59,23 @@ async function independentReviewerToken(api,adminToken){
 
 async function ensureGate4Professional(api){
  const email="gate4-professional-ci@example.test",password="gate4-professional-password-12345";
- let token;
- const login=await api.post("/api/v1/auth/login",{data:{email,password}});
- if(login.status()===200) token=(await login.json()).data.token;
- else {
-  expect(login.status()).toBe(401);
-  const registration=await api.post("/api/v1/auth/register",{data:{email,password,firstName:"Gate4",lastName:"Professional"}});
-  if(registration.status()===201) token=(await registration.json()).data.token;
-  else {
-   expect(registration.status()).toBe(409);
-   const retry=await api.post("/api/v1/auth/login",{data:{email,password}});
-   expect(retry.status()).toBe(200);
-   token=(await retry.json()).data.token;
+ let token=cachedProfessionalAccount?.token;
+ if(!token){
+  const login=await api.post("/api/v1/auth/login",{data:{email,password}});
+  if(login.status()===200) token=(await login.json()).data.token;
+  else if(login.status()===401){
+   const registration=await api.post("/api/v1/auth/register",{data:{email,password,firstName:"Gate4",lastName:"Professional"}});
+   if(registration.status()===201) token=(await registration.json()).data.token;
+   else {
+    expect(registration.status(),"existing professional fixture must be recoverable without masking auth errors").toBe(409);
+    const retry=await api.post("/api/v1/auth/login",{data:{email,password}});
+    expect(retry.status()).toBe(200);
+    token=(await retry.json()).data.token;
+   }
+  } else {
+   expect(login.status(),"professional fixture login must not be rate-limited or silently bypassed").toBe(200);
   }
+  cachedProfessionalAccount={token,email,password};
  }
  const meResponse=await api.get("/api/v1/me",{headers:{authorization:"Bearer "+token}});
  expect(meResponse.status()).toBe(200);
