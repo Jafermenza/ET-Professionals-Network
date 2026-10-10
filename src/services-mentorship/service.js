@@ -356,7 +356,7 @@ export async function setMentorAvailability(profileId,userId,input,requestId){
     for(const s of input.slots){
       if(!Number.isInteger(Number(s.dayOfWeek))||Number(s.dayOfWeek)<0||Number(s.dayOfWeek)>6) throw error(400,"dayOfWeek must be 0-6.","VALIDATION_ERROR");
       const start=String(s.startTime||""),end=String(s.endTime||"");
-      const validTime=v=>/^([01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d)?$/.test(v);
+      const validTime=v=>/^([01]\d|2[0-3]):[0-5]\d(?::[0-5]\d)?$/.test(v);
       if(!validTime(start)||!validTime(end)||start>=end) throw error(400,"Availability start and end times must be valid and end after start on the same day.","VALIDATION_ERROR");
       if(s.timezone!==undefined&&(!String(s.timezone).trim()||String(s.timezone).length>80)) throw error(400,"timezone must be a valid non-empty timezone identifier.","VALIDATION_ERROR");
     }
