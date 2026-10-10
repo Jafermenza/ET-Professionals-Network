@@ -31,7 +31,7 @@ execute(`create table if not exists ${ledger} (
 )`);
 
 const recordedCount=Number(query(`select count(*) from ${ledger}`));
-const existingSchema=query("select case when to_regclass('public.app_user') is null then 'no' else 'yes' end")==="yes";
+const existingSchema=query(`select case when exists (select 1 from pg_tables where schemaname='public' and tablename <> ${quote(ledger)}) then 'yes' else 'no' end`)==="yes";
 
 // The original repository did not track migration history. Never replay the full
 // historical chain against an existing schema: older SQL may contain non-idempotent
