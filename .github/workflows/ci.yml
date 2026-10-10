@@ -43,6 +43,19 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
+      # Gate 1 bootstrap: resolve the full npm workspace graph on a network-enabled runner.
+      # This artifact is temporary evidence for committing the generated lockfile; CI still
+      # runs the normal install and full test pipeline below. Remove this bootstrap step
+      # once package-lock.json is committed and the job uses npm ci.
+      - name: Generate workspace lockfile for Gate 1
+        run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+      - name: Publish Gate 1 lockfile bootstrap artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: gate1-package-lock
+          path: package-lock.json
+          if-no-files-found: error
+          retention-days: 1
       - run: npm install --no-audit --no-fund
       - name: Apply database migrations
         run: npm run migrate
