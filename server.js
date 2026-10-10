@@ -105,14 +105,6 @@ const server=http.createServer(async (req,res)=>{
     if(req.method==="GET" && p==="api/v1/experience/guides") { const q=query(req.url); return ok(res,await experience.listGuides(q.get("route")),requestId); }
 
     const identity=await auth(req);
-    if(req.method==="GET" && p==="api/v1/me") {
-      const db=getPool();
-      const result=await db.query(`select u.id,u.email,u.status,coalesce(json_agg(r.role_code) filter (where r.role_code is not null),'[]'::json) as roles
-        from app_user u left join app_user_role ur on ur.user_id=u.id left join app_role r on r.id=ur.role_id
-        where u.id=$1 group by u.id,u.email,u.status`,[identity.sub]);
-      if(!result.rows[0] || result.rows[0].status!=="active") throw Object.assign(new Error("Account is not active."),{statusCode:403,code:"ACCOUNT_INACTIVE"});
-      return ok(res,{id:result.rows[0].id,email:result.rows[0].email,status:result.rows[0].status,roles:result.rows[0].roles},requestId);
-    }
     if(req.method==="POST" && p==="api/v1/admin/experience/demo-cases") { return ok(res,await experience.createDemoCase(identity.sub,await body(req),requestId),requestId,201); }
     if(req.method==="PATCH" && parts.length===6 && p.startsWith("api/v1/admin/experience/demo-cases/")) { return ok(res,await experience.updateDemoCase(parts[5],identity.sub,await body(req),requestId),requestId); }
     if(req.method==="POST" && p==="api/v1/admin/experience/guides") { return ok(res,await experience.createGuide(identity.sub,await body(req),requestId),requestId,201); }
