@@ -609,6 +609,10 @@ test("talent directory uses live consent-scoped profiles and inquiry contact-rel
    const inquiry=(await beforeResponse.json()).data.find(row=>row.subject==="Gate 4 opportunity inquiry"&&row.requester_user_id===adminId);
    expect(inquiry).toBeTruthy();
    expect(inquiry.contact_release).toBeFalsy();
+   await api.patch("/api/v1/me/talent-visibility",{headers:{authorization:"Bearer "+professional.token},data:{showContact:false}});
+   const blockedRelease=await api.post("/api/v1/talent/inquiries/"+inquiry.id+"/response",{headers:{authorization:"Bearer "+professional.token},data:{status:"accepted",releaseContact:true}});
+   expect(blockedRelease.status(),"a release request cannot override the professional's saved consent").toBe(409);
+   await api.patch("/api/v1/me/talent-visibility",{headers:{authorization:"Bearer "+professional.token},data:{showContact:true}});
    await page.getByRole("button",{name:"Logout"}).click();
    await browserLogin(page,professional.email,professional.password);
    await page.goto("/network");

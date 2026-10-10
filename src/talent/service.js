@@ -131,10 +131,10 @@ export async function listTalentInquiries(userId){
   const db=getPool();
   return (await db.query(`
     select ti.*,rp.display_name requester_name,pp.display_name professional_name,
-      case when ti.status='accepted' and ti.contact_release then pu.email else null end professional_email,
-      case when ti.status='accepted' and ti.contact_release then ppers.phone else null end professional_phone,
-      case when ti.status='accepted' and ti.contact_release then ru.email else null end requester_email,
-      case when ti.status='accepted' and ti.contact_release then rpers.phone else null end requester_phone
+      case when ti.status='accepted' and ti.contact_release and coalesce(professional_visibility.show_contact,false) then pu.email else null end professional_email,
+      case when ti.status='accepted' and ti.contact_release and coalesce(professional_visibility.show_contact,false) then ppers.phone else null end professional_phone,
+      case when ti.status='accepted' and ti.contact_release and coalesce(requester_visibility.show_contact,false) then ru.email else null end requester_email,
+      case when ti.status='accepted' and ti.contact_release and coalesce(requester_visibility.show_contact,false) then rpers.phone else null end requester_phone
     from talent_inquiry ti
     join person rp on rp.user_id=ti.requester_user_id
     join person pp on pp.user_id=ti.professional_user_id
@@ -142,6 +142,8 @@ export async function listTalentInquiries(userId){
     join app_user ru on ru.id=ti.requester_user_id
     join person ppers on ppers.user_id=ti.professional_user_id
     join person rpers on rpers.user_id=ti.requester_user_id
+    left join verification_visibility professional_visibility on professional_visibility.user_id=ti.professional_user_id
+    left join verification_visibility requester_visibility on requester_visibility.user_id=ti.requester_user_id
     where ti.requester_user_id=$1 or ti.professional_user_id=$1
     order by ti.created_at desc
   `,[userId])).rows;
@@ -154,6 +156,10 @@ export async function respondToTalentInquiry(inquiryId,userId,input,requestId){
     if(row.professional_user_id!==userId) throw error(403,"Only the professional can respond to this inquiry.","FORBIDDEN");
     if(row.status!=="requested") throw error(409,"This inquiry is no longer awaiting a response.","INVALID_STATE");
     if(!["accepted","declined"].includes(input.status)) throw error(400,"Inquiry response must be accepted or declined.","VALIDATION_ERROR");
+    if(input.status==="accepted"&&input.releaseContact===true){
+      const consent=(await db.query("select show_contact from verification_visibility where user_id=$1",[userId])).rows[0];
+      if(!consent?.show_contact) throw error(409,"Contact release is disabled in your talent directory privacy settings.","CONTACT_RELEASE_DISABLED");
+    }
     const updated=(await db.query("update talent_inquiry set status=$1,response=$2,contact_release=$3,responded_at=now(),updated_at=now() where id=$4 returning *",[input.status,input.response||null,input.status==="accepted"&&input.releaseContact===true,inquiryId])).rows[0];
     await audit(db,userId,"talent.inquiry_responded","talent_inquiry",inquiryId,requestId,{status:input.status,contactReleased:updated.contact_release});
     return updated;
