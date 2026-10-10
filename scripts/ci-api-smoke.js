@@ -221,6 +221,8 @@ assert.equal(restrictedAdminLogin.status,200,"limited administrator should estab
 const restrictedAdminToken=restrictedAdminLogin.payload?.data?.token;
 const restrictedPrivilegeGrant=await request("/api/v1/admin/users/"+memberId,{method:"PATCH",token:restrictedAdminToken,body:{roleCode:"system_admin",reason:"CI privileged-role denial"}});
 assert.equal(restrictedPrivilegeGrant.status,403,"an ordinary administrator cannot grant system-administrator privilege");
+const restrictedReviewerGrant=await request("/api/v1/admin/users/"+memberId,{method:"PATCH",token:restrictedAdminToken,body:{roleCode:"reviewer",reason:"CI reviewer privilege denial"}});
+assert.equal(restrictedReviewerGrant.status,403,"an ordinary administrator cannot grant reviewer privilege");
 const restrictedAdminManageSystem=await request("/api/v1/admin/users/"+me.payload.data.user_id,{method:"PATCH",token:restrictedAdminToken,body:{status:"suspended",reason:"CI privileged-target denial"}});
 assert.equal(restrictedAdminManageSystem.status,403,"an ordinary administrator cannot modify a system-administrator account");
 await db.query("delete from app_user_role where user_id=$1 and role_id=(select id from app_role where role_code='admin')",[restrictedAdminId]);

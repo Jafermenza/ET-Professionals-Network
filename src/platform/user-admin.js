@@ -5,7 +5,7 @@ function err(status,message,code="BUSINESS_RULE"){const e=new Error(message);e.s
 async function allowed(db,userId){const r=await db.query("select r.role_code from app_user_role ur join app_role r on r.id=ur.role_id where ur.user_id=$1",[userId]);return r.rows.map(x=>x.role_code)}
 function admin(roles){if(!roles.some(x=>["system_admin","admin"].includes(x)))throw err(403,"Administrator role required.","FORBIDDEN")}
 const SYSTEM_ROLE="system_admin";
-const PRIVILEGED_ROLES=new Set([SYSTEM_ROLE,"super_admin","admin","reviewer","verification_reviewer","finance_officer"]);
+const PRIVILEGED_ROLES=new Set([SYSTEM_ROLE,"super_admin","admin","reviewer","verification_reviewer","ethics_reviewer","appeal_reviewer","finance_officer"]);
 
 export async function logout(userId,sessionId,requestId){
  return withTransaction(async tx=>{

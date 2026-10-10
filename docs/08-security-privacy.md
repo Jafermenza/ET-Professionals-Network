@@ -10,7 +10,7 @@ Use secure password hashing where passwords exist, secure sessions/tokens, accou
 
 ## 3. Authorization
 
-Every sensitive operation is server-side authorized. Use least privilege and scope permissions. Authorization uses current database roles rather than stale token role claims. Role changes revoke existing sessions; self-assigned role changes and non-system-admin changes to privileged roles/accounts are denied. Verification review must reject conflicts where the reviewer created, submitted, or is an active member of the organization.
+Every sensitive operation is server-side authorized. Use least privilege and scope permissions. Authorization uses current database roles rather than stale token role claims. Role changes revoke existing sessions; self-assigned role changes and non-system-admin changes to privileged roles/accounts (including reviewer, ethics-reviewer, appeal-reviewer and finance roles) are denied. Verification review must reject conflicts where the reviewer created, submitted, or is an active member of the organization.
 
 ## 4. Sensitive documents
 

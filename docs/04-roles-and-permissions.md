@@ -91,7 +91,7 @@ Examples include payment reconciliation, membership exceptions, project financia
 
 Enforced identity-administration rules for the current implementation:
 - An administrator cannot grant, remove, or otherwise change their own roles.
-- Only a current `system_admin` may grant/remove privileged roles (`system_admin`, `super_admin`, `admin`, `reviewer`, `verification_reviewer`, `finance_officer`) or modify a privileged account.
+- Only a current `system_admin` may grant/remove privileged roles (`system_admin`, `super_admin`, `admin`, `reviewer`, `verification_reviewer`, `ethics_reviewer`, `appeal_reviewer`, `finance_officer`) or modify a privileged account.
 - Privileged-role decisions use the actor's current database roles; signed token role claims are not authoritative.
 - Role and account-status changes revoke existing sessions. A user must authenticate again after the change.
 - The last `system_admin` cannot be removed; concurrent last-admin removals are serialized.
