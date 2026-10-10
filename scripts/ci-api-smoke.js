@@ -98,6 +98,12 @@ const evidenceForbidden=await request("/api/v1/files/"+confirmed.payload.data.id
 assert.equal(evidenceForbidden.status,403,"an unrelated member must not read private organization evidence");
 const crossOrgEvidenceAttach=await request("/api/v1/organizations/"+organizationId+"/verification-evidence",{method:"POST",token:memberToken,body:{fileObjectId:confirmed.payload.data.id,evidenceType:"registration_document"}});
 assert.equal(crossOrgEvidenceAttach.status,403,"a non-member cannot attach evidence to another organization's verification case");
+const secondOrgName="Gate 2 Other Organization "+Date.now();
+const secondOrg=await request("/api/v1/organizations",{method:"POST",token:memberToken,body:{legalName:secondOrgName,displayName:secondOrgName,organizationType:"company"}});
+assert.equal(secondOrg.status,201,"second account should own an isolated organization for cross-scope checks");
+const secondOrgId=secondOrg.payload?.data?.id;
+const adminCannotManageOtherOrg=await request("/api/v1/organizations/"+secondOrgId+"/verification-evidence",{method:"POST",token,body:{fileObjectId:confirmed.payload.data.id,evidenceType:"registration_document"}});
+assert.equal(adminCannotManageOtherOrg.status,403,"platform administration does not imply organization membership or cross-organization write scope");
 const creatorReviewDenied=await request("/api/v1/review/organizations",{method:"POST",token,body:{organizationId,decision:"verified",reason:"creator must not approve own organization"}});
 assert.equal(creatorReviewDenied.status,403,"organization owner/creator must not review their own verification");
 
@@ -205,6 +211,19 @@ const memberAdminDenied=await request("/api/v1/admin/users",{token:memberToken})
 assert.equal(memberAdminDenied.status,403,"ordinary members cannot list administrative users");
 const selfRoleChange=await request("/api/v1/admin/users/"+me.payload.data.user_id,{method:"PATCH",token,body:{roleCode:"system_admin",reason:"CI self-escalation negative case"}});
 assert.equal(selfRoleChange.status,403,"an administrator cannot modify their own roles");
+const restrictedAdminEmail="ci-gate2-limited-admin-"+Date.now()+"@example.test";
+const restrictedAdminRegistration=await request("/api/v1/auth/register",{method:"POST",body:{email:restrictedAdminEmail,password:"ci-gate2-limited-admin-password-12345",firstName:"Gate2",lastName:"LimitedAdmin"}});
+assert.equal(restrictedAdminRegistration.status,201,"CI should create a restricted administrator fixture");
+const restrictedAdminId=restrictedAdminRegistration.payload?.data?.user?.id;
+const restrictedAdminToken=restrictedAdminRegistration.payload?.data?.token;
+await db.query("insert into app_user_role(user_id,role_id,assigned_by) select $1,id,$2 from app_role where role_code='admin' on conflict do nothing",[restrictedAdminId,me.payload.data.user_id]);
+const restrictedPrivilegeGrant=await request("/api/v1/admin/users/"+memberId,{method:"PATCH",token:restrictedAdminToken,body:{roleCode:"system_admin",reason:"CI privileged-role denial"}});
+assert.equal(restrictedPrivilegeGrant.status,403,"an ordinary administrator cannot grant system-administrator privilege");
+const restrictedAdminManageSystem=await request("/api/v1/admin/users/"+me.payload.data.user_id,{method:"PATCH",token:restrictedAdminToken,body:{status:"suspended",reason:"CI privileged-target denial"}});
+assert.equal(restrictedAdminManageSystem.status,403,"an ordinary administrator cannot modify a system-administrator account");
+await db.query("delete from app_user_role where user_id=$1 and role_id=(select id from app_role where role_code='admin')",[restrictedAdminId]);
+const currentRoleEnforcement=await request("/api/v1/admin/users",{token:restrictedAdminToken});
+assert.equal(currentRoleEnforcement.status,403,"authorization must use current database roles instead of stale token claims");
 const roleGrant=await request("/api/v1/admin/users/"+memberId,{method:"PATCH",token,body:{roleCode:"mentor",reason:"CI role-change session invalidation"}});
 assert.equal(roleGrant.status,200,"authorized admin may grant a non-privileged role");
 const staleAfterGrant=await request("/api/v1/me",{token:memberToken});
