@@ -18,7 +18,7 @@ export async function logout(userId,sessionId,requestId){
 }
 
 export async function listUsers(actor,input={}){
- const db=getPool(); admin(await allowed(db,actor)); const q=String(input.q||"").trim(); const status=input.status;
+ const db=getPool(); const actorId=typeof actor==="string"?actor:actor?.sub; admin(await allowed(db,actorId)); const q=String(input.q||"").trim(); const status=input.status;
  const sql="select u.id,u.email,u.username,u.status,u.created_at,u.updated_at,coalesce(json_agg(distinct r.role_code) filter(where r.role_code is not null),'[]') roles from app_user u left join app_user_role ur on ur.user_id=u.id left join app_role r on r.id=ur.role_id where ($1='' or lower(u.email) like lower('%'||$1||'%') or lower(u.username) like lower('%'||$1||'%')) and ($2::text is null or u.status=$2) group by u.id order by u.created_at desc limit 200";
  return (await db.query(sql,[q,status||null])).rows;
 }
