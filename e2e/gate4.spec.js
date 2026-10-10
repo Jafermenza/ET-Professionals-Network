@@ -530,6 +530,7 @@ test("services and mentorship expose explicit empty and retryable API-failure st
  // Mentor search reloads when its criteria change; changing a real filter guarantees
  // the browser issues a fresh request after the 503 fixture is installed.
  await page.getByLabel("Search expertise").fill("forced outage");
+ await page.getByRole("button",{name:"Search mentors"}).click();
  await expect.poll(()=>mentorFailureResponses,{message:"the mentorship API failure fixture must intercept the real browser request"}).toBe(1);
  await expect(page.locator('[role="alert"].form-error')).toContainText("server problem");
  await page.getByRole("button",{name:"Retry"}).click();
