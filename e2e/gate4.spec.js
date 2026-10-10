@@ -29,8 +29,19 @@ async function createVerifiedOrganization(api,token,prefix){
   const organization=(await created.json()).data;
   const submitted=await api.post("/api/v1/organizations/"+organization.id+"/submit-verification",{headers});
   expect(submitted.status(),"organization verification submission").toBe(200);
-  const reviewed=await api.post("/api/v1/review/organizations",{headers,data:{organizationId:organization.id,decision:"verified",reason:"Browser E2E fixture"}});
-  expect(reviewed.status(),"organization verification decision").toBe(200);
+  // Keep initiation and approval separate: the organization creator must not review their own case.
+  const reviewerEmail="gate4-reviewer-"+suffix+"@example.test";
+  const reviewerPassword="gate4-reviewer-password-12345";
+  const reviewerRegistration=await api.post("/api/v1/auth/register",{data:{email:reviewerEmail,password:reviewerPassword,firstName:"Gate4",lastName:"Reviewer"}});
+  expect(reviewerRegistration.status(),"independent reviewer registration").toBe(201);
+  const reviewerId=(await reviewerRegistration.json()).data.user.id;
+  await getPool().query("insert into app_user_role(user_id,role_id,assigned_by) select $1,id,$2 from app_role where role_code='reviewer' on conflict do nothing",[reviewerId,(await api.post("/api/v1/auth/login",{data:{email:ADMIN_EMAIL,password:ADMIN_PASSWORD}}).then(r=>r.json())).data.user.id]);
+  const reviewerLogin=await api.post("/api/v1/auth/login",{data:{email:reviewerEmail,password:reviewerPassword}});
+  expect(reviewerLogin.status(),"independent reviewer login").toBe(200);
+  const reviewerToken=(await reviewerLogin.json()).data.token;
+  const reviewerHeaders={authorization:"Bearer "+reviewerToken};
+  const reviewed=await api.post("/api/v1/review/organizations",{headers:reviewerHeaders,data:{organizationId:organization.id,decision:"verified",reason:"Browser E2E independent reviewer fixture"}});
+  expect(reviewed.status(),"organization verification decision by independent reviewer").toBe(200);
   return organization;
 }
 async function createPublishedJob(api,token){
