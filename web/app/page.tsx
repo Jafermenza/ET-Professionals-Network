@@ -49,7 +49,7 @@ function ArchArtwork() {
   );
 }
 
-export default function Home(){return <div className="landing grid" style={{gap:34}}>
+export default function Home(){return <div className={`landing grid ${styles.landingBackdrop}`} style={{gap:34}}>
  <section className={`landing-hero ${styles.hero}`}>
   <div className={styles.heroCopy}>
    <div className={styles.brandEyebrow}><span className={styles.brandMarkSmall}><MpaMark/></span><span>ETHIOPIAN MUSLIM PROFESSIONALS ASSOCIATION <i/> IHSAN · EXCELLENCE</span></div>
