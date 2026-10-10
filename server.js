@@ -1,4 +1,5 @@
 import http from "node:http";
+import { authorizePrivateUpload, receivePrivateUpload, confirmPrivateUpload, readAuthorizedPrivateFile, MAX_PRIVATE_UPLOAD_BYTES } from "./src/platform/private-file-storage.js";
 import { randomUUID } from "node:crypto";
 import { loadConfig } from "./src/platform/config.js";
 import { createLogger } from "./src/platform/logger.js";
@@ -24,6 +25,11 @@ function json(res,status,body,requestId){
 }
 function pathParts(url){ return new URL(url,"http://localhost").pathname.split("/").filter(Boolean); }
 function query(url){ return new URL(url,"http://localhost").searchParams; }
+async function rawBody(req,limit=MAX_PRIVATE_UPLOAD_BYTES){
+  const chunks=[];let size=0;
+  for await (const chunk of req) { size+=chunk.length; if(size>limit) throw Object.assign(new Error("Uploaded file is too large."),{statusCode:413,code:"PAYLOAD_TOO_LARGE"}); chunks.push(chunk); }
+  return Buffer.concat(chunks,size);
+}
 async function body(req){
   let raw="";
   for await (const chunk of req) {
@@ -89,6 +95,10 @@ const server=http.createServer(async (req,res)=>{
     if(req.method==="GET" && p==="api/v1/services") { const q=query(req.url); return ok(res,await servicesMentorship.listServices(null,{category:q.get("category"),q:q.get("q"),limit:q.get("limit"),offset:q.get("offset")}),requestId); }
     if(req.method==="GET" && parts.length===4 && p.startsWith("api/v1/services/")) return ok(res,await servicesMentorship.getServiceListing(parts[3],null),requestId);
     if(req.method==="GET" && p==="api/v1/mentors") { const q=query(req.url); const viewer=req.headers.authorization?.startsWith("Bearer ")?await auth(req):null; return ok(res,await servicesMentorship.listMentors(viewer?.sub||null,{q:q.get("q"),topic:q.get("topic")}),requestId); }
+    if(req.method==="POST" && p==="api/v1/files/uploads") { const identity=await auth(req); return ok(res,await authorizePrivateUpload(identity.sub,await body(req)),requestId,201); }
+    if(req.method==="PUT" && parts.length===5 && p.startsWith("api/v1/files/uploads/") && parts[4]==="content") { const identity=await auth(req); if(!String(req.headers["content-type"]||"").startsWith("application/octet-stream")) throw Object.assign(new Error("Upload content must use application/octet-stream."),{statusCode:415,code:"UNSUPPORTED_MEDIA_TYPE"}); const result=await receivePrivateUpload(identity.sub,parts[3],String(req.headers["x-upload-token"]||""),await rawBody(req)); return ok(res,result,requestId,201); }
+    if(req.method==="POST" && parts.length===5 && p.startsWith("api/v1/files/uploads/") && parts[4]==="confirm") { const identity=await auth(req); return ok(res,await confirmPrivateUpload(identity.sub,parts[3]),requestId,201); }
+    if(req.method==="GET" && parts.length===4 && p.startsWith("api/v1/files/")) { const identity=await auth(req); const result=await readAuthorizedPrivateFile(identity.sub,parts[3],identity.roles||[]); res.writeHead(200,{"content-type":result.file.content_type,"content-length":String(result.bytes.length),"content-disposition":"attachment; filename*=UTF-8''"+encodeURIComponent(result.file.original_name),"cache-control":"private, no-store","x-content-type-options":"nosniff","x-request-id":requestId}); return res.end(result.bytes); }
     if(req.method==="POST" && p==="api/v1/auth/register") { publicRateLimit(req,"register",5,60000); return ok(res,await membership.register(await body(req),requestId),requestId,201); }
     if(req.method==="GET" && p==="api/v1/membership/products") return ok(res,await membership.listMembershipProducts(),requestId);
     if(req.method==="POST" && p==="api/v1/auth/login") {
