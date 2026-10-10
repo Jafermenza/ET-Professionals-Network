@@ -329,9 +329,22 @@ test("service requests enforce membership, self-request, duplicate, and particip
    await expect(requestCard.getByRole("button",{name:"Accept request"})).toBeVisible();
    await requestCard.getByRole("button",{name:"Accept request"}).click();
    await expect(page.getByRole("status")).toContainText("Service request updated: accepted");
+   await page.getByRole("button",{name:"Start delivery"}).click();
+   await expect(page.getByRole("status")).toContainText("Service request updated: in progress");
+   await page.getByRole("button",{name:"Submit delivery for acceptance"}).click();
+   await expect(page.getByRole("status")).toContainText("Service request updated: completed");
+   const delivered=await api.get("/api/v1/me/service-requests",{headers});
+   expect(delivered.status()).toBe(200);
+   expect((await delivered.json()).data.some(row=>row.id===request.id&&row.provider_completed_at)).toBeTruthy();
+   await browserLogin(page,"service-unmember-"+suffix+"@example.test",password);
+   await page.goto("/services");
+   const requesterCard=page.locator(".case-row").filter({hasText:title});
+   await expect(requesterCard.getByRole("button",{name:"Accept delivered outcome"})).toBeVisible();
+   await requesterCard.getByRole("button",{name:"Accept delivered outcome"}).click();
+   await expect(page.getByRole("status")).toContainText("Delivered outcome accepted");
    const list=await api.get("/api/v1/me/service-requests",{headers});
    expect(list.status()).toBe(200);
-   expect((await list.json()).data.some(row=>row.id===request.id&&row.status==="accepted")).toBeTruthy();
+   expect((await list.json()).data.some(row=>row.id===request.id&&row.requester_accepted_at)).toBeTruthy();
  }finally{await api.dispose();await closePool();}
 });
 
@@ -386,4 +399,29 @@ test("jobs discovery presents explicit empty and API failure states",async({page
  await page.route("**/api/v1/jobs**",route=>route.abort());
  await page.reload();
  await expect(page.locator('[role="alert"].form-error')).toContainText("could not reach the service");
+});
+
+
+test("organization public inquiry decisions persist and remain organization-authorized",async({page})=>{
+ const {api,token}=await apiContext();
+ const suffix=Date.now()+"-"+Math.random().toString(16).slice(2);
+ try{
+   const {title,jobId}=await createPublishedJob(api,token);
+   const created=await api.post("/api/v1/public/opportunity-inquiries",{data:{inquiryType:"job",jobId,contactName:"Public Candidate "+suffix,contactEmail:"public-candidate-"+suffix+"@example.test",intent:"Interested in this published opportunity.",consent:true}});
+   expect(created.status()).toBe(201);
+   const inquiry=(await created.json()).data;
+   await browserLogin(page);
+   await page.goto("/organizations");
+   await expect(page.getByText(inquiry.public_reference,{exact:false})).toBeVisible();
+   await page.getByLabel("Decision for "+inquiry.public_reference).selectOption("contacted");
+   await page.getByLabel("Decision note for "+inquiry.public_reference).fill("Contacted through the Gate 4 acceptance journey.");
+   await page.getByRole("button",{name:"Save inquiry decision"}).click();
+   await expect(page.getByRole("status")).toContainText("Inquiry decision saved");
+   const listed=await api.get("/api/v1/opportunity-inquiries?type=job",{headers:{authorization:"Bearer "+token}});
+   expect(listed.status()).toBe(200);
+   expect((await listed.json()).data.some(row=>row.id===inquiry.id&&row.status==="contacted")).toBeTruthy();
+   expect(gate4RegisteredAccount).toBeTruthy();
+   const unauthorized=await api.get("/api/v1/opportunity-inquiries?type=job",{headers:{authorization:"Bearer "+gate4RegisteredAccount.token}});
+   expect(unauthorized.status()).toBe(403,"accounts without organization scope cannot inspect private inquiries");
+ }finally{await api.dispose();}
 });
