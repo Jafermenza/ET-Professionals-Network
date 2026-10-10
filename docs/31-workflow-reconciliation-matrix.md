@@ -28,13 +28,13 @@
 | Admin and role management | Auth middleware reloads DB roles; role mutation revokes sessions; logout audits | User-admin/auth services, sessions and audit log | API-level smoke covers logout only; admin UI role matrix not yet traced | **PARTIAL** — prove role-by-role allow/deny, current-role enforcement, revocation and separation of duties |
 | Reference Portfolio | Existing test/service modules and contract identified in Gate 0 | Reference dataset versions/items, validation and publication | UI and full import→validate→publish journey not yet traced in this matrix | **NOT TESTED** — preserve authoritative source constraints; add import failure/retry and published-version tests |
 
-## Gate 4 implementation order
+## Gate 4 verification and completion order
 
-1. **Jobs discovery** — remove hard-coded records, call `GET /api/v1/jobs`, support query/filter parameters actually accepted by the API, use returned job IDs for details and applications, and remove fake controls unless they are implemented.
-2. **Services discovery/request** — connect listing, details and request submission to existing endpoints; display current user's requests from `GET /api/v1/me/service-requests`.
-3. **Mentorship discovery/request** — connect mentor data and request creation, with no invented match score, languages, or availability; render only server-returned attributes.
-4. **Organization onboarding** — wire organization registration and verification steps with private evidence and server-authorized organization membership.
-5. For every item, add unit/service/API tests for successful, unauthorized, invalid-state, duplicate/retry, not-found and empty-result paths where applicable. Update this matrix in the same PR commit as implementation.
+1. **Jobs discovery** — browser-test live search and filters, job details, signed-in save/unsave persistence, alert creation, empty results and API failures. Confirm that a public inquiry is not misrepresented as a formal application.
+2. **Services discovery/request** — test the active-membership requirement, self-request denial, duplicate request behavior, request listing for permitted participants and provider state transitions.
+3. **Mentorship discovery/request** — test anonymous public visibility versus authenticated member visibility, required goals, preferred mentor handling, duplicate/retry behavior and persisted request state.
+4. **Organization onboarding** — test duplicate legal names, owner membership, organization-scoped reads/writes, private file ownership, required verification evidence and failed/missing-evidence paths. Complete a secure upload UI only after confirming the repository's file-object creation/upload contract.
+5. Add browser E2E and service/API assertions for successful, unauthorized, invalid-state, duplicate/retry, not-found and empty-result paths where applicable. Update this matrix in the same branch as fixes; a connected UI is not considered acceptance evidence until its state transitions are tested.
 
 ## Acceptance record
 
