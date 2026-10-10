@@ -151,6 +151,11 @@ assert.equal(requesterAccept.status,200,"requester should explicitly accept the 
 const mentorshipRequest=await request("/api/v1/mentorship/requests",{method:"POST",token:memberToken,body:{goals:"CI-only mentorship goal",topics:["career"],preferredModes:["remote"],preferredLanguages:["English"]}});
 assert.equal(mentorshipRequest.status,201,"active member should be able to persist an explicit mentorship request");
 const mentorshipRequestId=mentorshipRequest.payload?.data?.id;
+const requestDetails=await request("/api/v1/mentorship/requests/"+mentorshipRequestId,{token:memberToken});
+assert.equal(requestDetails.status,200,"mentee should be able to read their own persisted request");
+assert.equal(requestDetails.payload?.data?.goals,"CI-only mentorship goal","request detail must return persisted goals");
+const otherRequestDetails=await request("/api/v1/mentorship/requests/"+mentorshipRequestId,{token});
+assert.equal(otherRequestDetails.status,404,"another account must not read a private mentorship request");
 const matches=await request("/api/v1/mentorship/requests/"+mentorshipRequestId+"/matches",{token:memberToken});
 assert.equal(matches.status,200,"mentorship request owner should be able to inspect match results");
 const persistedMentorship=(await db.query("select goals,status from mentorship_request where id=$1 and mentee_user_id=$2",[mentorshipRequestId,memberId])).rows[0];

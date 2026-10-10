@@ -409,6 +409,13 @@ async function mentorCandidates(db,request){
   return results.sort((a,b)=>b.score-a.score);
 }
 
+export async function getMentorshipRequest(requestId,menteeId){
+  const db=getPool();
+  const row=(await db.query("select id,mentee_user_id,preferred_mentor_user_id,goals,topics,preferred_modes,preferred_languages,preferred_days,status,created_at,updated_at from mentorship_request where id=$1 and mentee_user_id=$2",[requestId,menteeId])).rows[0];
+  if(!row) throw error(404,"Mentorship request not found.","NOT_FOUND");
+  return row;
+}
+
 export async function findMentorMatches(requestId,menteeId){
   const db=getPool(); const request=(await db.query("select * from mentorship_request where id=$1",[requestId])).rows[0];
   if(!request) throw error(404,"Mentorship request not found.","NOT_FOUND");
