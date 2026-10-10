@@ -1,5 +1,5 @@
 import { test, expect, request as playwrightRequest } from "@playwright/test";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 let gate4RegisteredAccount=null;
 import { getPool, closePool } from "../src/platform/db.js";
 
@@ -25,7 +25,7 @@ async function browserLogin(page,email=ADMIN_EMAIL,password=ADMIN_PASSWORD){
 let cachedReviewerToken=null;
 async function independentReviewerToken(api,adminToken){
   if(cachedReviewerToken) return cachedReviewerToken;
-  const suffix=Date.now()+"-"+Math.random().toString(16).slice(2);
+  const suffix=randomUUID();
   const reviewerEmail="gate4-reviewer-"+suffix+"@example.test";
   const reviewerPassword="gate4-reviewer-password-12345";
   const reviewerRegistration=await api.post("/api/v1/auth/register",{data:{email:reviewerEmail,password:reviewerPassword,firstName:"Gate4",lastName:"Reviewer"}});
@@ -398,7 +398,7 @@ test("jobs discovery presents explicit empty and API failure states",async({page
  await expect(page.getByRole("heading",{name:"No matching opportunities"})).toBeVisible();
  await page.route("**/api/v1/jobs**",route=>route.abort());
  await page.reload();
- await expect(page.locator('[role="alert"].form-error')).toContainText("could not reach the service");
+ await expect(page.locator('[role="alert"].form-error')).toContainText("We couldn\'t load opportunities right now.");
 });
 
 
