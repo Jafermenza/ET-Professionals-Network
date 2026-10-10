@@ -211,6 +211,9 @@ test("mentorship request form supports a goal without a preferred mentor",async(
     expect(detail.status()).toBe(200);
     expect((await detail.json()).data.goals).toBe("Browser E2E goal: improve professional leadership.");
     expect((await detail.json()).data.preferred_mentor_user_id).toBeNull();
+    const candidates=await api.get("/api/v1/mentorship/requests/"+id+"/matches",{headers:{authorization:"Bearer "+token}});
+    expect(candidates.status()).toBe(200);
+    expect(Array.isArray((await candidates.json()).data)).toBeTruthy();
     const mine=await api.get("/api/v1/me/mentorship-requests",{headers:{authorization:"Bearer "+token}});
     expect(mine.status()).toBe(200);
     expect((await mine.json()).data.some(row=>row.id===id&&row.goals==="Browser E2E goal: improve professional leadership.")).toBeTruthy();
