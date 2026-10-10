@@ -185,8 +185,9 @@ test("membership application, correction, fee verification and activation persis
    expect((await response.json()).data.status).toBe("submitted");
    const approval=await api.post("/api/v1/membership/applications/"+application.id+"/review",{headers:reviewerHeaders,data:{decision:"approved",note:"Application details reviewed."}});
    expect(approval.status()).toBe(200);
-   const paymentPending=(await api.get("/api/v1/review/membership/applications",{headers:reviewerHeaders})).json();
-   expect((await paymentPending).data.some(row=>row.id===application.id&&row.status==="payment_pending")).toBeTruthy();
+   const paymentPendingHistory=await api.get("/api/v1/membership/history",{headers:memberHeaders});
+   expect(paymentPendingHistory.status()).toBe(200);
+   expect((await paymentPendingHistory.json()).data.applications.some(row=>row.id===application.id&&row.status==="payment_pending")).toBeTruthy();
    const badAmount=await api.post("/api/v1/membership/applications/"+application.id+"/payment",{headers:memberHeaders,data:{amount:Number(application.fee_snapshot.amount)+1,channel:"bank_transfer",reference:"G4-"+suffix,idempotencyKey:"g4-bad-"+suffix}});
    expect(badAmount.status(),"payment amount must match the approved fee exactly").toBe(400);
    const paymentBody={amount:Number(application.fee_snapshot.amount),channel:"bank_transfer",reference:"G4-"+suffix,idempotencyKey:"g4-membership-"+suffix};
@@ -205,9 +206,12 @@ test("membership application, correction, fee verification and activation persis
    expect((await activated.json()).data.status).toBe("active");
    const history=await api.get("/api/v1/membership/history",{headers:memberHeaders});
    expect(history.status()).toBe(200);
-   expect((await history.json()).data.some(row=>row.application_id===application.id&&row.status==="active")).toBeTruthy();
-   const finalApplications=await api.get("/api/v1/review/membership/applications",{headers:reviewerHeaders});
-   expect((await finalApplications.json()).data.some(row=>row.id===application.id&&row.status==="activated")).toBeTruthy();
+   const historyData=(await history.json()).data;
+   expect(historyData.memberships.some(row=>row.application_id===application.id&&row.status==="active")).toBeTruthy();
+   expect(historyData.applications.some(row=>row.id===application.id&&row.status==="activated")).toBeTruthy();
+   expect(historyData.payments.some(row=>row.id===paymentRow.id&&row.status==="succeeded")).toBeTruthy();
+   const forbiddenReview=await api.get("/api/v1/review/membership/applications",{headers:memberHeaders});
+   expect(forbiddenReview.status(),"members cannot inspect the review queue").toBe(403);
  }finally{await api.dispose();}
 });
 
