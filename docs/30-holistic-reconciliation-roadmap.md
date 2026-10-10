@@ -113,11 +113,11 @@ A failed test must remain visible. Do not replace a failing assertion with a wea
 
 ## 6. Current status and next action
 
-- G0: **IN PROGRESS** — contracts, codebase shape, module/screen/test/migration inventory and initial risk register are recorded. Route-level contract tracing and remaining open questions continue.
-- G1: **RUN QUEUED** — CI push coverage for this branch has been enabled. No result is claimed until the GitHub Actions run completes and is inspected.
-- G2–G6: **NOT STARTED / NOT PASSED**.
-- Baseline CI on `main` has recent successful runs, but that is not evidence that this reconciliation branch or every workflow passes.
-- No production database has been touched.
-- No application feature has been intentionally removed or disabled.
+- G0: **IN PROGRESS** — initial contracts and inventory are recorded; finish route-to-screen tracing and migration rerun analysis.
+- G1: **PASS — initial CI baseline only** — the pull-request CI run `38041774483` completed successfully for commit `da1cec8b1d2e0951fa7a59f871b6e8d692869377`. It passed dependency installation, migrations on a fresh CI PostgreSQL service, the configured test suite, Next.js production build, and `/healthz` smoke test. Subsequent security/API commits have not yet been validated by a completed CI run; rerun CI after the latest changes. The successful install used `npm install`, not `npm ci`, so dependency lockfile reproducibility remains open.
+- G2: **IN PROGRESS** — server authentication now reloads current database roles for every authenticated request, admin role changes revoke existing sessions, and a regression test covers stale token role claims. The shadowed duplicate `GET /api/v1/me` handler has been removed so the route can return the profile contract consumed by the dashboard. These changes await CI validation and further role/scope negative tests.
+- G3–G6: **NOT PASSED** — migration rerun/upgrade safety, complete route-to-screen workflow tracing, browser E2E journeys, and release-readiness checks remain open.
+- The baseline CI run is evidence only for the tested commit; it does not validate later commits or prove every workflow passes.
+- No production database has been touched. No application feature has been intentionally removed or disabled.
 
-Next action: inspect the branch CI result; resolve build/test failures on this same branch, then continue the security/session and migration gates with regression coverage.
+Next action: confirm CI after the latest G2 fixes, inspect all migrations for rerun/partial-failure behavior, then add tests for the authorization and data invariants before advancing the gates.
