@@ -106,6 +106,18 @@ async function createVerifiedOrganization(api,token,prefix){
   expect(reviewed.status(),"organization verification decision by independent reviewer").toBe(200);
   return organization;
 }
+async function mockApiResponse(page,pattern,status,payload){
+  const headers={
+    "access-control-allow-origin":"http://127.0.0.1:3001",
+    "access-control-allow-headers":"authorization,content-type",
+    "access-control-allow-methods":"GET,OPTIONS",
+    "access-control-allow-credentials":"true"
+  };
+  await page.route(pattern,async route=>{
+    if(route.request().method()==="OPTIONS") return route.fulfill({status:204,headers});
+    return route.fulfill({status,headers,contentType:"application/json",body:JSON.stringify(payload)});
+  });
+}
 async function createActiveMember(api,prefix){
   const suffix=randomUUID();
   const email="gate4-"+prefix.toLowerCase()+"-"+suffix+"@example.test";
@@ -492,13 +504,39 @@ test("jobs discovery presents explicit empty and API failure states",async({page
  await page.getByPlaceholder("Search job title or description").fill("gate4-no-result-"+Date.now());
  await page.getByRole("button",{name:"Apply filters"}).click();
  await expect(page.getByRole("heading",{name:"No matching opportunities"})).toBeVisible();
- await page.route("**/api/v1/jobs**",route=>route.fulfill({status:503,contentType:"application/json",body:JSON.stringify({error:{code:"SERVER_ERROR",message:"CI simulated upstream failure"}})}));
- const failedJobsResponse=page.waitForResponse(response=>new URL(response.url()).pathname==="/api/v1/jobs"&&response.status()===503);
+ await page.unroute("**/api/v1/jobs**");
+ await mockApiResponse(page,"**/api/v1/jobs**",503,{error:{code:"SERVER_ERROR",message:"CI simulated upstream failure"}});
+ let jobsFailureIntercepted=false;
+ page.on("response",response=>{if(new URL(response.url()).pathname==="/api/v1/jobs"&&response.status()===503)jobsFailureIntercepted=true;});
  await page.getByRole("button",{name:"Apply filters"}).click();
- await failedJobsResponse;
+ await expect.poll(()=>jobsFailureIntercepted,{message:"the jobs API failure fixture must intercept the real browser request"}).toBe(true);
  await expect(page.locator('[role="alert"].form-error')).toContainText("server problem");
 });
 
+
+test("services and mentorship expose explicit empty and retryable API-failure states",async({page})=>{
+ await mockApiResponse(page,"**/api/v1/services**",200,{data:{items:[]}});
+ await page.goto("/services");
+ await expect(page.getByRole("heading",{name:"No published services found"})).toBeVisible();
+ await page.unroute("**/api/v1/services**");
+ await mockApiResponse(page,"**/api/v1/services**",503,{error:{code:"SERVER_ERROR",message:"CI simulated services outage"}});
+ let serviceFailureIntercepted=false;
+ page.on("response",response=>{if(new URL(response.url()).pathname==="/api/v1/services"&&response.status()===503)serviceFailureIntercepted=true;});
+ await page.getByRole("button",{name:"Retry"}).click();
+ await expect.poll(()=>serviceFailureIntercepted,{message:"the services API failure fixture must intercept the real browser request"}).toBe(true);
+ await expect(page.locator('[role="alert"].form-error')).toContainText("server problem");
+
+ await mockApiResponse(page,"**/api/v1/mentors**",200,{data:[]});
+ await page.goto("/mentorship");
+ await expect(page.getByRole("heading",{name:"No active mentor profiles found"})).toBeVisible();
+ await page.unroute("**/api/v1/mentors**");
+ await mockApiResponse(page,"**/api/v1/mentors**",503,{error:{code:"SERVER_ERROR",message:"CI simulated mentorship outage"}});
+ let mentorFailureIntercepted=false;
+ page.on("response",response=>{if(new URL(response.url()).pathname==="/api/v1/mentors"&&response.status()===503)mentorFailureIntercepted=true;});
+ await page.getByRole("button",{name:"Retry"}).click();
+ await expect.poll(()=>mentorFailureIntercepted,{message:"the mentorship API failure fixture must intercept the real browser request"}).toBe(true);
+ await expect(page.locator('[role="alert"].form-error')).toContainText("server problem");
+});
 
 test("organization public inquiry decisions persist and remain organization-authorized",async({page})=>{
  const {api,token}=await apiContext();
