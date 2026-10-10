@@ -263,7 +263,7 @@ const server=http.createServer(async (req,res)=>{
       else requireRole(identity,"member");
       return ok(res,await verification.createCase(b.subjectUserId||identity.sub,b.programCode,identity.sub,requestId),requestId,201);
     }
-    if(req.method==="POST" && parts.length===5 && p.startsWith("api/v1/verification/cases/") && parts[4]==="consent"){ const b=await body(req); return ok(res,await verification.giveConsent(parts[3],identity.sub,b.consentVersion,requestId),requestId); }
+    if(req.method==="POST" && parts.length===6 && p.startsWith("api/v1/verification/cases/") && parts[5]==="consent"){ const b=await body(req); return ok(res,await verification.giveConsent(parts[4],identity.sub,b.consentVersion,requestId),requestId); }
     if(req.method==="GET" && parts.length===5 && p.startsWith("api/v1/verification/cases/")){
       const c=await verification.getCase(parts[4],identity.sub);
       return ok(res,c,requestId);
@@ -273,30 +273,30 @@ const server=http.createServer(async (req,res)=>{
       const q=query(req.url);
       return ok(res,await verification.listCases({status:q.get("status"),programCode:q.get("programCode"),reviewerId:q.get("reviewerId"),limit:q.get("limit"),offset:q.get("offset")}),requestId);
     }
-    if(req.method==="POST" && parts.length===5 && p.startsWith("api/v1/verification/cases/") && parts[4]==="assign"){
+    if(req.method==="POST" && parts.length===6 && p.startsWith("api/v1/verification/cases/") && parts[5]==="assign"){
       anyRole(identity,["verification_reviewer","system_admin"]); const b=await body(req);
-      return ok(res,await verification.assignCase(parts[3],b.reviewerId,identity.sub,requestId),requestId);
+      return ok(res,await verification.assignCase(parts[4],b.reviewerId,identity.sub,requestId),requestId);
     }
-    if(req.method==="POST" && parts.length===5 && p.startsWith("api/v1/verification/cases/") && parts[4]==="transition"){
+    if(req.method==="POST" && parts.length===6 && p.startsWith("api/v1/verification/cases/") && parts[5]==="transition"){
       anyRole(identity,["verification_reviewer","ethics_reviewer","system_admin"]); const b=await body(req);
-      return ok(res,await verification.transitionCase(parts[3],b.status,identity.sub,requestId),requestId);
+      return ok(res,await verification.transitionCase(parts[4],b.status,identity.sub,requestId),requestId);
     }
-    if(req.method==="POST" && parts.length===5 && p.startsWith("api/v1/verification/cases/") && parts[4]==="claims"){
-      const b=await body(req); const c=await verification.getCase(parts[3]);
+    if(req.method==="POST" && parts.length===6 && p.startsWith("api/v1/verification/cases/") && parts[5]==="claims"){
+      const b=await body(req); const c=await verification.getCase(parts[4]);
       if(c.subject_user_id!==identity.sub) anyRole(identity,["verification_reviewer","ethics_reviewer","system_admin"]);
-      return ok(res,await verification.addClaim(parts[3],b.claimTypeCode,b.claimedValue,identity.sub,requestId),requestId,201);
+      return ok(res,await verification.addClaim(parts[4],b.claimTypeCode,b.claimedValue,identity.sub,requestId),requestId,201);
     }
-    if(req.method==="POST" && parts.length===5 && p.startsWith("api/v1/verification/cases/") && parts[4]==="evidence"){
-      const b=await body(req); const c=await verification.getCase(parts[3]);
+    if(req.method==="POST" && parts.length===6 && p.startsWith("api/v1/verification/cases/") && parts[5]==="evidence"){
+      const b=await body(req); const c=await verification.getCase(parts[4]);
       if(c.subject_user_id!==identity.sub) anyRole(identity,["verification_reviewer","ethics_reviewer","system_admin"]);
-      return ok(res,await verification.addEvidence(parts[3],b,identity.sub,requestId),requestId,201);
+      return ok(res,await verification.addEvidence(parts[4],b,identity.sub,requestId),requestId,201);
     }
-    if(req.method==="POST" && parts.length===5 && p.startsWith("api/v1/verification/cases/") && parts[4]==="decision"){
+    if(req.method==="POST" && parts.length===6 && p.startsWith("api/v1/verification/cases/") && parts[5]==="decision"){
       anyRole(identity,["verification_reviewer","ethics_reviewer","system_admin"]);
-      return ok(res,await verification.decide(parts[3],await body(req),identity.sub,requestId),requestId);
+      return ok(res,await verification.decide(parts[4],await body(req),identity.sub,requestId),requestId);
     }
-    if(req.method==="POST" && parts.length===5 && p.startsWith("api/v1/verification/cases/") && parts[4]==="response") return ok(res,await verification.memberResponse(parts[3],await body(req),identity.sub,requestId),requestId);
-    if(req.method==="POST" && parts.length===5 && p.startsWith("api/v1/verification/cases/") && parts[4]==="appeal") return ok(res,await verification.submitAppeal(parts[3],await body(req),identity.sub,requestId),requestId,201);
+    if(req.method==="POST" && parts.length===6 && p.startsWith("api/v1/verification/cases/") && parts[5]==="response") return ok(res,await verification.memberResponse(parts[4],await body(req),identity.sub,requestId),requestId);
+    if(req.method==="POST" && parts.length===6 && p.startsWith("api/v1/verification/cases/") && parts[5]==="appeal") return ok(res,await verification.submitAppeal(parts[4],await body(req),identity.sub,requestId),requestId,201);
     if(req.method==="POST" && parts.length===5 && p.startsWith("api/v1/verification/appeals/") && parts[4]==="decision"){
       anyRole(identity,["appeal_reviewer","system_admin"]);
       return ok(res,await verification.decideAppeal(parts[3],await body(req),identity.sub,requestId),requestId);
