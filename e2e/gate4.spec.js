@@ -257,6 +257,11 @@ test("profile and notification preferences save to PostgreSQL and survive reload
    const db=getPool(),product=(await db.query("select id from membership_product where product_code='BASIC'")).rows[0];
    expect(product,"the acceptance database must include the BASIC membership product").toBeTruthy();
    await db.query("insert into membership_record(user_id,membership_product_id,membership_number,status,start_date,end_date,source) values($1,$2,$3,'active',current_date,current_date+365,'admin')",[registeredData.user.id,product.id,"G4-PROFILE-"+registeredData.user.id.slice(0,8)]);
+   await db.query("insert into verification_claim_type(claim_code,name,active) values('professional_certification','Professional certification',true) on conflict(claim_code) do update set active=true");
+   const claimType=(await db.query("select id from verification_claim_type where claim_code='professional_certification'")).rows[0];
+   const program=(await db.query("insert into verification_program(program_code,name,purpose,requires_consent,active) values('GATE4_PROFILE_FIXTURE','Gate 4 profile fixture','Test-only verified talent consent fixture',false,true) on conflict(program_code) do update set active=true returning id")).rows[0];
+   const verificationCase=(await db.query("insert into verification_case(program_id,subject_user_id,status,purpose_snapshot,opened_by) values($1,$2,'review','Gate 4 test fixture: verified talent consent', $2) returning id",[program.id,registeredData.user.id])).rows[0];
+   await db.query("insert into verification_claim(case_id,claim_type_id,claim_code_snapshot,claimed_value,status,verified_at) values($1,$2,'professional_certification',$3,'verified',now())",[verificationCase.id,claimType.id,JSON.stringify({fixture:"Gate 4 profile privacy test"})]);
    await browserLogin(page,email,password);
    await page.goto("/profile");
    await expect(page.getByLabel("Professional headline")).toBeVisible();
