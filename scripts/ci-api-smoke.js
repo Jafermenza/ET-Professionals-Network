@@ -79,6 +79,7 @@ const memberToken=registration.payload?.data?.token;
 const memberId=registration.payload?.data?.user?.id;
 assert.equal(typeof memberToken,"string","registration should return a session token");
 assert.equal(typeof memberId,"string","registration should return the new user id");
+await db.query("insert into person(user_id,first_name,last_name,display_name) values($1,'Gate4','Administrator','Gate4 Administrator') on conflict(user_id) do nothing",[me.payload.data.user_id]);
 for(const userId of [me.payload.data.user_id,memberId]){
   const active=(await db.query("select id from membership_record where user_id=$1 and status='active' limit 1",[userId])).rows[0];
   if(!active) await db.query("insert into membership_record(user_id,membership_product_id,membership_number,status,start_date,end_date,source) values($1,$2,$3,'active',current_date,current_date+365,'admin')",[userId,membershipProduct.id,"CI-"+userId.slice(0,8)+"-"+Date.now()]);
@@ -143,7 +144,7 @@ assert.equal(providerStart.status,200,"provider should start an accepted service
 const providerComplete=await request("/api/v1/service-requests/"+serviceRequestId+"/status",{method:"POST",token,body:{status:"completed",note:"Delivery submitted"}});
 assert.equal(providerComplete.status,200,"provider completion should be recorded without bypassing requester acceptance");
 const prematureList=await request("/api/v1/me/service-requests",{token:memberToken});
-assert.ok((prematureList.payload||[]).some(r=>r.id===serviceRequestId&&r.provider_completed_at),"requester should see the provider completion submission");
+assert.ok((prematureList.payload?.data||[]).some(r=>r.id===serviceRequestId&&r.provider_completed_at),"requester should see the provider completion submission");
 const requesterAccept=await request("/api/v1/service-requests/"+serviceRequestId+"/accept-completion",{method:"POST",token:memberToken,body:{note:"CI outcome accepted"}});
 assert.equal(requesterAccept.status,200,"requester should explicitly accept the completed delivery");
 
