@@ -474,7 +474,7 @@ export async function respondToMatch(matchId,mentorUserId,status,requestIdHeader
     if(status==="accepted"){
       const existing=(await db.query("select id from mentorship where request_id=$1",[match.request_id])).rows[0];
       if(!existing){
-        await db.query("insert into mentorship(request_id,mentor_user_id,mentee_user_id,goals,status) select request_id,mentor_user_id,mentee_user_id,mr.goals,'active' from mentorship_match mm join mentorship_request mr on mr.id=mm.request_id where mm.id=$1",[matchId]);
+        await db.query("insert into mentorship(request_id,mentor_user_id,mentee_user_id,goals,status) select mm.request_id,mm.mentor_user_id,mm.mentee_user_id,mr.goals,'active' from mentorship_match mm join mentorship_request mr on mr.id=mm.request_id where mm.id=$1",[matchId]);
         await db.query("update mentorship_request set status='matched',matched_mentor_user_id=$1,updated_at=now() where id=$2",[mentorUserId,match.request_id]);
       }
     } else {
