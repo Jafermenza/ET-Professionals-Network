@@ -19,8 +19,13 @@ async function request(path,{method="GET",token,body}={}){
   return {status:response.status,payload};
 }
 
-const login=await request("/api/v1/auth/login",{method:"POST",body:{email,password}});
-assert.equal(login.status,200,"bootstrap administrator should be able to log in");
+let login;
+for(let attempt=0;attempt<20;attempt++){
+  login=await request("/api/v1/auth/login",{method:"POST",body:{email,password}});
+  if(login.status===200) break;
+  await new Promise(resolve=>setTimeout(resolve,250));
+}
+assert.equal(login.status,200,"bootstrap administrator should be able to log in after startup");
 const token=login.payload?.data?.token;
 assert.equal(typeof token,"string","login response must include a session token");
 
