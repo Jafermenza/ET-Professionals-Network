@@ -131,7 +131,7 @@ Evidence reviewed on 2026-10-10 (latest implementation commit below):
 2. G1 is closed for commit `08e1b581cf22b795b80bc9a572c6ff514ef6e4ba`; preserve the committed lockfile and `npm ci` in all subsequent changes.
 3. G2 is closed for the evidenced identity/session, privileged-role, organization-evidence and reviewer-conflict boundaries. Reopen it if G4/G5 uncovers an authorization regression; broader workflow-specific scope acceptance remains tracked in the matrix.
 4. Keep production migration blocked until an operator verifies the actual production schema against a reviewed backup/restore copy and records the exact baseline using `docs/32-migration-operations-runbook.md`. G3's disposable-database acceptance is complete; production baseline verification is an explicit operational prerequisite, not an inferred PASS.
-5. For G4, connect one workflow at a time (jobs, mentorship, services, organization onboarding), with loading/empty/error states and service/API regression tests. Keep every change on `reconciliation/holistic-gates`.
+5. For G4, preserve the connected workflow implementations and require full browser/service regression evidence on the final branch head. Unsupported capabilities must be marked not implemented rather than implied complete.
 6. Run G5 and G6 only after their acceptance criteria and evidence are available.
 
 This roadmap is evidence-driven: green CI is tied to a specific commit and is not a claim that all product workflows are complete.

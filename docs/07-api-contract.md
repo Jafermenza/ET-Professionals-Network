@@ -181,3 +181,16 @@ These are the concrete current server routes used by the reconciled screens; the
 - Organization evidence upload uses the private upload authorization, content upload, confirmation, then evidence attachment endpoints defined in the private upload section above.
 
 Gate acceptance still requires automated tests for positive paths, authorization denials, invalid state, duplicate/retry and persisted state. An endpoint being documented is not itself evidence that the workflow passed.
+
+
+## Gate 4 current route extensions
+
+- `GET /api/v1/me/mentor-profile` — returns the authenticated user's mentor profile and published availability, or `null` when not configured.
+- `POST /api/v1/me/mentor-profile` — create a mentor profile subject to active-membership and verified-professional-claim requirements.
+- `PATCH /api/v1/mentor-profiles/{id}`, `POST /api/v1/mentor-profiles/{id}/status`, `PUT /api/v1/mentor-profiles/{id}/availability` — manage only the profile owned by the authenticated mentor.
+- `GET /api/v1/me/mentorship-matches` — pending proposed matches for the authenticated mentor only.
+- `GET /api/v1/me/mentorships` — mentorship engagements where the authenticated account is mentor or mentee.
+- `GET /api/v1/mentorship/{id}/sessions` — session history after participant authorization. Existing goals, session status, mentorship status and feedback routes remain participant-scoped.
+- `GET /api/v1/me/mentorship-requests` — only the authenticated mentee's request history.
+
+These additions are not a relaxation of authorization. Mentor profile eligibility, resource participation, availability and state transitions remain enforced by the service layer.
