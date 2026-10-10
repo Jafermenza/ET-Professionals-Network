@@ -518,7 +518,7 @@ test("mentor eligibility, profile lifecycle, availability, match acceptance, ses
    const invitation=page.locator(".case-row").filter({hasText:"Build practical leadership and coaching skills."});
    await expect(invitation.getByRole("button",{name:"Accept match"})).toBeVisible();
    await invitation.getByRole("button",{name:"Accept match"}).click();
-   await expect(page.getByRole("status")).toContainText("Match accepted");
+   await expect(page.getByRole("status")).toContainText("Mentorship match accepted");
    const engagementsResponse=await api.get("/api/v1/me/mentorships",{headers:{authorization:"Bearer "+adminToken}});
    expect(engagementsResponse.status()).toBe(200);
    const engagement=(await engagementsResponse.json()).data.find(row=>row.mentor_user_id===mentorId&&row.mentee_user_id===adminId);
