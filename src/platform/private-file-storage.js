@@ -7,12 +7,15 @@ export const MAX_PRIVATE_UPLOAD_BYTES = 10 * 1024 * 1024;
 const ALLOWED_TYPES = new Set(["application/pdf","image/jpeg","image/png","text/plain"]);
 const sha256 = value => createHash("sha256").update(value).digest("hex");
 const fail = (status,message,code) => Object.assign(new Error(message),{statusCode:status,code});
-function safeName(value){
+export function validatePrivateUploadName(value){
   const name=path.basename(String(value||"").replace(/\\/g,"/")).trim();
   if(!name||name.length>180||/[\u0000-\u001f\u007f]/.test(name)) throw fail(400,"A valid file name is required.","INVALID_FILE");
   return name;
 }
-function validateBytes(type,bytes){
+export function validatePrivateUploadBytes(type,bytes){
+  if(!ALLOWED_TYPES.has(type)) throw fail(400,"Unsupported private file type.","UNSUPPORTED_FILE_TYPE");
+  if(!Buffer.isBuffer(bytes)) bytes=Buffer.from(bytes||[]);
+  if(bytes.length<1||bytes.length>MAX_PRIVATE_UPLOAD_BYTES) throw fail(413,"Private files must be between 1 byte and 10 MiB.","PAYLOAD_TOO_LARGE");
   if(type==="application/pdf" && !(bytes.length>=5&&bytes.subarray(0,5).toString("ascii")==="%PDF-")) throw fail(400,"The file content does not match its declared type.","FILE_TYPE_MISMATCH");
   if(type==="image/png" && !(bytes.length>=8&&bytes.subarray(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10]))) ) throw fail(400,"The file content does not match its declared type.","FILE_TYPE_MISMATCH");
   if(type==="image/jpeg" && !(bytes.length>=3&&bytes[0]===255&&bytes[1]===216&&bytes[2]===255)) throw fail(400,"The file content does not match its declared type.","FILE_TYPE_MISMATCH");
@@ -26,7 +29,7 @@ function tokenMatches(token,stored){
   return a.length===b.length&&timingSafeEqual(a,b);
 }
 export async function authorizePrivateUpload(userId,input){
-  const originalName=safeName(input?.fileName);
+  const originalName=validatePrivateUploadName(input?.fileName);
   const contentType=String(input?.contentType||"").toLowerCase().trim();
   const byteSize=Number(input?.byteSize);
   if(!ALLOWED_TYPES.has(contentType)) throw fail(400,"Supported private files are PDF, PNG, JPEG or plain text.","UNSUPPORTED_FILE_TYPE");
@@ -49,7 +52,7 @@ export async function receivePrivateUpload(userId,id,token,bytes){
   if(bytes.length!==Number(s.expected_byte_size)) throw fail(400,"Uploaded byte size does not match the authorized size.","UPLOAD_SIZE_MISMATCH");
   const checksum=sha256(bytes);
   if(s.expected_checksum_sha256&&checksum!==s.expected_checksum_sha256) throw fail(400,"Uploaded checksum does not match the authorized checksum.","UPLOAD_CHECKSUM_MISMATCH");
-  validateBytes(s.content_type,bytes);
+  validatePrivateUploadBytes(s.content_type,bytes);
   const target=filePath(s.object_key),temp=target+".uploading";
   await mkdir(path.dirname(target),{recursive:true,mode:0o700});
   try { await writeFile(temp,bytes,{flag:"wx",mode:0o600}); await rename(temp,target); }
