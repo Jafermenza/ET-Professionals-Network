@@ -27,10 +27,16 @@ export default function Organizations(){
      api<Organization[]>("/api/v1/organizations",{},token),
      api<Inquiry[]>("/api/v1/opportunity-inquiries?type=job",{},token)
    ]);
-   if(results[0].status==="fulfilled")setOrganizations(Array.isArray(results[0].value)?results[0].value:[]);
-   else setError(results[0].reason instanceof ApiError?results[0].reason.message:"We couldn't load your organizations.");
-   if(results[1].status==="fulfilled")setInquiries(Array.isArray(results[1].value)?results[1].value:[]);
-   else if(results[1].reason instanceof ApiError&&results[1].reason.status!==403)setError(current=>current||results[1].reason.message);
+   const organizationResult=results[0];
+   if(organizationResult.status==="fulfilled")setOrganizations(Array.isArray(organizationResult.value)?organizationResult.value:[]);
+   else {const reason=organizationResult.reason;setError(reason instanceof ApiError?reason.message:"We couldn't load your organizations.");}
+   const inquiryResult=results[1];
+   if(inquiryResult.status==="fulfilled")setInquiries(Array.isArray(inquiryResult.value)?inquiryResult.value:[]);
+   else {
+     const reason=inquiryResult.reason;
+     const message=reason instanceof ApiError&&reason.status!==403?reason.message:"";
+     if(message)setError(current=>current||message);
+   }
    setLoading(false);
  },[token]);
  useEffect(()=>{void load()},[load]);
