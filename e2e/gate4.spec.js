@@ -262,6 +262,19 @@ test("profile and notification preferences save to PostgreSQL and survive reload
    await page.getByLabel("Professional directory visibility").selectOption("members");
    await page.getByRole("button",{name:"Save profile"}).click();
    await expect(page.getByRole("status")).toContainText("Profile changes were saved");
+   await page.getByLabel("Professional title").fill("Gate 4 directory profile "+suffix);
+   await page.getByLabel("Years of experience").fill("5");
+   await page.getByLabel("Availability status").selectOption("available");
+   await page.getByLabel("Location label").fill("Addis Ababa");
+   await page.getByLabel("Directory summary").fill("A persisted privacy-safe professional summary.");
+   await page.getByLabel("Profile audience").selectOption("public");
+   await page.getByRole("button",{name:"Save directory profile"}).click();
+   await expect(page.getByRole("status")).toContainText("Professional directory profile saved");
+   await page.getByLabel("List my profile in talent search").check();
+   await page.getByLabel("Show location").check();
+   await page.getByLabel("Show verified professional badge").check();
+   await page.getByRole("button",{name:"Save directory privacy settings"}).click();
+   await expect(page.getByRole("status")).toContainText("Talent directory consent and disclosure settings saved");
    await page.getByLabel("Email",{exact:true}).uncheck();
    await page.getByRole("button",{name:"Save notification preferences"}).click();
    await expect(page.getByRole("status")).toContainText("Notification preferences were saved");
@@ -269,6 +282,10 @@ test("profile and notification preferences save to PostgreSQL and survive reload
    await expect(page.getByLabel("Professional headline")).toHaveValue("Gate 4 persisted profile "+suffix);
    await expect(page.getByLabel("Professional directory visibility")).toHaveValue("members");
    await expect(page.getByLabel("Email",{exact:true})).not.toBeChecked();
+   await expect(page.getByLabel("Professional title")).toHaveValue("Gate 4 directory profile "+suffix);
+   await expect(page.getByLabel("Availability status")).toHaveValue("available");
+   await expect(page.getByLabel("List my profile in talent search")).toBeChecked();
+   await expect(page.getByLabel("Show location")).toBeChecked();
    const headers={authorization:"Bearer "+registeredData.token};
    const me=await api.get("/api/v1/me",{headers});
    expect(me.status()).toBe(200);
@@ -276,6 +293,12 @@ test("profile and notification preferences save to PostgreSQL and survive reload
    const prefs=await api.get("/api/v1/notifications/preferences",{headers});
    expect(prefs.status()).toBe(200);
    expect((await prefs.json()).data.email_enabled).toBe(false);
+   const talentProfile=await api.get("/api/v1/me/talent-profile",{headers});
+   expect(talentProfile.status()).toBe(200);
+   expect((await talentProfile.json()).data.professional_title).toBe("Gate 4 directory profile "+suffix);
+   const talentVisibility=await api.get("/api/v1/me/talent-visibility",{headers});
+   expect(talentVisibility.status()).toBe(200);
+   expect((await talentVisibility.json()).data.directory_visible).toBe(true);
  }finally{await api.dispose();}
 });
 
