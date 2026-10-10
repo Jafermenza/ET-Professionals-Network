@@ -39,6 +39,9 @@ export default function Jobs(){
  const [creatingAlert,setCreatingAlert]=useState(false);
  const [error,setError]=useState("");
  const [notice,setNotice]=useState("");
+ const [coverLetters,setCoverLetters]=useState<Record<string,string>>({});
+ const [draftIds,setDraftIds]=useState<Record<string,string>>({});
+ const [applyingId,setApplyingId]=useState("");
 
  const loadJobs=useCallback(async(nextFilters:Filters)=>{
    setLoading(true);setError("");setNotice("");
@@ -84,6 +87,21 @@ export default function Jobs(){
      setNotice(isSaved?"Opportunity removed from saved jobs.":"Opportunity saved to your account.");
    }catch(e){setError(e instanceof ApiError?e.message:"We couldn't update your saved jobs.");}
    finally{setSavingId("");}
+ }
+ async function submitFormalApplication(job:Job){
+   if(!token){setNotice("Sign in to start a formal application. Public interest intake remains available separately.");return;}
+   setApplyingId(job.id);setError("");setNotice("");
+   try{
+     let draftId=draftIds[job.id];
+     if(!draftId){
+       const draft=await api<{id:string}>(`/api/v1/jobs/${encodeURIComponent(job.id)}/application-drafts`,{method:"POST",body:JSON.stringify({coverLetter:coverLetters[job.id]||""})},token);
+       draftId=draft.id;setDraftIds(current=>({...current,[job.id]:draftId!}));
+     }
+     await api(`/api/v1/job-applications/${encodeURIComponent(draftId)}/submit`,{method:"POST",body:JSON.stringify({coverLetter:coverLetters[job.id]||""})},token);
+     setNotice("Formal application submitted. Its status is available in application tracking.");
+     setDraftIds(current=>{const next={...current};delete next[job.id];return next;});
+   }catch(e){setError(e instanceof ApiError?e.message:"We couldn't submit the formal application. If eligibility needs review, the draft remains available in this session.");}
+   finally{setApplyingId("");}
  }
  async function toggleDetails(job:Job){
    const isOpen=Boolean(expanded[job.id]);
@@ -132,7 +150,7 @@ export default function Jobs(){
            {salary(job)&&<span className="tagline">{salary(job)}</span>}
          </div>
          {job.application_deadline&&<p className="muted">Application deadline: {new Date(job.application_deadline).toLocaleDateString()}</p>}
-         {expanded[job.id]&&<div style={{marginTop:14}}><p>{job.description||"No further description has been published."}</p><p className="muted">A formal application may require sign-in and eligibility checks. Public interest intake is available if you are not ready to start a formal application.</p></div>}
+         {expanded[job.id]&&<div style={{marginTop:14}}><p>{job.description||"No further description has been published."}</p><p className="muted">A public inquiry is not a formal application. Formal submission is authenticated and checks eligibility, required screening answers and duplicate applications.</p>{token?<div className="grid" style={{gap:8,marginTop:10}}><label htmlFor={"cover-"+job.id}>Cover letter (optional)<textarea id={"cover-"+job.id} rows={3} value={coverLetters[job.id]||""} onChange={e=>setCoverLetters(current=>({...current,[job.id]:e.target.value}))} placeholder="Explain your interest and relevant experience."/></label><button className="btn btn-primary" type="button" disabled={applyingId===job.id} onClick={()=>void submitFormalApplication(job)}>{applyingId===job.id?"Submitting…":draftIds[job.id]?"Retry formal submission":"Submit formal application"}</button></div>:<p className="muted"><a href="/login?next=/jobs">Sign in to submit a formal application</a>; use public inquiry only if you want to ask questions first.</p>}</div>}
          <div style={{display:"flex",gap:10,flexWrap:"wrap",marginTop:18}}>
            <button className="btn btn-ghost" type="button" onClick={()=>void toggleDetails(job)}>{expanded[job.id]?"Hide details":"View details"}</button>
            <a className="btn btn-primary" href={"/apply/job"}>Start public inquiry</a>
