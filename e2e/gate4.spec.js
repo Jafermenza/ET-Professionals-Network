@@ -119,18 +119,9 @@ async function mockApiResponse(page,pattern,status,payload){
   });
 }
 async function createActiveMember(api,prefix){
-  const suffix=randomUUID();
-  const email="gate4-"+prefix.toLowerCase()+"-"+suffix+"@example.test";
-  const password="gate4-member-password-12345";
-  const registration=await api.post("/api/v1/auth/register",{data:{email,password,firstName:"Gate4",lastName:prefix+suffix.slice(0,8)}});
-  expect(registration.status(),"independent "+prefix+" account registration").toBe(201);
-  const account=(await registration.json()).data;
-  const db=getPool();
-  const product=(await db.query("select id from membership_product where product_code='BASIC'")).rows[0];
-  expect(product,"the acceptance database must include the BASIC membership product").toBeTruthy();
-  await db.query("insert into membership_record(user_id,membership_product_id,membership_number,status,start_date,end_date,source) values($1,$2,$3,'active',current_date,current_date+365,'admin')",[account.user.id,product.id,"G4-"+prefix+"-"+account.user.id.slice(0,8)]);
-  return {...account,email,password,userId:account.user.id};
+  return ensureGate4Professional(api);
 }
+
 async function addVerifiedProfessionalClaim(userId,programCode){
   const db=getPool();
   await db.query("insert into verification_claim_type(claim_code,name,active) values('professional_certification','Professional certification',true) on conflict(claim_code) do update set active=true");
@@ -246,9 +237,9 @@ test("organization screen uploads private evidence and submits verification",asy
 test("service search and request form use published API data and persist a request",async({page})=>{
   const {api,token}=await apiContext();
   const suffix=Date.now()+"-"+Math.random().toString(16).slice(2);
-  const memberEmail="browser-gate4-"+suffix+"@example.test";
-  const memberPassword="browser-gate4-password-12345";
   try{
+    const member=await ensureGate4Professional(api);
+    const memberEmail=member.email,memberPassword=member.password;
     const title="Browser Gate 4 Service "+suffix;
     const headers={authorization:"Bearer "+token};
     const listing=await api.post("/api/v1/services",{headers,data:{title,description:"Browser E2E service request fixture",serviceCategory:"consulting",pricingModel:"quote",visibility:"public"}});
@@ -256,14 +247,7 @@ test("service search and request form use published API data and persist a reque
     const listingId=(await listing.json()).data.id;
     const published=await api.post("/api/v1/services/"+listingId+"/status",{headers,data:{status:"published"}});
     expect(published.status()).toBe(200);
-    const registered=await api.post("/api/v1/auth/register",{data:{email:memberEmail,password:memberPassword,firstName:"Browser",lastName:"Requester"+suffix}});
-    expect(registered.status()).toBe(201);
-    const registeredData=(await registered.json()).data;
-    const memberId=registeredData.user.id;
-    const db=getPool();
-    const product=(await db.query("select id from membership_product where product_code='BASIC'")).rows[0];
-    expect(product).toBeTruthy();
-    await db.query("insert into membership_record(user_id,membership_product_id,membership_number,status,start_date,end_date,source) values($1,$2,$3,'active',current_date,current_date+365,'admin')",[memberId,product.id,"E2E-"+memberId.slice(0,8)]);
+    const memberId=member.userId;
     await browserLogin(page,memberEmail,memberPassword);
     await page.goto("/services");
     await page.getByPlaceholder("Category, capability or keyword").fill(title);
@@ -273,7 +257,7 @@ test("service search and request form use published API data and persist a reque
     await page.getByLabel("Message to the provider").fill("Please contact me about the scope and timeline.");
     await page.getByRole("button",{name:"Submit service request"}).click();
     await expect(page.getByRole("status")).toContainText("Your service request was submitted.");
-    const requests=await api.get("/api/v1/me/service-requests",{headers:{authorization:"Bearer "+registeredData.token}});
+    const requests=await api.get("/api/v1/me/service-requests",{headers:{authorization:"Bearer "+member.token}});
     expect(requests.status()).toBe(200);
     expect((await requests.json()).data.some(item=>item.service_title===title&&item.status==="requested")).toBeTruthy();
   }finally{
@@ -414,9 +398,11 @@ test("service requests enforce membership, self-request, duplicate, and particip
    expect((await api.post("/api/v1/services/"+listingId+"/status",{headers:{authorization:"Bearer "+token},data:{status:"published"}})).status()).toBe(200);
    const self=await api.post("/api/v1/services/"+listingId+"/requests",{headers:{authorization:"Bearer "+token},data:{message:"self request must fail"}});
    expect(self.status()).toBe(409);
-   const unmember=await api.post("/api/v1/auth/register",{data:{email:"service-unmember-"+suffix+"@example.test",password,firstName:"Service",lastName:"Member"+suffix}});
-   expect(unmember.status()).toBe(201);
-   const member=(await unmember.json()).data;
+   const reviewerToken=await independentReviewerToken(api,token);
+   const reviewerMe=await api.get("/api/v1/me",{headers:{authorization:"Bearer "+reviewerToken}});
+   expect(reviewerMe.status()).toBe(200);
+   const reviewerId=(await reviewerMe.json()).data.user_id;
+   const member={token:reviewerToken,user:{id:reviewerId},email:"gate4-reviewer-ci@example.test",password:"gate4-reviewer-password-12345"};
    const headers={authorization:"Bearer "+member.token};
    const denied=await api.post("/api/v1/services/"+listingId+"/requests",{headers,data:{message:"membership required"}});
    expect(denied.status()).toBe(403);
@@ -444,7 +430,7 @@ test("service requests enforce membership, self-request, duplicate, and particip
    expect(delivered.status()).toBe(200);
    expect((await delivered.json()).data.some(row=>row.id===request.id&&row.provider_completed_at)).toBeTruthy();
    await page.getByRole("button",{name:"Logout"}).click();
-   await browserLogin(page,"service-unmember-"+suffix+"@example.test",password);
+   await browserLogin(page,member.email,member.password);
    await page.goto("/services");
    const requesterCard=page.locator(".case-row").filter({hasText:title});
    await expect(requesterCard.getByRole("button",{name:"Accept delivered outcome"})).toBeVisible();
@@ -460,9 +446,8 @@ test("organization onboarding rejects duplicate names, cross-organization reads 
  const {api,token}=await apiContext();
  const suffix=Date.now()+"-"+Math.random().toString(16).slice(2),password="browser-org-owner-password-12345";
  try{
-   const registeredA=await api.post("/api/v1/auth/register",{data:{email:"org-owner-a-"+suffix+"@example.test",password,firstName:"Organization",lastName:"OwnerA"+suffix}});
-   expect(registeredA.status()).toBe(201);
-   const ownerA=(await registeredA.json()).data,headersA={authorization:"Bearer "+ownerA.token};
+   const ownerA=await ensureGate4Professional(api);
+   const headersA={authorization:"Bearer "+ownerA.token};
    const name="Scoped Organization "+suffix;
    const createdA=await api.post("/api/v1/organizations",{headers:headersA,data:{legalName:name+" A",displayName:name+" A",organizationType:"company"}});
    expect(createdA.status()).toBe(201);
@@ -556,9 +541,8 @@ test("organization public inquiry decisions persist and remain organization-auth
    const listed=await api.get("/api/v1/opportunity-inquiries?type=job",{headers:{authorization:"Bearer "+token}});
    expect(listed.status()).toBe(200);
    expect((await listed.json()).data.some(row=>row.id===inquiry.id&&row.status==="contacted")).toBeTruthy();
-   const outsider=await api.post("/api/v1/auth/register",{data:{email:"gate4-inquiry-outsider-"+randomUUID()+"@example.test",password:"gate4-outsider-password-12345",firstName:"No",lastName:"OrganizationScope"}});
-   expect(outsider.status()).toBe(201);
-   const unauthorized=await api.get("/api/v1/opportunity-inquiries?type=job",{headers:{authorization:"Bearer "+(await outsider.json()).data.token}});
+   const outsiderToken=await independentReviewerToken(api,token);
+   const unauthorized=await api.get("/api/v1/opportunity-inquiries?type=job",{headers:{authorization:"Bearer "+outsiderToken}});
    expect(unauthorized.status()).toBe(403,"accounts without organization scope cannot inspect private inquiries");
  }finally{await api.dispose();}
 });
