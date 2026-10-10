@@ -167,3 +167,17 @@ Delivery records include message ID, channel, recipient reference, template, pro
 ## 13. Versioning
 
 Breaking API changes require a documented version strategy. Existing clients must not be silently broken.
+
+
+## Gate 4 connected workflow endpoints
+
+These are the concrete current server routes used by the reconciled screens; they supplement the conceptual resource groups above and do not silently replace them.
+
+- Account profile: `GET /api/v1/me`, `PATCH /api/v1/me/profile`.
+- Notification preferences: `GET /api/v1/notifications/preferences`, `PATCH /api/v1/notifications/preferences`; updates are scoped to the authenticated user.
+- Formal job application: `POST /api/v1/jobs/{id}/application-drafts`, `POST /api/v1/job-applications/{id}/submit`, `GET /api/v1/me/job-applications`. Public inquiry intake and continuation links are separate and must not be reported as formal application submission.
+- Service request lifecycle: `GET /api/v1/me/service-requests`, `POST /api/v1/services/{id}/requests`, `POST /api/v1/service-requests/{id}/status`, and `POST /api/v1/service-requests/{id}/accept-completion`. The service layer authorizes each transition by participant role and current state.
+- Mentorship request history: `GET /api/v1/me/mentorship-requests` returns only the authenticated mentee's requests; `POST /api/v1/mentorship/requests` creates a request only with a non-empty goal.
+- Organization evidence upload uses the private upload authorization, content upload, confirmation, then evidence attachment endpoints defined in the private upload section above.
+
+Gate acceptance still requires automated tests for positive paths, authorization denials, invalid state, duplicate/retry and persisted state. An endpoint being documented is not itself evidence that the workflow passed.
