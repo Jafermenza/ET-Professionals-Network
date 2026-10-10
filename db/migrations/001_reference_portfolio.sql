@@ -3,7 +3,6 @@
 -- Append-only/versioned reference data. Operational records must store the
 -- dataset_version they were created against.
 
-create extension if not exists pgcrypto;
 
 create table if not exists reference_dataset (
   id uuid primary key default gen_random_uuid(),
