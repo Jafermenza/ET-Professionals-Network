@@ -1,6 +1,5 @@
 -- Phase 0 platform foundation: identity, authorization, audit, storage,
 -- notification and payment provider boundaries.
-create extension if not exists pgcrypto;
 
 create table if not exists app_user (
   id uuid primary key default gen_random_uuid(),
