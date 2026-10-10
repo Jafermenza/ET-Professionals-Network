@@ -70,7 +70,7 @@ export async function updateUser(actor,userId,input,requestId){
   const newRoles=await allowed(tx,userId);
   const reason=String(input.reason||"").trim().slice(0,500)||null;
   await tx.query("insert into audit_log(actor_user_id,action,resource_type,resource_id,request_id,outcome,metadata) values($1,'admin.user.updated','app_user',$2,$3,'success',$4)",[
-   actor,userId,requestId,JSON.stringify({status:status??null,previousRoles:currentRoles,currentRoles:newRoles,roleCode:roleCode??null,removeRoleCode:removeRoleCode??null,reason})
+   actor,userId,requestId,JSON.stringify({scope:"platform",previousStatus:u.status,currentStatus:status??u.status,status:status??null,previousRoles:currentRoles,currentRoles:newRoles,roleCode:roleCode??null,removeRoleCode:removeRoleCode??null,reason})
   ]);
   return {id:userId,status:status||u.status,roles:newRoles};
  });

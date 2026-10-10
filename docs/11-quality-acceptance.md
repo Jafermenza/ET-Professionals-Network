@@ -49,7 +49,7 @@ Prove that:
 - an unrelated organization owner/member cannot read private evidence, while an authorized reviewer can read linked evidence and the access is audited;
 - a non-system administrator cannot grant/remove privileged roles or modify a privileged account;
 - an administrator cannot change their own roles;
-- a role change invalidates existing sessions, and authorization follows current database roles rather than stale token claims;
+- a role change invalidates existing sessions, authorization follows current database roles rather than stale token claims, and the final system-administrator role cannot be removed;
 - field officer cannot modify financial records without permission;
 - client cannot forge successful payment;
 - unauthorized transitions are rejected.

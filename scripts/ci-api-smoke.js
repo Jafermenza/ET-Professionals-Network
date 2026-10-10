@@ -238,9 +238,16 @@ const freshMemberToken=freshMemberLogin.payload?.data?.token;
 const roleRemoval=await request("/api/v1/admin/users/"+memberId,{method:"PATCH",token,body:{removeRoleCode:"mentor",reason:"CI role-removal session invalidation"}});
 assert.equal(roleRemoval.status,200,"authorized admin may remove a non-privileged role");
 assert.equal((await request("/api/v1/me",{token:freshMemberToken})).status,401,"role removal must revoke sessions issued before removal");
-const roleAudit=(await db.query("select metadata from audit_log where actor_user_id=$1 and action='admin.user.updated' and resource_id=$2 order by created_at desc limit 1",[me.payload.data.user_id,memberId])).rows[0];
+const roleAudit=(await db.query("select metadata from audit_log where actor_user_id=$1 and action='admin.user.updated' and resource_id=$2 order by occurred_at desc limit 1",[me.payload.data.user_id,memberId])).rows[0];
 assert.ok(roleAudit?.metadata?.previousRoles&&roleAudit?.metadata?.currentRoles,"role audit must preserve old and new role sets");
 assert.ok(roleAudit?.metadata?.reason,"role audit must preserve the supplied reason");
+
+// Last-system-administrator protection: a second privileged fixture can be removed, but the final one cannot.
+await db.query("insert into app_user_role(user_id,role_id,assigned_by) select $1,id,$2 from app_role where role_code='system_admin' on conflict do nothing",[memberId,me.payload.data.user_id]);
+const removeSecondSystemAdmin=await request("/api/v1/admin/users/"+memberId,{method:"PATCH",token,body:{removeRoleCode:"system_admin",reason:"CI last-system-admin invariant"}});
+assert.equal(removeSecondSystemAdmin.status,200,"a system administrator may remove a redundant second system-administrator role");
+const removeLastSystemAdmin=await request("/api/v1/admin/users/"+memberId,{method:"PATCH",token,body:{removeRoleCode:"system_admin",reason:"CI last-system-admin invariant"}});
+assert.equal(removeLastSystemAdmin.status,400,"the platform must not remove its final system administrator");
 
 const logout=await request("/api/v1/auth/logout",{method:"POST",token});
 assert.equal(logout.status,200,"logout should revoke the current session");

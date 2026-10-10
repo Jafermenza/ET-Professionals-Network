@@ -114,4 +114,4 @@ Reviewers must not approve their own records or records where an explicit confli
 
 ## 9. Audit
 
-Role/permission changes record actor, affected user, old role, new role, scope, reason and timestamp. The current user-administration audit event records prior/current role sets, requested change, optional reason, actor, affected user, request ID and timestamp. Successful private evidence reads record the reader, file resource, request ID, content type and byte size; file contents and secrets are not copied into the audit record.
+Role/permission changes record actor, affected user, old role, new role, scope, reason and timestamp. The current user-administration audit event records prior/current role sets, prior/current account status, platform scope, requested change, optional reason, actor, affected user, request ID and timestamp. Successful private evidence reads record the reader, file resource, request ID, content type and byte size; file contents and secrets are not copied into the audit record.
