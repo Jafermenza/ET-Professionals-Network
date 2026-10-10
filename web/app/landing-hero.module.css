@@ -51,3 +51,28 @@
 @media(prefers-reduced-motion:reduce){.archLine,.nodePulse,.nodePulseAlt{animation:none}.archLine{stroke-dashoffset:0}}
 .dark .hero{background:linear-gradient(120deg,var(--surface) 0%,color-mix(in srgb,var(--primary) 6%,var(--surface)) 100%)}
 .dark .archBackdrop{opacity:.13}
+
+/* Quiet architectural identity across the landing page, tuned by the active theme. */
+:global(.landing){position:relative;isolation:isolate}
+:global(.landing)::before,:global(.landing)::after{content:"";position:absolute;z-index:-1;pointer-events:none;clip-path:polygon(50% 0,61% 13%,75% 22%,86% 37%,86% 100%,14% 100%,14% 37%,25% 22%,39% 13%);border:0}
+:global(.landing)::before{top:24px;right:-3.5vw;width:clamp(210px,32vw,440px);height:clamp(300px,44vw,570px);background:linear-gradient(180deg,color-mix(in srgb,var(--primary) 5%,transparent),color-mix(in srgb,var(--gold) 3%,transparent));opacity:.72;animation:mpaAmbientFloat 13s ease-in-out infinite alternate}
+:global(.landing)::after{top:100px;right:clamp(28px,7vw,110px);width:clamp(150px,23vw,310px);height:clamp(220px,34vw,430px);background:linear-gradient(180deg,color-mix(in srgb,var(--gold) 4%,transparent),transparent);opacity:.75;animation:mpaAmbientFloat 16s ease-in-out -4s infinite alternate-reverse}
+.heroCopy{animation:mpaCopyEnter .7s cubic-bezier(.2,.7,.2,1) both}
+.heroVisual{animation:mpaVisualEnter .9s cubic-bezier(.2,.7,.2,1) .08s both}
+.heroVisual :global(.card){animation:mpaPreviewFloat 8s ease-in-out 1s infinite}
+.visualLogo{animation:mpaLogoFloat 7s ease-in-out 1.2s infinite}
+.heroActions :global(.btn),.loginLink{transition:transform .2s ease,box-shadow .2s ease,background-color .2s ease}
+.heroActions :global(.btn):hover,.loginLink:hover{transform:translateY(-2px)}
+.journeys :global(.card){transition:transform .24s ease,border-color .24s ease,box-shadow .24s ease}
+.journeys :global(.card):hover{transform:translateY(-4px);border-color:color-mix(in srgb,var(--primary) 24%,var(--border));box-shadow:0 14px 34px color-mix(in srgb,var(--primary) 9%,transparent)}
+@keyframes mpaAmbientFloat{from{transform:translate3d(0,0,0) rotate(-2deg)}to{transform:translate3d(-10px,13px,0) rotate(1deg)}}
+@keyframes mpaCopyEnter{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
+@keyframes mpaVisualEnter{from{opacity:0;transform:translateY(10px) scale(.99)}to{opacity:1;transform:translateY(0) scale(1)}}
+@keyframes mpaPreviewFloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-5px)}}
+@keyframes mpaLogoFloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-3px)}}
+@media(max-width:760px){:global(.landing)::before{top:8px;right:-62px;width:240px;height:330px;opacity:.48}:global(.landing)::after{top:58px;right:-10px;width:170px;height:245px;opacity:.42}.heroVisual :global(.card){animation-duration:9s}}
+@media(max-width:480px){:global(.landing)::before{right:-105px;top:0;width:220px;height:300px}:global(.landing)::after{right:-54px;top:44px;width:155px;height:215px}}
+@media(hover:none){.journeys :global(.card):hover{transform:none;box-shadow:none}}
+@media(prefers-reduced-motion:reduce){:global(.landing)::before,:global(.landing)::after,.heroCopy,.heroVisual,.heroVisual :global(.card),.visualLogo,.journeys :global(.card){animation:none;transition:none}.heroActions :global(.btn),.loginLink{transition:none}.heroActions :global(.btn):hover,.loginLink:hover,.journeys :global(.card):hover{transform:none}}
+.dark :global(.landing)::before{background:linear-gradient(180deg,color-mix(in srgb,var(--primary) 12%,transparent),color-mix(in srgb,var(--gold) 5%,transparent));opacity:.6}
+.dark :global(.landing)::after{background:linear-gradient(180deg,color-mix(in srgb,var(--gold) 7%,transparent),transparent);opacity:.52}
