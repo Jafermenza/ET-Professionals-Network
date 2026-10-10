@@ -102,7 +102,7 @@ const server=http.createServer(async (req,res)=>{
     if(req.method==="POST" && p==="api/v1/auth/register") { publicRateLimit(req,"register",5,60000); return ok(res,await membership.register(await body(req),requestId),requestId,201); }
     if(req.method==="GET" && p==="api/v1/membership/products") return ok(res,await membership.listMembershipProducts(),requestId);
     if(req.method==="POST" && p==="api/v1/auth/login") {
-      publicRateLimit(req,"login",20,60000); const b=await body(req); return ok(res,await membership.login(b.email,b.password,requestId,{ip:clientIp(req),userAgent:req.headers["user-agent"]||null}),requestId);
+      const b=await body(req); publicRateLimit(req,"login:"+String(b.email||"").trim().toLowerCase(),20,60000); return ok(res,await membership.login(b.email,b.password,requestId,{ip:clientIp(req),userAgent:req.headers["user-agent"]||null}),requestId);
     }
 
     if(req.method==="POST" && p==="api/v1/auth/logout") { const identity=await auth(req); return ok(res,await userAdmin.logout(identity.sub,identity.sid,requestId),requestId); }
