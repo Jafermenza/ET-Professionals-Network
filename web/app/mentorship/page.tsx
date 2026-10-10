@@ -17,7 +17,23 @@ function values(value:unknown):string[]{if(Array.isArray(value))return value.map
 export default function Mentorship(){
  const token=useUiStore(s=>s.token);
  const [mentors,setMentors]=useState<Mentor[]>([]);
- const [myRequests,setMyRequests]=useState<RequestResult[]>([]);\n const [matchOffers,setMatchOffers]=useState<MatchOffer[]>([]);\n const [engagements,setEngagements]=useState<MentorshipRecord[]>([]);\n const [currentUserId,setCurrentUserId]=useState(\"\");\n const [matchingRequestId,setMatchingRequestId]=useState(\"\");\n const [candidates,setCandidates]=useState<Record<string,MentorCandidate[]>>({});\n const [engagementDetails,setEngagementDetails]=useState<Record<string,{goals:Goal[];sessions:Session[]}>>({});\n const [goalDrafts,setGoalDrafts]=useState<Record<string,string>>({});\n const [sessionStarts,setSessionStarts]=useState<Record<string,string>>({});\n const [sessionEnds,setSessionEnds]=useState<Record<string,string>>({});\n const [sessionAgendas,setSessionAgendas]=useState<Record<string,string>>({});\n const [ownMentorProfile,setOwnMentorProfile]=useState<MentorProfile|null>(null);\n const [mentorForm,setMentorForm]=useState({headline:\"\",bio:\"\",expertise:\"\",languages:\"\",mentoringModes:\"remote\",visibility:\"members\",maxActiveMentees:\"3\"});\n const [mentorDay,setMentorDay]=useState(\"1\");\n const [mentorStart,setMentorStart]=useState(\"09:00\");\n const [mentorEnd,setMentorEnd]=useState(\"12:00\");\n const [mentorSaving,setMentorSaving]=useState(false);
+ const [myRequests,setMyRequests]=useState<RequestResult[]>([]);
+ const [matchOffers,setMatchOffers]=useState<MatchOffer[]>([]);
+ const [engagements,setEngagements]=useState<MentorshipRecord[]>([]);
+ const [currentUserId,setCurrentUserId]=useState(\"\");
+ const [matchingRequestId,setMatchingRequestId]=useState(\"\");
+ const [candidates,setCandidates]=useState<Record<string,MentorCandidate[]>>({});
+ const [engagementDetails,setEngagementDetails]=useState<Record<string,{goals:Goal[];sessions:Session[]}>>({});
+ const [goalDrafts,setGoalDrafts]=useState<Record<string,string>>({});
+ const [sessionStarts,setSessionStarts]=useState<Record<string,string>>({});
+ const [sessionEnds,setSessionEnds]=useState<Record<string,string>>({});
+ const [sessionAgendas,setSessionAgendas]=useState<Record<string,string>>({});
+ const [ownMentorProfile,setOwnMentorProfile]=useState<MentorProfile|null>(null);
+ const [mentorForm,setMentorForm]=useState({headline:\"\",bio:\"\",expertise:\"\",languages:\"\",mentoringModes:\"remote\",visibility:\"members\",maxActiveMentees:\"3\"});
+ const [mentorDay,setMentorDay]=useState(\"1\");
+ const [mentorStart,setMentorStart]=useState(\"09:00\");
+ const [mentorEnd,setMentorEnd]=useState(\"12:00\");
+ const [mentorSaving,setMentorSaving]=useState(false);
  const [loading,setLoading]=useState(true);
  const [error,setError]=useState("");
  const [notice,setNotice]=useState("");
