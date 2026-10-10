@@ -158,9 +158,9 @@ test("verification case ownership, reviewer assignment and state transitions are
  try{
    // Create isolated actors through the domain service so this workflow test does not
    // consume the public registration rate limit already exercised by the API smoke suite.
-   const member=await registerMember({email:"gate4-verification-"+suffix+"@example.test",password:"gate4-verification-password-12345",firstName:"Gate4",lastName:"Verify"+suffix.slice(0,6)},"gate4-verification-"+suffix);
+   const member=await registerMember({email:"gate4-verification-"+suffix+"@example.test",password:"gate4-verification-password-12345",firstName:"Gate4",lastName:"Verify"+suffix.slice(0,6)},randomUUID());
    const memberHeaders={authorization:"Bearer "+member.token};
-   const outsider=await registerMember({email:"gate4-verification-outsider-"+suffix+"@example.test",password:"gate4-verification-password-12345",firstName:"Gate4",lastName:"Outsider"+suffix.slice(0,6)},"gate4-verification-outsider-"+suffix);
+   const outsider=await registerMember({email:"gate4-verification-outsider-"+suffix+"@example.test",password:"gate4-verification-password-12345",firstName:"Gate4",lastName:"Outsider"+suffix.slice(0,6)},randomUUID());
    const outsiderHeaders={authorization:"Bearer "+outsider.token};
    const reviewerToken=await independentReviewerToken(api,adminToken);
    const reviewerMe=await api.get("/api/v1/me",{headers:{authorization:"Bearer "+reviewerToken}});
@@ -208,7 +208,7 @@ test("membership application, correction, fee verification and activation persis
  try{
    // Keep registration rate-limit coverage in the API smoke test; seed this isolated
    // workflow actor through the same domain service to avoid exhausting the shared CI IP budget.
-   const registered=await registerMember({email,password,firstName:"Gate4",lastName:"Membership"+suffix.slice(0,6)},"gate4-membership-"+suffix);
+   const registered=await registerMember({email,password,firstName:"Gate4",lastName:"Membership"+suffix.slice(0,6)},randomUUID());
    const memberToken=registered.token;
    const memberHeaders={authorization:"Bearer "+memberToken};
    const reviewerToken=await independentReviewerToken(api,adminToken);
