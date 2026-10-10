@@ -20,6 +20,24 @@ async function browserLogin(page,email=ADMIN_EMAIL,password=ADMIN_PASSWORD){
   await page.getByRole("button",{name:"Login"}).click();
   await expect(page.getByRole("button",{name:"Logout"})).toBeVisible();
 }
+let cachedReviewerToken=null;
+async function independentReviewerToken(api,adminToken){
+  if(cachedReviewerToken) return cachedReviewerToken;
+  const suffix=Date.now()+"-"+Math.random().toString(16).slice(2);
+  const reviewerEmail="gate4-reviewer-"+suffix+"@example.test";
+  const reviewerPassword="gate4-reviewer-password-12345";
+  const reviewerRegistration=await api.post("/api/v1/auth/register",{data:{email:reviewerEmail,password:reviewerPassword,firstName:"Gate4",lastName:"Reviewer"}});
+  expect(reviewerRegistration.status(),"independent reviewer registration").toBe(201);
+  const reviewerId=(await reviewerRegistration.json()).data.user.id;
+  const adminProfile=await api.get("/api/v1/me",{headers:{authorization:"Bearer "+adminToken}});
+  expect(adminProfile.status(),"admin identity for reviewer fixture audit").toBe(200);
+  const adminId=(await adminProfile.json()).data.user_id;
+  await getPool().query("insert into app_user_role(user_id,role_id,assigned_by) select $1,id,$2 from app_role where role_code='reviewer' on conflict do nothing",[reviewerId,adminId]);
+  const reviewerLogin=await api.post("/api/v1/auth/login",{data:{email:reviewerEmail,password:reviewerPassword}});
+  expect(reviewerLogin.status(),"independent reviewer login").toBe(200);
+  cachedReviewerToken=(await reviewerLogin.json()).data.token;
+  return cachedReviewerToken;
+}
 async function createVerifiedOrganization(api,token,prefix){
   const suffix=Date.now()+"-"+Math.random().toString(16).slice(2);
   const name=prefix+" "+suffix;
@@ -29,16 +47,8 @@ async function createVerifiedOrganization(api,token,prefix){
   const organization=(await created.json()).data;
   const submitted=await api.post("/api/v1/organizations/"+organization.id+"/submit-verification",{headers});
   expect(submitted.status(),"organization verification submission").toBe(200);
-  // Keep initiation and approval separate: the organization creator must not review their own case.
-  const reviewerEmail="gate4-reviewer-"+suffix+"@example.test";
-  const reviewerPassword="gate4-reviewer-password-12345";
-  const reviewerRegistration=await api.post("/api/v1/auth/register",{data:{email:reviewerEmail,password:reviewerPassword,firstName:"Gate4",lastName:"Reviewer"}});
-  expect(reviewerRegistration.status(),"independent reviewer registration").toBe(201);
-  const reviewerId=(await reviewerRegistration.json()).data.user.id;
-  await getPool().query("insert into app_user_role(user_id,role_id,assigned_by) select $1,id,$2 from app_role where role_code='reviewer' on conflict do nothing",[reviewerId,(await api.post("/api/v1/auth/login",{data:{email:ADMIN_EMAIL,password:ADMIN_PASSWORD}}).then(r=>r.json())).data.user.id]);
-  const reviewerLogin=await api.post("/api/v1/auth/login",{data:{email:reviewerEmail,password:reviewerPassword}});
-  expect(reviewerLogin.status(),"independent reviewer login").toBe(200);
-  const reviewerToken=(await reviewerLogin.json()).data.token;
+  // Keep initiation and approval separate: reuse one independent reviewer fixture across this E2E run.
+  const reviewerToken=await independentReviewerToken(api,token);
   const reviewerHeaders={authorization:"Bearer "+reviewerToken};
   const reviewed=await api.post("/api/v1/review/organizations",{headers:reviewerHeaders,data:{organizationId:organization.id,decision:"verified",reason:"Browser E2E independent reviewer fixture"}});
   expect(reviewed.status(),"organization verification decision by independent reviewer").toBe(200);
