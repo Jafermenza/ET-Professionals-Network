@@ -291,6 +291,10 @@ test("formal job application is distinct from public inquiry and persists submit
    expect(applications.status()).toBe(200);
    const rows=(await applications.json()).data;
    expect(rows.some(item=>item.job_id===jobId&&item.status==="submitted"&&item.cover_letter==="I am applying through the formal application workflow.")).toBeTruthy();
+   const tracking=await api.get("/api/v1/me/application-tracking",{headers:{authorization:"Bearer "+account.token}});
+   expect(tracking.status(),"application tracking must use the committed PostgreSQL schema").toBe(200);
+   const trackingItems=(await tracking.json()).data.items;
+   expect(trackingItems.some(item=>item.type==="job"&&item.id===rows.find(row=>row.job_id===jobId)?.id&&item.status==="submitted")).toBeTruthy();
    const duplicate=await api.post("/api/v1/jobs/"+jobId+"/application-drafts",{headers:{authorization:"Bearer "+account.token},data:{coverLetter:"duplicate attempt"}});
    expect(duplicate.status()).toBe(409,"submitted applications must not be duplicated");
  }finally{await api.dispose();}
