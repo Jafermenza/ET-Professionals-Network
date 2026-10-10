@@ -41,6 +41,8 @@ export default function Mentorship(){
  const [showRequestForm,setShowRequestForm]=useState(false);
  const [query,setQuery]=useState("");
  const [topic,setTopic]=useState("");
+ const [submittedQuery,setSubmittedQuery]=useState("");
+ const [submittedTopic,setSubmittedTopic]=useState("");
  const [goals,setGoals]=useState("");
  const [topics,setTopics]=useState("");
  const [languages,setLanguages]=useState("");
@@ -50,13 +52,13 @@ export default function Mentorship(){
 
  const load=useCallback(async()=>{
    setLoading(true);setError("");
-   const params=new URLSearchParams();if(query.trim())params.set("q",query.trim());if(topic.trim())params.set("topic",topic.trim());
+   const params=new URLSearchParams();if(submittedQuery.trim())params.set("q",submittedQuery.trim());if(submittedTopic.trim())params.set("topic",submittedTopic.trim());
    try{
      const result=await api<Mentor[]>(`/api/v1/mentors${params.toString()?"?"+params.toString():""}`,{},token||undefined);
      setMentors(Array.isArray(result)?result:[]);
    }catch(e){setMentors([]);setError(e instanceof ApiError?e.message:"We couldn't load mentor profiles right now.");}
    finally{setLoading(false);}
- },[query,topic,token]);
+ },[submittedQuery,submittedTopic,token]);
  useEffect(()=>{void load()},[load]);
  const loadOwnMentorProfile=useCallback(async()=>{if(!token){setOwnMentorProfile(null);return;}try{const rawProfile=await api<any>("/api/v1/me/mentor-profile",{},token);const profile=(rawProfile&&typeof rawProfile==="object"&&"data" in rawProfile&&rawProfile.data===null)?null:rawProfile as MentorProfile|null;setOwnMentorProfile(profile);if(profile)setMentorForm({headline:profile.headline||"",bio:profile.bio||"",expertise:(profile.expertise||[]).join(", "),languages:(profile.languages||[]).join(", "),mentoringModes:(profile.mentoring_modes||["remote"]).join(", "),visibility:profile.visibility||"members",maxActiveMentees:String(profile.max_active_mentees||3)});}catch(e){setError(e instanceof ApiError?e.message:"We couldn't load your mentor profile.");}},[token]);
  useEffect(()=>{void loadOwnMentorProfile()},[loadOwnMentorProfile]);
@@ -97,11 +99,11 @@ export default function Mentorship(){
  return <div>
    <div className="eyebrow">Mentorship match</div><h1 className="h1">One goal. One good match.</h1>
    <p className="muted">Discover current mentor profiles and submit a goal-based request. We show only details returned by the platform; availability and matching are not guessed or guaranteed.</p>
-   <Card><form onSubmit={e=>{e.preventDefault();void load()}} className="row" style={{gap:10,flexWrap:"wrap"}}>
+   <Card><form onSubmit={e=>{e.preventDefault();setSubmittedQuery(query);setSubmittedTopic(topic)}} className="row" style={{gap:10,flexWrap:"wrap"}}>
      <label style={{flex:"1 1 220px"}}>Search expertise<input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Mentor headline or bio"/></label>
      <label style={{flex:"1 1 180px"}}>Topic<input value={topic} onChange={e=>setTopic(e.target.value)} placeholder="Expertise topic"/></label>
      <button className="btn btn-primary" type="submit" disabled={loading}>{loading?"Searching…":"Search mentors"}</button>
-     <button className="btn btn-ghost" type="button" onClick={()=>{setQuery("");setTopic("")}}>Clear</button>
+     <button className="btn btn-ghost" type="button" onClick={()=>{setQuery("");setTopic("");setSubmittedQuery("");setSubmittedTopic("")}}>Clear</button>
    </form></Card>
    <div style={{marginTop:14}}><button className="btn btn-ghost" type="button" onClick={()=>{setSelected(null);setShowRequestForm(true);setCreated(null);setNotice("");setError("");}}>Request mentorship without a preferred mentor</button><p className="muted">You can submit your goal now; the platform will not invent a match or confirm a mentor until one is eligible and accepts.</p></div>
    {error&&<div className="form-error" role="alert">{error}<button className="btn btn-ghost" type="button" onClick={()=>void load()}>Retry</button></div>}
