@@ -2,7 +2,7 @@ import http from "node:http";
 import { randomUUID } from "node:crypto";
 import { loadConfig } from "./src/platform/config.js";
 import { createLogger } from "./src/platform/logger.js";
-import { verifyToken, requireRole, hashSessionToken } from "./src/platform/auth.js";
+import { verifyToken, requireRole, hashSessionToken, withCurrentRoles } from "./src/platform/auth.js";
 import { getPool } from "./src/platform/db.js";
 import * as membership from "./src/membership/service.js";
 import * as verification from "./src/verification/service.js";
@@ -50,7 +50,7 @@ async function auth(req){
       group by s.id,u.id,u.status`,[identity.sid]);
     if(!r.rows[0]||r.rows[0].status!=="active"||r.rows[0].user_id!==identity.sub) throw Object.assign(new Error("Session expired or revoked."),{statusCode:401});
     // Authorization must use current database roles, never stale role claims from a signed token.
-    identity.roles=Array.isArray(r.rows[0].roles)?r.rows[0].roles:JSON.parse(r.rows[0].roles||"[]");
+    identity.roles=withCurrentRoles(identity,Array.isArray(r.rows[0].roles)?r.rows[0].roles:JSON.parse(r.rows[0].roles||"[]")).roles;
     await db.query("update auth_session set last_seen_at=now() where id=$1",[identity.sid]);
     return identity;
   } catch(e){ throw Object.assign(new Error(e.message),{statusCode:e.statusCode===403?403:401,code:"UNAUTHENTICATED"}); }
