@@ -10,9 +10,44 @@ const values=[
   {title:"Visible progress",text:"Track membership, organization and opportunity applications from submission to decision.",icon:ChartNoAxesCombined}
 ];
 
-function MpaMark(){return <svg className={styles.mpaMark} viewBox="0 0 100 100" aria-hidden="true"><path d="M16 88V51C16 30 35 14 50 8V88H34V54C34 42 41 33 50 28" fill="none" stroke="var(--primary)" strokeWidth="8" strokeLinejoin="round"/><path d="M50 8C68 15 84 29 84 49C84 66 73 74 58 74H50V57H59C68 57 69 48 63 41C59 36 54 33 50 31" fill="none" stroke="var(--gold)" strokeWidth="8" strokeLinejoin="round"/><path d="M34 88H74" stroke="var(--primary)" strokeWidth="8" strokeLinecap="round"/></svg>}
+function MpaMark() {
+  return (
+    <svg className={styles.mpaMark} viewBox="0 0 100 100" aria-hidden="true">
+      <path d="M16 88V51C16 30 35 14 50 8V88H34V54C34 42 41 33 50 28" fill="none" stroke="var(--primary)" strokeWidth="8" strokeLinejoin="round" />
+      <path d="M50 8C68 15 84 29 84 49C84 66 73 74 58 74H50V57H59C68 57 69 48 63 41C59 36 54 33 50 31" fill="none" stroke="var(--gold)" strokeWidth="8" strokeLinejoin="round" />
+      <path d="M34 88H74" stroke="var(--primary)" strokeWidth="8" strokeLinecap="round" />
+    </svg>
+  );
+}
 
-function ArchArtwork(){return <div className={styles.archBackdrop} aria-hidden="true}><svg viewBox="0 0 500 520" role="presentation" focusable="false"><defs><linearGradient id="mpaArchGradient" x1="0" y1="1" x2=".8" y2="0"><stop offset="0%" stopColor="var(--primary)"/><stop offset="100%" stopColor="var(--gold)"/></linearGradient><pattern id="mpaDotGrid" width="24" height="24" patternUnits="userSpaceOnUse"><circle cx="2" cy="2" r="1" fill="var(--primary)" opacity=".16"/></pattern></defs><rect width="500" height="520" fill="url(#mpaDotGrid)"/><path className={styles.archLine} d="M70 520V250C70 125 165 47 250 25C335 47 430 125 430 250V520" stroke="url(#mpaArchGradient)" strokeWidth="2.5" fill="none"/><path d="M112 520V260C112 170 180 98 250 79C320 98 388 170 388 260V520" stroke="var(--primary)" strokeWidth="1" opacity=".2" fill="none"/><g stroke="var(--gold)" strokeWidth="1.5" strokeDasharray="4 6" fill="none" opacity=".7"><path d="M250 25V0M70 250H16M430 250H484M112 260H58V320M388 260H442V320"/></g><g fill="var(--gold)"><circle className={styles.nodePulse} cx="250" cy="25" r="4"/><circle className={styles.nodePulseAlt} cx="70" cy="250" r="3.5"/><circle className={styles.nodePulseAlt} cx="430" cy="250" r="3.5"/></g></svg></div>}
+function ArchArtwork() {
+  return (
+    <div className={styles.archBackdrop} aria-hidden="true">
+      <svg viewBox="0 0 500 520" role="presentation" focusable="false">
+        <defs>
+          <linearGradient id="mpaArchGradient" x1="0" y1="1" x2=".8" y2="0">
+            <stop offset="0%" stopColor="var(--primary)" />
+            <stop offset="100%" stopColor="var(--gold)" />
+          </linearGradient>
+          <pattern id="mpaDotGrid" width="24" height="24" patternUnits="userSpaceOnUse">
+            <circle cx="2" cy="2" r="1" fill="var(--primary)" opacity=".16" />
+          </pattern>
+        </defs>
+        <rect width="500" height="520" fill="url(#mpaDotGrid)" />
+        <path className={styles.archLine} d="M70 520V250C70 125 165 47 250 25C335 47 430 125 430 250V520" stroke="url(#mpaArchGradient)" strokeWidth="2.5" fill="none" />
+        <path d="M112 520V260C112 170 180 98 250 79C320 98 388 170 388 260V520" stroke="var(--primary)" strokeWidth="1" opacity=".2" fill="none" />
+        <g stroke="var(--gold)" strokeWidth="1.5" strokeDasharray="4 6" fill="none" opacity=".7">
+          <path d="M250 25V0M70 250H16M430 250H484M112 260H58V320M388 260H442V320" />
+        </g>
+        <g fill="var(--gold)">
+          <circle className={styles.nodePulse} cx="250" cy="25" r="4" />
+          <circle className={styles.nodePulseAlt} cx="70" cy="250" r="3.5" />
+          <circle className={styles.nodePulseAlt} cx="430" cy="250" r="3.5" />
+        </g>
+      </svg>
+    </div>
+  );
+}
 
 export default function Home(){return <div className="landing grid" style={{gap:34}}>
  <section className={`landing-hero ${styles.hero}`}>
