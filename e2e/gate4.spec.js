@@ -323,17 +323,9 @@ test("profile and notification preferences save to PostgreSQL and survive reload
 
 test("formal job application is distinct from public inquiry and persists submitted state",async({page})=>{
  const {api,token}=await apiContext();
- const suffix=Date.now()+"-"+Math.random().toString(16).slice(2);
- const email="browser-applicant-"+suffix+"@example.test",password="browser-applicant-password-12345";
  try{
+   const account=await createActiveMember(api,"APPLICANT");
    const {title,jobId}=await createPublishedJob(api,token);
-   let account=gate4RegisteredAccount;
-   if(!account){
-     const registered=await api.post("/api/v1/auth/register",{data:{email,password,firstName:"Formal",lastName:"Applicant"+suffix}});
-     expect(registered.status()).toBe(201);
-     account=(await registered.json()).data;
-     gate4RegisteredAccount={email,password,token:account.token};
-   }
    await browserLogin(page,account.email,account.password);
    await page.goto("/jobs");
    await page.getByPlaceholder("Search job title or description").fill(title);
@@ -346,7 +338,14 @@ test("formal job application is distinct from public inquiry and persists submit
    const applications=await api.get("/api/v1/me/job-applications",{headers:{authorization:"Bearer "+account.token}});
    expect(applications.status()).toBe(200);
    const rows=(await applications.json()).data;
-   expect(rows.some(item=>item.job_id===jobId&&item.status==="submitted"&&item.cover_letter==="I am applying through the formal application workflow.")).toBeTruthy();
+   const submitted=rows.find(item=>item.job_id===jobId&&item.status==="submitted");
+   expect(submitted,"persisted formal application rows: "+JSON.stringify(rows)).toBeTruthy();
+   expect(submitted.cover_letter,"submitted cover letter must persist").toBe("I am applying through the formal application workflow.");
+   const outsider=await api.post("/api/v1/auth/register",{data:{email:"gate4-outsider-"+randomUUID()+"@example.test",password:"gate4-outsider-password-12345",firstName:"Other",lastName:"Candidate"}});
+   expect(outsider.status()).toBe(201);
+   const outsiderToken=(await outsider.json()).data.token;
+   const privateProgress=await api.get("/api/v1/job-applications/"+submitted.id+"/progress",{headers:{authorization:"Bearer "+outsiderToken}});
+   expect(privateProgress.status(),"another applicant must not read private application progress").toBe(404);
    const tracking=await api.get("/api/v1/me/application-tracking",{headers:{authorization:"Bearer "+account.token}});
    expect(tracking.status(),"application tracking must use the committed PostgreSQL schema").toBe(200);
    const trackingItems=(await tracking.json()).data.items;
@@ -458,8 +457,8 @@ test("jobs discovery presents explicit empty and API failure states",async({page
  await page.getByRole("button",{name:"Apply filters"}).click();
  await expect(page.getByRole("heading",{name:"No matching opportunities"})).toBeVisible();
  await page.route("**/api/v1/jobs**",route=>route.fulfill({status:503,contentType:"application/json",body:JSON.stringify({error:{code:"SERVER_ERROR",message:"CI simulated upstream failure"}})}));
- const failedJobsResponse=page.waitForResponse(response=>response.url().includes("/api/v1/jobs")&&response.status()===503);
- await page.reload();
+ const failedJobsResponse=page.waitForResponse(response=>new URL(response.url()).pathname==="/api/v1/jobs"&&response.status()===503);
+ await page.getByRole("button",{name:"Apply filters"}).click();
  await failedJobsResponse;
  await expect(page.locator('[role="alert"].form-error')).toContainText("server problem");
 });
@@ -478,7 +477,7 @@ test("organization public inquiry decisions persist and remain organization-auth
    await expect(page.getByText(inquiry.public_reference,{exact:false})).toBeVisible();
    await page.getByLabel("Decision for "+inquiry.public_reference).selectOption("contacted");
    await page.getByLabel("Decision note for "+inquiry.public_reference).fill("Contacted through the Gate 4 acceptance journey.");
-   await page.getByRole("button",{name:"Save inquiry decision"}).click();
+   await page.locator(".case-row").filter({hasText:inquiry.public_reference}).getByRole("button",{name:"Save inquiry decision"}).click();
    await expect(page.getByRole("status")).toContainText("Inquiry decision saved");
    const listed=await api.get("/api/v1/opportunity-inquiries?type=job",{headers:{authorization:"Bearer "+token}});
    expect(listed.status()).toBe(200);
