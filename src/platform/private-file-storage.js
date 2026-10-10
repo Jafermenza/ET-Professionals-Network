@@ -76,7 +76,7 @@ export async function confirmPrivateUpload(userId,id){
     return file;
   });
 }
-export async function readAuthorizedPrivateFile(userId,fileId,roles=[]){
+export async function readAuthorizedPrivateFile(userId,fileId,roles=[],requestId=null){
   const db=getPool();
   const r=await db.query(`select f.*,s.object_key from file_object f join private_upload_session s on s.file_object_id=f.id where f.id=$1 and f.visibility='private' and s.status='confirmed'`,[fileId]);
   const f=r.rows[0]; if(!f) throw fail(404,"Private file not found.","NOT_FOUND");
@@ -92,5 +92,6 @@ export async function readAuthorizedPrivateFile(userId,fileId,roles=[]){
   if(!allowed) throw fail(403,"You do not have permission to read this private file.","FORBIDDEN");
   const {readFile}=await import("node:fs/promises");
   let bytes; try{bytes=await readFile(filePath(f.object_key));}catch{throw fail(404,"Private file content is unavailable.","PRIVATE_FILE_MISSING");}
+  await db.query("insert into audit_log(actor_user_id,action,resource_type,resource_id,request_id,outcome,metadata) values($1,'file.private_read','file_object',$2,$3,'success',$4)",[userId,fileId,requestId,JSON.stringify({contentType:f.content_type,byteSize:Number(f.byte_size)})]);
   return {file:f,bytes};
 }

@@ -88,8 +88,12 @@ export async function reviewOrganization(orgId,reviewerId,input,requestId){
   const allowed=(await db.query("select 1 from app_user_role ur join app_role r on r.id=ur.role_id where ur.user_id=$1 and r.role_code in ('reviewer','system_admin') limit 1",[reviewerId])).rows[0];
   if(!allowed) throw error(403,"Organization verification reviewer role required.","FORBIDDEN");
   if(!["verified","rejected","correction_required"].includes(input.decision)) throw error(400,"Invalid organization verification decision.","VALIDATION_ERROR");
-  const c=(await db.query("select id,status from organization_verification_case where organization_id=$1 for update",[orgId])).rows[0];
+  const c=(await db.query("select id,status,submitted_by from organization_verification_case where organization_id=$1 for update",[orgId])).rows[0];
   if(!c) throw error(404,"Organization verification case not found.","NOT_FOUND");
+  const org=(await db.query("select created_by from organization where id=$1",[orgId])).rows[0];
+  const conflict=(org?.created_by===reviewerId)||c.submitted_by===reviewerId||(await db.query("select 1 from organization_membership where organization_id=$1 and user_id=$2 and status='active' limit 1",[orgId,reviewerId])).rowCount>0;
+  if(conflict) throw error(403,"A reviewer cannot decide verification for an organization they created, submitted, or belong to.","REVIEWER_CONFLICT");
+  if(c.status!=="submitted"&&c.status!=="correction_required") throw error(409,"Organization verification must be submitted before review.","INVALID_STATE");
   if(c.status==="verified"&&input.decision!=="verified") throw error(409,"Verified organization requires a formal suspension workflow.","INVALID_STATE");
   const status=input.decision;
   await db.query("update organization_verification_case set status=$1,reviewed_by=$2,decision_reason=$3,reviewed_at=now() where id=$4",[status,reviewerId,input.reason||null,c.id]);

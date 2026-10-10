@@ -96,10 +96,31 @@ const attachedEvidence=await request("/api/v1/organizations/"+organizationId+"/v
 assert.equal(attachedEvidence.status,201,"organization owner should be able to attach their own confirmed private upload");
 const evidenceForbidden=await request("/api/v1/files/"+confirmed.payload.data.id,{token:memberToken});
 assert.equal(evidenceForbidden.status,403,"an unrelated member must not read private organization evidence");
+const crossOrgEvidenceAttach=await request("/api/v1/organizations/"+organizationId+"/verification-evidence",{method:"POST",token:memberToken,body:{fileObjectId:confirmed.payload.data.id,evidenceType:"registration_document"}});
+assert.equal(crossOrgEvidenceAttach.status,403,"a non-member cannot attach evidence to another organization's verification case");
+const creatorReviewDenied=await request("/api/v1/review/organizations",{method:"POST",token,body:{organizationId,decision:"verified",reason:"creator must not approve own organization"}});
+assert.equal(creatorReviewDenied.status,403,"organization owner/creator must not review their own verification");
+
+const reviewerEmail="ci-gate2-reviewer-"+Date.now()+"@example.test";
+const reviewerRegistration=await request("/api/v1/auth/register",{method:"POST",body:{email:reviewerEmail,password:"ci-gate2-reviewer-password-12345",firstName:"Gate2",lastName:"Reviewer"}});
+assert.equal(reviewerRegistration.status,201,"CI should create a separate reviewer identity");
+const reviewerToken=reviewerRegistration.payload?.data?.token;
+const reviewerId=reviewerRegistration.payload?.data?.user?.id;
+assert.equal(typeof reviewerToken,"string","reviewer should receive a session-bound token");
+await db.query("insert into app_user_role(user_id,role_id,assigned_by) select $1,id,$2 from app_role where role_code='reviewer' on conflict do nothing",[reviewerId,me.payload.data.user_id]);
 const verificationSubmitted=await request("/api/v1/organizations/"+organizationId+"/submit-verification",{method:"POST",token});
 assert.equal(verificationSubmitted.status,200,"organization verification should submit after evidence is attached");
-const verificationReviewed=await request("/api/v1/review/organizations",{method:"POST",token,body:{organizationId,decision:"verified",reason:"CI workflow acceptance"}});
-assert.equal(verificationReviewed.status,200,"authorized reviewer should decide organization verification");
+const verificationReviewed=await request("/api/v1/review/organizations",{method:"POST",token:reviewerToken,body:{organizationId,decision:"verified",reason:"CI workflow acceptance"}});
+assert.equal(verificationReviewed.status,200,"independent authorized reviewer should decide organization verification");
+const reviewerFile=await rawRequest("/api/v1/files/"+confirmed.payload.data.id,{token:reviewerToken});
+assert.equal(reviewerFile.status,200,"assigned reviewer may read linked verification evidence");
+const fileReadAudit=(await db.query("select 1 from audit_log where actor_user_id=$1 and action='file.private_read' and resource_id=$2",[reviewerId,confirmed.payload.data.id])).rowCount;
+assert.equal(fileReadAudit,1,"authorized private evidence access must be audited");
+const reviewerOwnOrg=await request("/api/v1/organizations",{method:"POST",token:reviewerToken,body:{legalName:"Gate 2 Reviewer Own Org "+Date.now(),displayName:"Gate 2 Reviewer Own Org",organizationType:"company"}});
+assert.equal(reviewerOwnOrg.status,201,"reviewer may still use organization onboarding");
+const reviewerOwnOrgId=reviewerOwnOrg.payload?.data?.id;
+const selfReview=await request("/api/v1/review/organizations",{method:"POST",token:reviewerToken,body:{organizationId:reviewerOwnOrgId,decision:"verified",reason:"conflict must fail"}});
+assert.equal(selfReview.status,403,"reviewer cannot decide a case for an organization they own");
 const jobTitle="Gate 4 persisted job "+Date.now();
 const jobCreated=await request("/api/v1/jobs",{method:"POST",token,body:{organizationId,title:jobTitle,description:"CI-only public job for workflow integration",postingScope:"public",visibility:"public"}});
 assert.equal(jobCreated.status,201,"verified organization owner should create a job");
@@ -178,6 +199,25 @@ assert.equal(persistedMentorship?.goals,"CI-only mentorship goal","mentorship re
 assert.equal(persistedMentorship?.status,"requested","request remains requested until matching and acceptance actions occur");
 const unverifiedMentor=await request("/api/v1/me/mentor-profile",{method:"POST",token:memberToken,body:{headline:"Unverified CI mentor",expertise:["career"],languages:["English"],mentoringModes:["remote"]}});
 assert.equal(unverifiedMentor.status,403,"mentor activation must require an eligible verified professional claim");
+
+// Authorization boundary: account users cannot reach administration APIs.
+const memberAdminDenied=await request("/api/v1/admin/users",{token:memberToken});
+assert.equal(memberAdminDenied.status,403,"ordinary members cannot list administrative users");
+const selfRoleChange=await request("/api/v1/admin/users/"+me.payload.data.user_id,{method:"PATCH",token,body:{roleCode:"system_admin",reason:"CI self-escalation negative case"}});
+assert.equal(selfRoleChange.status,403,"an administrator cannot modify their own roles");
+const roleGrant=await request("/api/v1/admin/users/"+memberId,{method:"PATCH",token,body:{roleCode:"mentor",reason:"CI role-change session invalidation"}});
+assert.equal(roleGrant.status,200,"authorized admin may grant a non-privileged role");
+const staleAfterGrant=await request("/api/v1/me",{token:memberToken});
+assert.equal(staleAfterGrant.status,401,"role changes must revoke existing sessions");
+const freshMemberLogin=await request("/api/v1/auth/login",{method:"POST",body:{email:memberEmail,password:"ci-gate4-password-12345"}});
+assert.equal(freshMemberLogin.status,200,"account may establish a new session after role change");
+const freshMemberToken=freshMemberLogin.payload?.data?.token;
+const roleRemoval=await request("/api/v1/admin/users/"+memberId,{method:"PATCH",token,body:{removeRoleCode:"mentor",reason:"CI role-removal session invalidation"}});
+assert.equal(roleRemoval.status,200,"authorized admin may remove a non-privileged role");
+assert.equal((await request("/api/v1/me",{token:freshMemberToken})).status,401,"role removal must revoke sessions issued before removal");
+const roleAudit=(await db.query("select metadata from audit_log where actor_user_id=$1 and action='admin.user.updated' and resource_id=$2 order by created_at desc limit 1",[me.payload.data.user_id,memberId])).rows[0];
+assert.ok(roleAudit?.metadata?.previousRoles&&roleAudit?.metadata?.currentRoles,"role audit must preserve old and new role sets");
+assert.ok(roleAudit?.metadata?.reason,"role audit must preserve the supplied reason");
 
 const logout=await request("/api/v1/auth/logout",{method:"POST",token});
 assert.equal(logout.status,200,"logout should revoke the current session");
