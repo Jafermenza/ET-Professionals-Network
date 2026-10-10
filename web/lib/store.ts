@@ -1,5 +1,5 @@
 "use client";
 import {create} from "zustand";
 type Mode="light"|"dark";
-type State={mode:Mode;token:string;language:string;queue:number;setMode:(mode:Mode)=>void;setToken:(token:string)=>void;setLanguage:(language:string)=>void;addQueue:()=>void};
-export const useUiStore=create<State>((set)=>({mode:"light",token:"",language:"en",queue:0,setMode:(mode)=>{document.documentElement.classList.toggle("dark",mode==="dark");set({mode})},setToken:(token)=>set({token}),setLanguage:(language)=>set({language}),addQueue:()=>set(s=>({queue:s.queue+1}))}));
+type State={mode:Mode;token:string;language:string;queue:number;setMode:(mode:Mode)=>void;setToken:(token:string)=>void;clearSession:()=>void;setLanguage:(language:string)=>void;addQueue:()=>void};
+export const useUiStore=create<State>((set)=>({mode:"light",token:"",language:"en",queue:0,setMode:(mode)=>{document.documentElement.classList.toggle("dark",mode==="dark");set({mode})},setToken:(token)=>{try{if(typeof window!=="undefined"){if(token)sessionStorage.setItem("mpa-session-token",token);else sessionStorage.removeItem("mpa-session-token");}}catch{}set({token})},clearSession:()=>{try{if(typeof window!=="undefined")sessionStorage.removeItem("mpa-session-token")}catch{}set({token:""})},setLanguage:(language)=>set({language}),addQueue:()=>set(s=>({queue:s.queue+1}))}));

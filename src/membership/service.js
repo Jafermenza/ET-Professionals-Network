@@ -33,7 +33,7 @@ export async function bootstrapAdmin(input){
     const existing=await db.query("select id,email,status from app_user where lower(email)=lower($1)",[email]);
     let user=existing.rows[0];
     if(user && user.status!=="active") await db.query("update app_user set status='active',updated_at=now() where id=$1",[user.id]);
-    if(!user) user=(await db.query("insert into app_user(username,email,password_hash,status) values($1,$1,$2,'active') returning id,email,status",[email, email, hashPassword(password)])).rows[0];
+    if(!user) user=(await db.query("insert into app_user(username,email,password_hash,status) values($1,$1,$2,'active') returning id,email,status",[email, hashPassword(password)])).rows[0];
     const role=(await db.query("select id from app_role where role_code='system_admin'")).rows[0];
     if(!role) throw httpError(500,"System administrator role is unavailable.","BOOTSTRAP_ROLE_MISSING");
     await db.query("insert into app_user_role(user_id,role_id) values($1,$2) on conflict do nothing",[user.id,role.id]);

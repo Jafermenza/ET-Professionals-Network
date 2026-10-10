@@ -16,7 +16,7 @@ export default function AdminExperience(){
  const [cases,setCases]=useState<Demo[]>([]),[guides,setGuides]=useState<Guide[]>([]),[inquiries,setInquiries]=useState<Inquiry[]>([]),[users,setUsers]=useState<User[]>([]);
  const [error,setError]=useState(""),[editing,setEditing]=useState<Demo|null>(null);
  async function load(){setError("");try{const [d,g,i,u]=await Promise.all([api<Demo[]>("/api/v1/experience/demo-cases"),api<Guide[]>("/api/v1/experience/guides"),api<Inquiry[]>("/api/v1/opportunity-inquiries",{},token),api<User[]>("/api/v1/admin/users",{},token)]);setCases(d);setGuides(g);setInquiries(i);setUsers(u)}catch(e){setError(e instanceof Error?e.message:"Unable to load administration workspace.")}}
- useEffect(()=>{load()},[]);
+ useEffect(()=>{if(token)load();else setError("Please log in to access administration.")},[token]);
  async function patchCase(d:Demo,active:boolean){try{await api("/api/v1/admin/experience/demo-cases/"+d.id,{method:"PATCH",body:JSON.stringify({active})},token);await load()}catch(e){setError(e instanceof Error?e.message:"Update failed.")}}
  async function patchGuide(g:Guide,active:boolean){try{await api("/api/v1/admin/experience/guides/"+g.id,{method:"PATCH",body:JSON.stringify({active})},token);await load()}catch(e){setError(e instanceof Error?e.message:"Update failed.")}}
  async function decideInquiry(i:Inquiry,status:string,considerNonMember:boolean){try{await api("/api/v1/opportunity-inquiries/"+i.id,{method:"PATCH",body:JSON.stringify({status,considerNonMember})},token);await load()}catch(e){setError(e instanceof Error?e.message:"Inquiry decision failed.")}}
