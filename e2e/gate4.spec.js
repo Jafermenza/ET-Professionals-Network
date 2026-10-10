@@ -332,17 +332,25 @@ test("organization onboarding rejects duplicate names, cross-organization reads 
  const {api,token}=await apiContext();
  const suffix=Date.now()+"-"+Math.random().toString(16).slice(2),password="browser-org-owner-password-12345";
  try{
-   const registered=await api.post("/api/v1/auth/register",{data:{email:"org-owner-"+suffix+"@example.test",password,firstName:"Organization",lastName:"Owner"+suffix}});
-   expect(registered.status()).toBe(201);
-   const owner=(await registered.json()).data,headers={authorization:"Bearer "+owner.token};
+   const registeredA=await api.post("/api/v1/auth/register",{data:{email:"org-owner-a-"+suffix+"@example.test",password,firstName:"Organization",lastName:"OwnerA"+suffix}});
+   expect(registeredA.status()).toBe(201);
+   const ownerA=(await registeredA.json()).data,headersA={authorization:"Bearer "+ownerA.token};
+   const registeredB=await api.post("/api/v1/auth/register",{data:{email:"org-owner-b-"+suffix+"@example.test",password,firstName:"Organization",lastName:"OwnerB"+suffix}});
+   expect(registeredB.status()).toBe(201);
+   const ownerB=(await registeredB.json()).data,headersB={authorization:"Bearer "+ownerB.token};
    const name="Scoped Organization "+suffix;
-   const created=await api.post("/api/v1/organizations",{headers,data:{legalName:name,displayName:name,organizationType:"company"}});
-   expect(created.status()).toBe(201);
-   const organization=(await created.json()).data;
-   const duplicate=await api.post("/api/v1/organizations",{headers,data:{legalName:name,displayName:name,organizationType:"company"}});
+   const createdA=await api.post("/api/v1/organizations",{headers:headersA,data:{legalName:name+" A",displayName:name+" A",organizationType:"company"}});
+   expect(createdA.status()).toBe(201);
+   const organizationA=(await createdA.json()).data;
+   const createdB=await api.post("/api/v1/organizations",{headers:headersB,data:{legalName:name+" B",displayName:name+" B",organizationType:"company"}});
+   expect(createdB.status()).toBe(201);
+   const organization=(await createdB.json()).data;
+   const duplicate=await api.post("/api/v1/organizations",{headers:headersB,data:{legalName:name+" B",displayName:name+" B",organizationType:"company"}});
    expect(duplicate.status()).toBe(409);
-   const crossRead=await api.get("/api/v1/organizations/"+organization.id,{headers:{authorization:"Bearer "+token}});
+   const crossRead=await api.get("/api/v1/organizations/"+organization.id,{headers:headersA});
    expect(crossRead.status()).toBe(404);
+   const crossWrite=await api.post("/api/v1/organizations/"+organization.id+"/verification-evidence",{headers:headersA,data:{fileObjectId:"00000000-0000-4000-8000-000000000001",evidenceType:"registration_document"}});
+   expect(crossWrite.status()).toBe(403);
    const bytes=Buffer.from("%PDF-1.7\nprivate ownership fixture\n%%EOF");
    const checksum=createHash("sha256").update(bytes).digest("hex");
    const authorization=await api.post("/api/v1/files/uploads",{headers:{authorization:"Bearer "+token},data:{fileName:"admin-owned.pdf",contentType:"application/pdf",byteSize:bytes.length,checksumSha256:checksum}});
@@ -353,7 +361,26 @@ test("organization onboarding rejects duplicate names, cross-organization reads 
    const confirmed=await api.post("/api/v1/files/uploads/"+upload.uploadId+"/confirm",{headers:{authorization:"Bearer "+token}});
    expect(confirmed.status()).toBe(201);
    const fileId=(await confirmed.json()).data.id;
-   const foreignEvidence=await api.post("/api/v1/organizations/"+organization.id+"/verification-evidence",{headers,data:{fileObjectId:fileId,evidenceType:"registration_document"}});
+   const foreignEvidence=await api.post("/api/v1/organizations/"+organization.id+"/verification-evidence",{headers:headersB,data:{fileObjectId:fileId,evidenceType:"registration_document"}});
    expect(foreignEvidence.status()).toBe(400);
+   const customType="gate4-evidence-"+suffix;
+   const requirement=await api.post("/api/v1/admin/organization-verification-requirements",{headers:{authorization:"Bearer "+token},data:{organizationType:customType,evidenceType:"required_document",label:"Gate 4 required evidence",required:true,active:true}});
+   expect(requirement.status()).toBe(201);
+   const missingEvidenceOrg=await api.post("/api/v1/organizations",{headers:headersB,data:{legalName:"Missing Evidence "+suffix,displayName:"Missing Evidence "+suffix,organizationType:customType}});
+   expect(missingEvidenceOrg.status()).toBe(201);
+   const missingOrgId=(await missingEvidenceOrg.json()).data.id;
+   const missingEvidenceSubmit=await api.post("/api/v1/organizations/"+missingOrgId+"/submit-verification",{headers:headersB});
+   expect(missingEvidenceSubmit.status()).toBe(400,"verification must not submit while a required evidence type is missing");
  }finally{await api.dispose();}
+});
+
+
+test("jobs discovery presents explicit empty and API failure states",async({page})=>{
+ await page.goto("/jobs");
+ await page.getByPlaceholder("Search job title or description").fill("gate4-no-result-"+Date.now());
+ await page.getByRole("button",{name:"Apply filters"}).click();
+ await expect(page.getByRole("heading",{name:"No matching opportunities"})).toBeVisible();
+ await page.route("**/api/v1/jobs**",route=>route.abort());
+ await page.goto("/jobs");
+ await expect(page.getByRole("alert")).toContainText("couldn't load opportunities");
 });
