@@ -522,7 +522,7 @@ test("services and mentorship expose explicit empty and retryable API-failure st
  await mockApiResponse(page,"**/api/v1/services**",503,{error:{code:"SERVER_ERROR",message:"CI simulated services outage"}});
  let serviceFailureIntercepted=false;
  page.on("response",response=>{if(new URL(response.url()).pathname==="/api/v1/services"&&response.status()===503)serviceFailureIntercepted=true;});
- await page.getByRole("button",{name:"Retry"}).click();
+ await page.getByRole("button",{name:"Search",exact:true}).click();
  await expect.poll(()=>serviceFailureIntercepted,{message:"the services API failure fixture must intercept the real browser request"}).toBe(true);
  await expect(page.locator('[role="alert"].form-error')).toContainText("server problem");
 
@@ -533,7 +533,7 @@ test("services and mentorship expose explicit empty and retryable API-failure st
  await mockApiResponse(page,"**/api/v1/mentors**",503,{error:{code:"SERVER_ERROR",message:"CI simulated mentorship outage"}});
  let mentorFailureIntercepted=false;
  page.on("response",response=>{if(new URL(response.url()).pathname==="/api/v1/mentors"&&response.status()===503)mentorFailureIntercepted=true;});
- await page.getByRole("button",{name:"Retry"}).click();
+ await page.getByRole("button",{name:"Search mentors"}).click();
  await expect.poll(()=>mentorFailureIntercepted,{message:"the mentorship API failure fixture must intercept the real browser request"}).toBe(true);
  await expect(page.locator('[role="alert"].form-error')).toContainText("server problem");
 });
