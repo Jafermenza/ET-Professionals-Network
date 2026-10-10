@@ -56,13 +56,16 @@ jobs:
           DATABASE_URL=postgresql://mpa:mpa_ci@localhost:5432/mpa_migration_upgrade bash scripts/ci-migration-upgrade.sh
       - run: npm test
       - run: npm run web:build
-      - name: Application smoke test
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Application and browser workflow smoke test
         shell: bash
         run: |
           export JWT_SECRET="$(openssl rand -hex 32)"
           node server.js > /tmp/mpa-server.log 2>&1 &
           pid=$!
-          trap 'kill "$pid" 2>/dev/null || true' EXIT
+          web_pid=''
+          trap 'kill "${web_pid:-}" "$pid" 2>/dev/null || true' EXIT
           healthy=0
           for i in {1..20}; do
             if curl --fail --silent http://127.0.0.1:3000/healthz >/dev/null; then
@@ -76,3 +79,18 @@ jobs:
             exit 1
           fi
           node scripts/ci-api-smoke.js
+          NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:3000 npm run web:dev --workspace @mpa/web -- --hostname 127.0.0.1 --port 3001 > /tmp/mpa-web.log 2>&1 &
+          web_pid=$!
+          web_healthy=0
+          for i in {1..60}; do
+            if curl --fail --silent http://127.0.0.1:3001/jobs >/dev/null; then
+              web_healthy=1
+              break
+            fi
+            sleep 1
+          done
+          if [ "$web_healthy" -ne 1 ]; then
+            cat /tmp/mpa-web.log
+            exit 1
+          fi
+          WEB_BASE_URL=http://127.0.0.1:3001 API_BASE_URL=http://127.0.0.1:3000 npx playwright test
