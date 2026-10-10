@@ -7,8 +7,7 @@ on:
     branches: ["main"]
 
 permissions:
-  # Temporary Gate 1 bootstrap permission; removed as soon as the lockfile is committed.
-  contents: write
+  contents: read
 
 concurrency:
   group: reconciliation-ci-${{ github.event.pull_request.number || github.ref }}
@@ -44,33 +43,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-      # Gate 1 bootstrap: resolve the full npm workspace graph on a network-enabled runner.
-      # This artifact is temporary evidence for committing the generated lockfile; CI still
-      # runs the normal install and full test pipeline below. Remove this bootstrap step
-      # once package-lock.json is committed and the job uses npm ci.
-      - name: Generate workspace lockfile for Gate 1
-        run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund
-      - name: Commit generated lockfile on the reconciliation branch (one-time bootstrap)
-        if: github.event_name == 'push' && github.ref == 'refs/heads/reconciliation/holistic-gates'
-        shell: bash
-        run: |
-          if git status --porcelain -- package-lock.json | grep -q .; then
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add package-lock.json
-            git commit -m "build(gate1): pin npm workspace dependency graph"
-            git push origin HEAD:reconciliation/holistic-gates
-          else
-            echo "Committed lockfile already matches the generated dependency graph."
-          fi
-      - name: Publish Gate 1 lockfile bootstrap artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: gate1-package-lock
-          path: package-lock.json
-          if-no-files-found: error
-          retention-days: 1
-      - run: npm install --no-audit --no-fund
+      - run: npm ci --no-audit --no-fund
       - name: Apply database migrations
         run: npm run migrate
       - name: Verify migration rerun safety
