@@ -38,7 +38,8 @@ const existingSchema=query("select case when to_regclass('public.app_user') is n
 // constraint changes. Require an explicit operator-confirmed baseline exactly once.
 if(recordedCount===0 && existingSchema){
   const baseline=process.env.MIGRATION_BASELINE;
-  const baselineRows=resolveMigrationBaseline(files,baseline);
+  const baselineFiles=resolveMigrationBaseline(files,baseline);
+  const baselineRows=migrations.filter(m=>baselineFiles.includes(m.filename));
   const values=baselineRows.map(m=>`(${quote(m.filename)},${quote(m.checksum)})`).join(",");
   execute(`insert into ${ledger}(filename,checksum) values ${values} on conflict(filename) do nothing`);
   console.log("Recorded operator-confirmed legacy migration baseline through",baseline);
