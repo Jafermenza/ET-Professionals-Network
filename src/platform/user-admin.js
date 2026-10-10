@@ -19,7 +19,7 @@ export async function updateUser(actor,userId,input,requestId){
   // Role changes invalidate existing sessions as defense in depth; auth middleware also reloads current roles.
   if(roleCode!==undefined||removeRoleCode!==undefined||status==="suspended"||status==="disabled")
     await tx.query("update auth_session set revoked_at=now() where user_id=$1 and revoked_at is null",[userId]);
-  await tx.query("insert into audit_log(actor_user_id,action,resource_type,resource_id,request_id,outcome,metadata) values($1,'admin.user.updated','app_user',$2,$3,'success',$4)",[actor,userId,requestId,JSON.stringify({status,roleCode})]); return {id:userId,status:status||u.status};
+  await tx.query("insert into audit_log(actor_user_id,action,resource_type,resource_id,request_id,outcome,metadata) values($1,'admin.user.updated','app_user',$2,$3,'success',$4)",[actor,userId,requestId,JSON.stringify({status,roleCode,removeRoleCode})]); return {id:userId,status:status||u.status};
  });
 }
 export async function revokeSessions(actor,userId,requestId){const db=getPool();admin(await allowed(db,actor));const r=await db.query("update auth_session set revoked_at=now() where user_id=$1 and revoked_at is null",[userId]);await db.query("insert into audit_log(actor_user_id,action,resource_type,resource_id,request_id,outcome,metadata) values($1,'admin.sessions.revoked','app_user',$2,$3,'success',$4)",[actor,userId,requestId,JSON.stringify({count:r.rowCount})]);return {revoked:r.rowCount}}
