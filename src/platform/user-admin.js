@@ -3,6 +3,16 @@ import {hashPassword} from "../membership/identity.js";
 function err(status,message,code="BUSINESS_RULE"){const e=new Error(message);e.statusCode=status;e.code=code;return e}
 async function allowed(db,userId){const r=await db.query("select r.role_code from app_user_role ur join app_role r on r.id=ur.role_id where ur.user_id=$1",[userId]);return r.rows.map(x=>x.role_code)}
 function admin(roles){if(!roles.some(x=>["system_admin","admin"].includes(x)))throw err(403,"Administrator role required.","FORBIDDEN")}
+export async function logout(userId,sessionId,requestId){
+ return withTransaction(async tx=>{
+  const result=await tx.query("update auth_session set revoked_at=now() where id=$1 and user_id=$2 and revoked_at is null returning id",[sessionId,userId]);
+  if(result.rowCount){
+   await tx.query("insert into audit_log(actor_user_id,action,resource_type,resource_id,request_id,outcome,metadata) values($1,'account.logout','auth_session',$2,$3,'success',$4)",[userId,sessionId,requestId,JSON.stringify({})]);
+  }
+  return {loggedOut:true,sessionRevoked:result.rowCount===1};
+ });
+}
+
 export async function listUsers(actor,input={}){
  const db=getPool(); admin(await allowed(db,actor)); const q=String(input.q||"").trim(); const status=input.status;
  const sql="select u.id,u.email,u.username,u.status,u.created_at,u.updated_at,coalesce(json_agg(distinct r.role_code) filter(where r.role_code is not null),'[]') roles from app_user u left join app_user_role ur on ur.user_id=u.id left join app_role r on r.id=ur.role_id where ($1='' or lower(u.email) like lower('%'||$1||'%') or lower(u.username) like lower('%'||$1||'%')) and ($2::text is null or u.status=$2) group by u.id order by u.created_at desc limit 200";
