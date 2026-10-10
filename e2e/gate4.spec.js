@@ -1,6 +1,7 @@
 import { test, expect, request as playwrightRequest } from "@playwright/test";
 import { createHash, randomUUID } from "node:crypto";
 import { getPool, closePool } from "../src/platform/db.js";
+import { register as registerMember } from "../src/membership/service.js";
 
 const API_BASE = process.env.API_BASE_URL || "http://127.0.0.1:3000";
 const ADMIN_EMAIL = process.env.BOOTSTRAP_ADMIN_EMAIL;
@@ -155,13 +156,12 @@ test("verification case ownership, reviewer assignment and state transitions are
  const {api,token:adminToken}=await apiContext();
  const suffix=randomUUID();
  try{
-   const registered=await api.post("/api/v1/auth/register",{data:{email:"gate4-verification-"+suffix+"@example.test",password:"gate4-verification-password-12345",firstName:"Gate4",lastName:"Verify"+suffix.slice(0,6)}});
-   expect(registered.status()).toBe(201);
-   const member=(await registered.json()).data;
+   // Create isolated actors through the domain service so this workflow test does not
+   // consume the public registration rate limit already exercised by the API smoke suite.
+   const member=await registerMember({email:"gate4-verification-"+suffix+"@example.test",password:"gate4-verification-password-12345",firstName:"Gate4",lastName:"Verify"+suffix.slice(0,6)},"gate4-verification-"+suffix);
    const memberHeaders={authorization:"Bearer "+member.token};
-   const outsiderRegistration=await api.post("/api/v1/auth/register",{data:{email:"gate4-verification-outsider-"+suffix+"@example.test",password:"gate4-verification-password-12345",firstName:"Gate4",lastName:"Outsider"+suffix.slice(0,6)}});
-   expect(outsiderRegistration.status()).toBe(201);
-   const outsiderHeaders={authorization:"Bearer "+(await outsiderRegistration.json()).data.token};
+   const outsider=await registerMember({email:"gate4-verification-outsider-"+suffix+"@example.test",password:"gate4-verification-password-12345",firstName:"Gate4",lastName:"Outsider"+suffix.slice(0,6)},"gate4-verification-outsider-"+suffix);
+   const outsiderHeaders={authorization:"Bearer "+outsider.token};
    const reviewerToken=await independentReviewerToken(api,adminToken);
    const reviewerMe=await api.get("/api/v1/me",{headers:{authorization:"Bearer "+reviewerToken}});
    expect(reviewerMe.status()).toBe(200);
@@ -206,9 +206,10 @@ test("membership application, correction, fee verification and activation persis
  const email="gate4-membership-"+suffix+"@example.test";
  const password="gate4-membership-password-12345";
  try{
-   const registered=await api.post("/api/v1/auth/register",{data:{email,password,firstName:"Gate4",lastName:"Membership"}});
-   expect(registered.status()).toBe(201);
-   const memberToken=(await registered.json()).data.token;
+   // Keep registration rate-limit coverage in the API smoke test; seed this isolated
+   // workflow actor through the same domain service to avoid exhausting the shared CI IP budget.
+   const registered=await registerMember({email,password,firstName:"Gate4",lastName:"Membership"+suffix.slice(0,6)},"gate4-membership-"+suffix);
+   const memberToken=registered.token;
    const memberHeaders={authorization:"Bearer "+memberToken};
    const reviewerToken=await independentReviewerToken(api,adminToken);
    const reviewerHeaders={authorization:"Bearer "+reviewerToken};
@@ -636,6 +637,7 @@ test("services and mentorship expose explicit empty and retryable API-failure st
  await mockApiResponse(page,"**/api/v1/mentors**",200,{data:[]});
  await page.goto("/mentorship");
  await expect(page.getByRole("heading",{name:"No active mentor profiles found"})).toBeVisible();
+ await expect(page.getByRole("button",{name:"Search mentors"})).toBeEnabled();
  await page.unroute("**/api/v1/mentors**");
  await mockApiResponse(page,"**/api/v1/mentors**",503,{error:{code:"SERVER_ERROR",message:"CI simulated mentorship outage"}});
  let mentorFailureResponses=0;
