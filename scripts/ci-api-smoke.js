@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { getPool } from "../src/platform/db.js";
 
 const base=process.env.CI_API_BASE_URL||"http://127.0.0.1:3000";
 const email=process.env.BOOTSTRAP_ADMIN_EMAIL;
@@ -68,9 +69,98 @@ assert.equal(fileContent.text,uploadBytes.toString(),"private file download must
 const secondUpload=await rawRequest(upload.uploadUrl,{method:"PUT",token,body:uploadBytes,headers:{"content-type":"application/octet-stream","x-upload-token":upload.uploadToken}});
 assert.equal(secondUpload.status,409,"upload authorization must not be reusable");
 
+const db=getPool();
+const membershipProduct=(await db.query("select id from membership_product where product_code='BASIC'")).rows[0];
+assert.ok(membershipProduct,"CI must have a membership product fixture");
+const memberEmail="ci-gate4-"+Date.now()+"@example.test";
+const registration=await request("/api/v1/auth/register",{method:"POST",body:{email:memberEmail,password:"ci-gate4-password-12345",firstName:"Gate4",lastName:"Member"+Date.now()}});
+assert.equal(registration.status,201,"CI should be able to register a separate workflow participant");
+const memberToken=registration.payload?.data?.token;
+const memberId=registration.payload?.data?.user?.id;
+assert.equal(typeof memberToken,"string","registration should return a session token");
+assert.equal(typeof memberId,"string","registration should return the new user id");
+for(const userId of [me.payload.data.user_id,memberId]){
+  const active=(await db.query("select id from membership_record where user_id=$1 and status='active' limit 1",[userId])).rows[0];
+  if(!active) await db.query("insert into membership_record(user_id,membership_product_id,membership_number,status,start_date,end_date,source) values($1,$2,$3,'active',current_date,current_date+365,'admin')",[userId,membershipProduct.id,"CI-"+userId.slice(0,8)+"-"+Date.now()]);
+}
+const orgName="Gate 4 CI Organization "+Date.now();
+const orgCreated=await request("/api/v1/organizations",{method:"POST",token,body:{legalName:orgName,displayName:orgName,organizationType:"company"}});
+assert.equal(orgCreated.status,201,"organization registration should create a scoped owner membership");
+const organizationId=orgCreated.payload?.data?.id;
+assert.equal(typeof organizationId,"string","organization registration should return its identifier");
+const attachedEvidence=await request("/api/v1/organizations/"+organizationId+"/verification-evidence",{method:"POST",token,body:{fileObjectId:confirmed.payload.data.id,evidenceType:"registration_document",note:"CI-only private upload contract test"}});
+assert.equal(attachedEvidence.status,201,"organization owner should be able to attach their own confirmed private upload");
+const evidenceForbidden=await request("/api/v1/files/"+confirmed.payload.data.id,{token:memberToken});
+assert.equal(evidenceForbidden.status,403,"an unrelated member must not read private organization evidence");
+const verificationSubmitted=await request("/api/v1/organizations/"+organizationId+"/submit-verification",{method:"POST",token});
+assert.equal(verificationSubmitted.status,200,"organization verification should submit after evidence is attached");
+const verificationReviewed=await request("/api/v1/review/organizations",{method:"POST",token,body:{organizationId,decision:"verified",reason:"CI workflow acceptance"}});
+assert.equal(verificationReviewed.status,200,"authorized reviewer should decide organization verification");
+const jobTitle="Gate 4 persisted job "+Date.now();
+const jobCreated=await request("/api/v1/jobs",{method:"POST",token,body:{organizationId,title:jobTitle,description:"CI-only public job for workflow integration",postingScope:"public",visibility:"public"}});
+assert.equal(jobCreated.status,201,"verified organization owner should create a job");
+const jobId=jobCreated.payload?.data?.id;
+const jobPublished=await request("/api/v1/jobs/"+jobId+"/publish",{method:"POST",token});
+assert.equal(jobPublished.status,200,"verified organization owner should publish the job");
+const publicJobs=await request("/api/v1/jobs?q="+encodeURIComponent(jobTitle));
+assert.equal(publicJobs.status,200,"public job discovery should return successfully");
+assert.ok((publicJobs.payload?.data?.items||[]).some(j=>j.id===jobId),"published job must be discoverable from persisted data");
+const saved=await request("/api/v1/jobs/"+jobId+"/save",{method:"POST",token:memberToken});
+assert.ok(saved.status===200||saved.status===201,"authenticated user should be able to save a public job");
+const savedList=await request("/api/v1/me/saved-jobs",{token:memberToken});
+assert.ok(savedList.status===200&&(savedList.payload?.data||[]).some(j=>j.id===jobId),"saved-job state must persist and be visible to its owner");
+const unsaved=await request("/api/v1/jobs/"+jobId+"/save",{method:"DELETE",token:memberToken});
+assert.equal(unsaved.status,200,"saved job should be removable");
+const afterUnsave=await request("/api/v1/me/saved-jobs",{token:memberToken});
+assert.ok(!(afterUnsave.payload?.data||[]).some(j=>j.id===jobId),"unsave must persist");
+const alertCreated=await request("/api/v1/me/job-alerts",{method:"POST",token:memberToken,body:{name:"Gate 4 CI alert",criteria:{q:jobTitle},frequency:"daily",channel:"in_app"}});
+assert.equal(alertCreated.status,201,"job alert criteria should be persisted");
+const alerts=await request("/api/v1/me/job-alerts",{token:memberToken});
+assert.ok((alerts.payload?.data||[]).some(a=>a.id===alertCreated.payload?.data?.id),"job alert should be visible to its creator");
+
+const listing=await request("/api/v1/services",{method:"GET"});
+assert.equal(listing.status,200,"published service discovery should be available");
+const serviceCreated=await request("/api/v1/services",{method:"POST",token,body:{title:"Gate 4 CI advisory service",description:"CI-only service listing",serviceCategory:"advisory",pricingModel:"quote",visibility:"public"}});
+assert.equal(serviceCreated.status,201,"active member should create a service listing");
+const serviceId=serviceCreated.payload?.data?.id;
+const servicePublished=await request("/api/v1/services/"+serviceId+"/status",{method:"POST",token,body:{status:"published"}});
+assert.equal(servicePublished.status,200,"provider should publish the service");
+const discoveredServices=await request("/api/v1/services?q="+encodeURIComponent("Gate 4 CI advisory service"));
+assert.ok((discoveredServices.payload?.data?.items||[]).some(x=>x.id===serviceId),"published service should be discoverable");
+const selfRequest=await request("/api/v1/services/"+serviceId+"/requests",{method:"POST",token,body:{message:"self-request must fail"}});
+assert.equal(selfRequest.status,409,"provider must not request their own service");
+const serviceRequest=await request("/api/v1/services/"+serviceId+"/requests",{method:"POST",token:memberToken,body:{message:"CI-only request"}});
+assert.equal(serviceRequest.status,201,"another active member should be able to request a published service");
+const serviceRequestId=serviceRequest.payload?.data?.id;
+const duplicateRequest=await request("/api/v1/services/"+serviceId+"/requests",{method:"POST",token:memberToken,body:{message:"duplicate should fail"}});
+assert.equal(duplicateRequest.status,409,"duplicate active service requests must be rejected");
+const requesterAcceptDenied=await request("/api/v1/service-requests/"+serviceRequestId+"/status",{method:"POST",token:memberToken,body:{status:"accepted"}});
+assert.equal(requesterAcceptDenied.status,403,"requester cannot impersonate provider acceptance");
+const providerAccept=await request("/api/v1/service-requests/"+serviceRequestId+"/status",{method:"POST",token,body:{status:"accepted"}});
+assert.equal(providerAccept.status,200,"provider should accept their own service request");
+const providerStart=await request("/api/v1/service-requests/"+serviceRequestId+"/status",{method:"POST",token,body:{status:"in_progress"}});
+assert.equal(providerStart.status,200,"provider should start an accepted service request");
+const providerComplete=await request("/api/v1/service-requests/"+serviceRequestId+"/status",{method:"POST",token,body:{status:"completed",note:"Delivery submitted"}});
+assert.equal(providerComplete.status,200,"provider completion should be recorded without bypassing requester acceptance");
+const prematureList=await request("/api/v1/me/service-requests",{token:memberToken});
+assert.ok((prematureList.payload||[]).some(r=>r.id===serviceRequestId&&r.provider_completed_at),"requester should see the provider completion submission");
+const requesterAccept=await request("/api/v1/service-requests/"+serviceRequestId+"/accept-completion",{method:"POST",token:memberToken,body:{note:"CI outcome accepted"}});
+assert.equal(requesterAccept.status,200,"requester should explicitly accept the completed delivery");
+
+const mentorshipRequest=await request("/api/v1/mentorship/requests",{method:"POST",token:memberToken,body:{goals:"CI-only mentorship goal",topics:["career"],preferredModes:["remote"],preferredLanguages:["English"]}});
+assert.equal(mentorshipRequest.status,201,"active member should be able to persist an explicit mentorship request");
+const mentorshipRequestId=mentorshipRequest.payload?.data?.id;
+const matches=await request("/api/v1/mentorship/requests/"+mentorshipRequestId+"/matches",{token:memberToken});
+assert.equal(matches.status,200,"mentorship request owner should be able to inspect match results");
+const persistedMentorship=(await db.query("select goals,status from mentorship_request where id=$1 and mentee_user_id=$2",[mentorshipRequestId,memberId])).rows[0];
+assert.equal(persistedMentorship?.goals,"CI-only mentorship goal","mentorship request must persist its stated goal");
+assert.equal(persistedMentorship?.status,"requested","request remains requested until matching and acceptance actions occur");
+const unverifiedMentor=await request("/api/v1/me/mentor-profile",{method:"POST",token:memberToken,body:{headline:"Unverified CI mentor",expertise:["career"],languages:["English"],mentoringModes:["remote"]}});
+assert.equal(unverifiedMentor.status,403,"mentor activation must require an eligible verified professional claim");
+
 const logout=await request("/api/v1/auth/logout",{method:"POST",token});
 assert.equal(logout.status,200,"logout should revoke the current session");
 const afterLogout=await request("/api/v1/me",{token});
 assert.equal(afterLogout.status,401,"revoked session must not access authenticated profile data");
 
-console.log("API smoke passed: public/member mentor discovery, private upload authorization/validation/confirmation/download, login, /me profile contract, logout, revoked-session denial.");
+console.log("API smoke passed: jobs publication/search/save/alerts, organization evidence privacy, services request and acceptance lifecycle, mentorship request persistence/eligibility, private upload validation, and session lifecycle.");
