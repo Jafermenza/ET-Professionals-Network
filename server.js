@@ -114,6 +114,16 @@ const server=http.createServer(async (req,res)=>{
     if(req.method==="GET" && parts.length===5 && p.startsWith("api/v1/experience/demo-cases/")) return ok(res,await experience.getDemoCase(parts[4]),requestId);
     if(req.method==="GET" && p==="api/v1/experience/guides") { const q=query(req.url); return ok(res,await experience.listGuides(q.get("route")),requestId); }
 
+    if(req.method==="GET" && p==="api/v1/talent"){
+      const q=query(req.url);
+      const viewer=req.headers.authorization?.startsWith("Bearer ")?await auth(req):null;
+      return ok(res,await talent.searchTalent(viewer?.sub||null,{q:q.get("q"),occupation:q.get("occupation"),industry:q.get("industry"),educationLevel:q.get("educationLevel"),qualificationType:q.get("qualificationType"),fieldOfStudy:q.get("fieldOfStudy"),availability:q.get("availability"),location:q.get("location"),verifiedClaim:q.get("verifiedClaim"),limit:q.get("limit"),offset:q.get("offset")}),requestId);
+    }
+    if(req.method==="GET" && parts.length===4 && p.startsWith("api/v1/talent/")){
+      const viewer=req.headers.authorization?.startsWith("Bearer ")?await auth(req):null;
+      return ok(res,await talent.getTalent(parts[3],viewer?.sub||null),requestId);
+    }
+
     const identity=await auth(req);
     if(req.method==="POST" && p==="api/v1/admin/experience/demo-cases") { return ok(res,await experience.createDemoCase(identity.sub,await body(req),requestId),requestId,201); }
     if(req.method==="PATCH" && parts.length===6 && p.startsWith("api/v1/admin/experience/demo-cases/")) { return ok(res,await experience.updateDemoCase(parts[5],identity.sub,await body(req),requestId),requestId); }
@@ -236,14 +246,10 @@ const server=http.createServer(async (req,res)=>{
       anyRole(identity,["reviewer","finance_officer","system_admin"]); return ok(res,await membership.listApplicationsForReview(),requestId);
     }
 
+    if(req.method==="GET" && p==="api/v1/me/talent-profile") return ok(res,await talent.getProfessionalProfile(identity.sub),requestId);
     if(req.method==="PATCH" && p==="api/v1/me/talent-profile") return ok(res,await talent.updateProfessionalProfile(identity.sub,await body(req),requestId),requestId);
     if(req.method==="GET" && p==="api/v1/me/talent-visibility") return ok(res,await talent.getVisibility(identity.sub),requestId);
     if(req.method==="PATCH" && p==="api/v1/me/talent-visibility") return ok(res,await talent.updateVisibility(identity.sub,await body(req),requestId),requestId);
-    if(req.method==="GET" && p==="api/v1/talent"){
-      const q=query(req.url);
-      return ok(res,await talent.searchTalent(identity.sub,{q:q.get("q"),occupation:q.get("occupation"),industry:q.get("industry"),educationLevel:q.get("educationLevel"),qualificationType:q.get("qualificationType"),fieldOfStudy:q.get("fieldOfStudy"),availability:q.get("availability"),location:q.get("location"),verifiedClaim:q.get("verifiedClaim"),limit:q.get("limit"),offset:q.get("offset")}),requestId);
-    }
-    if(req.method==="GET" && parts.length===4 && p.startsWith("api/v1/talent/")) return ok(res,await talent.getTalent(parts[3],identity.sub),requestId);
     if(req.method==="POST" && p==="api/v1/talent/saved-searches") return ok(res,await talent.saveSearch(identity.sub,await body(req),requestId),requestId,201);
     if(req.method==="GET" && p==="api/v1/talent/saved-searches") return ok(res,await talent.listSavedSearches(identity.sub),requestId);
     if(req.method==="POST" && p==="api/v1/talent/inquiries") return ok(res,await talent.createTalentInquiry(identity.sub,await body(req),requestId),requestId,201);
