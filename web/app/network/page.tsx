@@ -6,7 +6,7 @@ import {api,ApiError} from "../../lib/api";
 import {useUiStore} from "../../lib/store";
 
 type Filters={q:string;location:string;availability:string;verifiedClaim:string};
-type Talent={user_id:string;display_name:string;profile_id:string;professional_title?:string|null;headline?:string|null;directory_summary?:string|null;years_experience?:number|null;availability_status?:string|null;location_label?:string|null;show_identity_badge?:boolean;show_professional_badge?:boolean;show_experience_badge?:boolean;show_experience?:boolean;verified_claim_count?:number};
+type Talent={user_id:string;display_name:string;profile_id:string;professional_title?:string|null;headline?:string|null;directory_summary?:string|null;years_experience?:number|null;availability_status?:string|null;location_label?:string|null;show_location?:boolean;show_identity_badge?:boolean;show_professional_badge?:boolean;show_experience_badge?:boolean;show_experience?:boolean;verified_claim_count?:number};
 type TalentDetail=Talent&{bio?:string|null;phone?:string|null;references?:{relation_type:string;code:string;label:string}[];verifiedClaims?:{claim_code:string}[];experience?:{id:string;employer_name?:string|null;role_title:string;start_date?:string|null;end_date?:string|null;is_current:boolean;description?:string|null}[]};
 type Inquiry={id:string;requester_user_id:string;professional_user_id:string;requester_name?:string;professional_name?:string;subject:string;message:string;status:string;contact_release:boolean;professional_email?:string|null;professional_phone?:string|null;requester_email?:string|null;requester_phone?:string|null;created_at?:string};
 type SavedSearch={id:string;name:string;criteria:Filters};
