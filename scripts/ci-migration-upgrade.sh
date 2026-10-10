@@ -45,6 +45,28 @@ sentinel="$(psql "$DATABASE_URL" -X -A -t -q -v ON_ERROR_STOP=1 -c "SELECT value
   exit 1
 }
 
+# Force a migration failure after a schema change and prove the transaction rolls back
+# both the DDL and its ledger row. The synthetic migration exists only in this disposable CI checkout.
+failure_migration="$migration_dir/999_ci_forced_failure.sql"
+trap 'rm -f "$failure_migration"' EXIT
+cat > "$failure_migration" <<'SQL'
+CREATE TABLE gate3_should_rollback (id integer PRIMARY KEY);
+SELECT 1 / 0;
+SQL
+if npm run migrate; then
+  echo "ERROR: intentionally failing migration unexpectedly succeeded" >&2
+  exit 1
+fi
+
+table_after_failure="$(psql "$DATABASE_URL" -X -A -t -q -v ON_ERROR_STOP=1 -c "SELECT CASE WHEN to_regclass('public.gate3_should_rollback') IS NULL THEN 'absent' ELSE 'present' END")"
+ledger_after_failure="$(psql "$DATABASE_URL" -X -A -t -q -v ON_ERROR_STOP=1 -c "SELECT count(*) FROM app_schema_migration WHERE filename='999_ci_forced_failure.sql'")"
+[[ "$table_after_failure" == "absent" && "$ledger_after_failure" == "0" ]] || {
+  echo "ERROR: failed migration left schema or ledger changes behind" >&2
+  exit 1
+}
+rm -f "$failure_migration"
+trap - EXIT
+
 # A second run without a baseline must be a no-op once the ledger is populated.
 npm run migrate
 applied_after_rerun="$(psql "$DATABASE_URL" -X -A -t -q -v ON_ERROR_STOP=1 -c 'SELECT count(*) FROM app_schema_migration')"
