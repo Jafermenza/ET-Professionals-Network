@@ -27,19 +27,18 @@ async function independentReviewerToken(api,adminToken){
   if(cachedReviewerToken) return cachedReviewerToken;
   const reviewerEmail="gate4-reviewer-ci@example.test";
   const reviewerPassword="gate4-reviewer-password-12345";
-  const registration=await api.post("/api/v1/auth/register",{data:{email:reviewerEmail,password:reviewerPassword,firstName:"Gate4",lastName:"Reviewer"}});
   let reviewerId;
-  if(registration.status()===201){
-    reviewerId=(await registration.json()).data.user.id;
-  } else {
-    expect([409,429],"reviewer fixture may already exist; unexpected registration failure").toContain(registration.status());
-    const login=await api.post("/api/v1/auth/login",{data:{email:reviewerEmail,password:reviewerPassword}});
-    expect(login.status(),"existing reviewer fixture login").toBe(200);
-    const token=(await login.json()).data.token;
-    const me=await api.get("/api/v1/me",{headers:{authorization:"Bearer "+token}});
+  const existingLogin=await api.post("/api/v1/auth/login",{data:{email:reviewerEmail,password:reviewerPassword}});
+  if(existingLogin.status()===200){
+    cachedReviewerToken=(await existingLogin.json()).data.token;
+    const me=await api.get("/api/v1/me",{headers:{authorization:"Bearer "+cachedReviewerToken}});
     expect(me.status()).toBe(200);
     reviewerId=(await me.json()).data.user_id;
-    cachedReviewerToken=token;
+  } else {
+    expect(existingLogin.status(),"unknown reviewer fixture should fail as unauthenticated before registration").toBe(401);
+    const registration=await api.post("/api/v1/auth/register",{data:{email:reviewerEmail,password:reviewerPassword,firstName:"Gate4",lastName:"Reviewer"}});
+    expect(registration.status(),"independent reviewer fixture registration").toBe(201);
+    reviewerId=(await registration.json()).data.user.id;
   }
   const adminProfile=await api.get("/api/v1/me",{headers:{authorization:"Bearer "+adminToken}});
   expect(adminProfile.status(),"admin identity for reviewer fixture audit").toBe(200);
