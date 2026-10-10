@@ -123,7 +123,7 @@ test("organization screen uploads private evidence and submits verification",asy
     await page.getByLabel("Decision for "+inquiry.public_reference).selectOption("contacted");
     await page.getByLabel("Consider non-member for "+inquiry.public_reference).check();
     await page.getByLabel("Decision note for "+inquiry.public_reference).fill("Browser decision persisted");
-    await page.getByRole("button",{name:"Save inquiry decision"}).click();
+    await page.locator(".case-row").filter({hasText:inquiry.public_reference}).getByRole("button",{name:"Save inquiry decision"}).click();
     await expect(page.getByRole("status")).toContainText("Inquiry decision saved.");
     await page.getByRole("button",{name:"Submit for verification"}).first().click();
     await expect(page.getByRole("status")).toContainText("Verification submission was accepted by the server.");
