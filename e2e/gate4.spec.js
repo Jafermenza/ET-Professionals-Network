@@ -319,8 +319,9 @@ test("service requests enforce membership, self-request, duplicate, and particip
    expect(requesterCannotAccept.status()).toBe(403);
    await browserLogin(page);
    await page.goto("/services");
-   await expect(page.getByRole("button",{name:"Accept request"})).toBeVisible();
-   await page.getByRole("button",{name:"Accept request"}).click();
+   const requestCard=page.locator(".case-row").filter({hasText:title});
+   await expect(requestCard.getByRole("button",{name:"Accept request"})).toBeVisible();
+   await requestCard.getByRole("button",{name:"Accept request"}).click();
    await expect(page.getByRole("status")).toContainText("Service request updated: accepted");
    const list=await api.get("/api/v1/me/service-requests",{headers});
    expect(list.status()).toBe(200);
