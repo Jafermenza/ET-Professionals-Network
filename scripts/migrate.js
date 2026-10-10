@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
+import { resolveMigrationBaseline, assertMigrationChecksum } from "../src/platform/migration-ledger.js";
 import { fileURLToPath } from "node:url";
 
 const url=process.env.DATABASE_URL;
@@ -37,11 +38,7 @@ const existingSchema=query("select case when to_regclass('public.app_user') is n
 // constraint changes. Require an explicit operator-confirmed baseline exactly once.
 if(recordedCount===0 && existingSchema){
   const baseline=process.env.MIGRATION_BASELINE;
-  const baselineIndex=files.indexOf(baseline||"");
-  if(baselineIndex<0){
-    throw new Error("Existing application schema found without migration history. Set MIGRATION_BASELINE to the last migration verified as applied after reviewing the database; refusing to replay historical migrations automatically.");
-  }
-  const baselineRows=migrations.slice(0,baselineIndex+1);
+  const baselineRows=resolveMigrationBaseline(files,baseline);
   const values=baselineRows.map(m=>`(${quote(m.filename)},${quote(m.checksum)})`).join(",");
   execute(`insert into ${ledger}(filename,checksum) values ${values} on conflict(filename) do nothing`);
   console.log("Recorded operator-confirmed legacy migration baseline through",baseline);
@@ -52,9 +49,7 @@ for(const migration of migrations){
   const existing=query(`select checksum from ${ledger} where filename=${quote(filename)}`);
 
   if(existing){
-    if(existing!==checksum){
-      throw new Error(`Applied migration ${filename} has changed. Add a new migration instead of editing historical SQL.`);
-    }
+    assertMigrationChecksum(filename,existing,checksum);
     console.log("Already applied",filename);
     continue;
   }
