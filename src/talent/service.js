@@ -80,7 +80,7 @@ export async function searchTalent(viewerId,filters={}){
 export async function getTalent(userId,viewerId){
  const db=getPool();
  const viewerMember=viewerId?Boolean((await db.query("select 1 from membership_record where user_id=$1 and status='active' limit 1",[viewerId])).rows[0]):false;
- const where=viewerMember?"pp.directory_visibility in ('members','public')":"pp.visibility='public'";
+ const where=viewerMember?"pp.directory_visibility in ('members','public')":"pp.directory_visibility='public'";
  const row=(await db.query("select u.id user_id,p.display_name,pp.id profile_id,pp.professional_title,pp.headline,pp.bio,pp.directory_summary,pp.years_experience,pp.availability_status,case when vv.show_location then pp.location_label else null end location_label,case when vv.show_contact and u.id=$2 then p.phone else null end phone,vv.show_identity_badge,vv.show_professional_badge,vv.show_experience_badge,vv.show_experience from app_user u join person p on p.user_id=u.id join professional_profile pp on pp.person_id=p.id join membership_record m on m.user_id=u.id and m.status='active' join verification_visibility vv on vv.user_id=u.id where u.id=$1 and vv.directory_visible=true and "+where+" and exists (select 1 from verification_claim vc join verification_case vcase on vcase.id=vc.case_id where vcase.subject_user_id=u.id and vc.status='verified' and lower(vc.claim_code_snapshot) in ('professional_certification','education','employment','experience','service_capability'))",[userId,viewerId||null])).rows[0];
  if(!row) throw error(404,"Professional not found or not visible.","NOT_FOUND");
  const refs=(await db.query("select prf.relation_type,ri.code,ri.label,ri.dataset_version_id from professional_profile_reference prf join reference_item ri on ri.id=prf.reference_item_id where prf.profile_id=$1 order by prf.relation_type,prf.is_primary desc,ri.label",[row.profile_id])).rows;
@@ -107,7 +107,7 @@ export async function createTalentInquiry(requesterId,input,requestId){
       join membership_record m on m.user_id=u.id and m.status='active'
       join verification_visibility vv on vv.user_id=u.id and vv.directory_visible=true
       join person p on p.user_id=u.id
-      join professional_profile pp on pp.person_id=p.id and pp.visibility in ('members','public')
+      join professional_profile pp on pp.person_id=p.id and pp.directory_visibility in ('members','public')
       where u.id=$1
         and exists (
           select 1 from verification_claim vc
