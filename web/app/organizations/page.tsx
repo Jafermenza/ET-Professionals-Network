@@ -78,7 +78,7 @@ export default function Organizations(){
      await api("/api/v1/organizations/"+encodeURIComponent(evidenceOrg)+"/verification-evidence",{method:"POST",body:JSON.stringify({fileObjectId:confirmed.id,evidenceType,note:evidenceNote.trim()||undefined})},token);
      setEvidenceFile(null);setEvidenceNote("");setNotice("Private evidence uploaded, checksum-verified and attached to the selected organization. Submit the verification case when its required evidence is complete.");
      await load();
-   }catch(e){setError(e instanceof ApiError?e.message:e instanceof Error?e.message:"Evidence upload failed. Please retry.");}
+   }catch(e){setError((e instanceof ApiError||e instanceof Error)?(e.message||"Evidence upload failed. Please retry."):"Evidence upload failed. Please retry.");}
    finally{setUploading(false);}
  }
  async function submitVerification(org:Organization){

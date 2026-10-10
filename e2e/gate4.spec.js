@@ -98,6 +98,9 @@ test("organization screen uploads private evidence and submits verification",asy
     expect(created.status()).toBe(201);
     const organization=(await created.json()).data;
     await browserLogin(page);
+    const uploadDiagnostics=[];
+    page.on("requestfailed",request=>{if(request.url().includes("/api/v1/files/")||request.url().includes("verification-evidence"))uploadDiagnostics.push("request failed "+request.method()+" "+request.url()+" "+(request.failure()?.errorText||""));});
+    page.on("response",response=>{if((response.url().includes("/api/v1/files/")||response.url().includes("verification-evidence"))&&response.status()>=400)void response.text().then(body=>uploadDiagnostics.push("HTTP "+response.status()+" "+response.url()+" "+body.slice(0,500)));});
     await page.goto("/organizations");
     await page.getByLabel("Organization").selectOption(organization.id);
     await page.getByLabel("Private document").setInputFiles({
@@ -107,7 +110,7 @@ test("organization screen uploads private evidence and submits verification",asy
     });
     await page.getByRole("button",{name:"Upload and attach private evidence"}).click();
     await expect.poll(async()=>await page.getByRole("status").count()+await page.getByRole("alert").count()).toBeGreaterThan(0);
-    if(await page.getByRole("alert").count()) throw new Error("Private evidence upload failed: "+await page.getByRole("alert").first().innerText());
+    if(await page.getByRole("alert").count()) throw new Error("Private evidence upload failed: "+(await page.getByRole("alert").first().textContent()||"No error text")+". Network: "+uploadDiagnostics.join(" | "));
     await expect(page.getByRole("status")).toContainText("Private evidence uploaded, checksum-verified and attached");
     await page.getByRole("button",{name:"Submit for verification"}).first().click();
     await expect(page.getByRole("status")).toContainText("Verification submission was accepted by the server.");
