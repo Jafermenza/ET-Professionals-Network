@@ -1,4 +1,5 @@
 import { test, expect, request as playwrightRequest } from "@playwright/test";
+import { getPool, closePool } from "../src/platform/db.js";
 
 const API_BASE = process.env.API_BASE_URL || "http://127.0.0.1:3000";
 const ADMIN_EMAIL = process.env.BOOTSTRAP_ADMIN_EMAIL;
@@ -11,6 +12,13 @@ async function apiContext(){
   const payload=await login.json();
   expect(typeof payload?.data?.token).toBe("string");
   return {api,token:payload.data.token};
+}
+async function browserLogin(page,email=ADMIN_EMAIL,password=ADMIN_PASSWORD){
+  await page.goto("/login");
+  await page.getByLabel("Email").fill(email);
+  await page.getByLabel("Password").fill(password);
+  await page.getByRole("button",{name:"Login"}).click();
+  await expect(page.getByRole("button",{name:"Logout"})).toBeVisible();
 }
 async function createVerifiedOrganization(api,token,prefix){
   const suffix=Date.now()+"-"+Math.random().toString(16).slice(2);
@@ -57,7 +65,10 @@ test("jobs search, saved state and alert criteria persist across browser reload"
   const {api,token}=await apiContext();
   try{
     const {title,jobId}=await createPublishedJob(api,token);
-    await page.addInitScript(value=>sessionStorage.setItem("mpa-session-token",value),token);
+    const directSearch=await api.get("/api/v1/jobs?q="+encodeURIComponent(title));
+    expect(directSearch.status()).toBe(200);
+    expect((await directSearch.json()).data.items.some(item=>item.id===jobId)).toBeTruthy();
+    await browserLogin(page);
     await page.goto("/jobs");
     await page.getByPlaceholder("Search job title or description").fill(title);
     await page.getByRole("button",{name:"Apply filters"}).click();
@@ -86,7 +97,7 @@ test("organization screen uploads private evidence and submits verification",asy
     const created=await api.post("/api/v1/organizations",{headers:{authorization:"Bearer "+token},data:{legalName:name,displayName:name,organizationType:"company"}});
     expect(created.status()).toBe(201);
     const organization=(await created.json()).data;
-    await page.addInitScript(value=>sessionStorage.setItem("mpa-session-token",value),token);
+    await browserLogin(page);
     await page.goto("/organizations");
     await page.getByLabel("Organization").selectOption(organization.id);
     await page.getByLabel("Private document").setInputFiles({
@@ -101,5 +112,64 @@ test("organization screen uploads private evidence and submits verification",asy
     const detail=await api.get("/api/v1/organizations/"+organization.id,{headers:{authorization:"Bearer "+token}});
     expect(detail.status()).toBe(200);
     expect((await detail.json()).data.verification_status).toBe("pending");
+  }finally{await api.dispose();}
+});
+
+
+test("service search and request form use published API data and persist a request",async({page})=>{
+  const {api,token}=await apiContext();
+  const suffix=Date.now()+"-"+Math.random().toString(16).slice(2);
+  const memberEmail="browser-gate4-"+suffix+"@example.test";
+  const memberPassword="browser-gate4-password-12345";
+  try{
+    const title="Browser Gate 4 Service "+suffix;
+    const headers={authorization:"Bearer "+token};
+    const listing=await api.post("/api/v1/services",{headers,data:{title,description:"Browser E2E service request fixture",serviceCategory:"consulting",pricingModel:"quote",visibility:"public"}});
+    expect(listing.status()).toBe(201);
+    const listingId=(await listing.json()).data.id;
+    const published=await api.post("/api/v1/services/"+listingId+"/status",{headers,data:{status:"published"}});
+    expect(published.status()).toBe(200);
+    const registered=await api.post("/api/v1/auth/register",{data:{email:memberEmail,password:memberPassword,firstName:"Browser",lastName:"Requester"+suffix}});
+    expect(registered.status()).toBe(201);
+    const registeredData=(await registered.json()).data;
+    const memberId=registeredData.user.id;
+    const db=getPool();
+    const product=(await db.query("select id from membership_product where product_code='BASIC'")).rows[0];
+    expect(product).toBeTruthy();
+    await db.query("insert into membership_record(user_id,membership_product_id,membership_number,status,start_date,end_date,source) values($1,$2,$3,'active',current_date,current_date+365,'admin')",[memberId,product.id,"E2E-"+memberId.slice(0,8)]);
+    await browserLogin(page,memberEmail,memberPassword);
+    await page.goto("/services");
+    await page.getByPlaceholder("Category, capability or keyword").fill(title);
+    await page.getByRole("button",{name:"Search",exact:true}).click();
+    await expect(page.getByRole("heading",{name:title,exact:true})).toBeVisible();
+    await page.getByRole("button",{name:"Request this service"}).click();
+    await page.getByLabel("Message to the provider").fill("Please contact me about the scope and timeline.");
+    await page.getByRole("button",{name:"Submit service request"}).click();
+    await expect(page.getByRole("status")).toContainText("Your service request was submitted.");
+    const requests=await api.get("/api/v1/me/service-requests",{headers:{authorization:"Bearer "+registeredData.token}});
+    expect(requests.status()).toBe(200);
+    expect((await requests.json()).data.some(item=>item.service_title===title&&item.status==="requested")).toBeTruthy();
+  }finally{
+    await api.dispose();
+    await closePool();
+  }
+});
+
+test("mentorship request form supports a goal without a preferred mentor",async({page})=>{
+  const {api,token}=await apiContext();
+  try{
+    await browserLogin(page);
+    await page.goto("/mentorship");
+    await page.getByRole("button",{name:"Request mentorship without a preferred mentor"}).click();
+    await page.getByPlaceholder("What outcome do you want help achieving?").fill("Browser E2E goal: improve professional leadership.");
+    await page.getByRole("button",{name:"Submit mentorship request"}).click();
+    await expect(page.getByRole("heading",{name:"Your request is in the system"})).toBeVisible();
+    const reference=await page.getByText(/Request reference:/).textContent();
+    const id=reference?.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i)?.[0];
+    expect(id).toBeTruthy();
+    const detail=await api.get("/api/v1/mentorship/requests/"+id,{headers:{authorization:"Bearer "+token}});
+    expect(detail.status()).toBe(200);
+    expect((await detail.json()).data.goals).toBe("Browser E2E goal: improve professional leadership.");
+    expect((await detail.json()).data.preferred_mentor_user_id).toBeNull();
   }finally{await api.dispose();}
 });

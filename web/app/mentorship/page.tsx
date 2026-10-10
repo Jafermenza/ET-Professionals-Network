@@ -15,6 +15,7 @@ export default function Mentorship(){
  const [error,setError]=useState("");
  const [notice,setNotice]=useState("");
  const [selected,setSelected]=useState<Mentor|null>(null);
+ const [showRequestForm,setShowRequestForm]=useState(false);
  const [query,setQuery]=useState("");
  const [topic,setTopic]=useState("");
  const [goals,setGoals]=useState("");
@@ -49,7 +50,7 @@ export default function Mentorship(){
        preferredLanguages:languages.split(",").map(x=>x.trim()).filter(Boolean)
      })},token);
      setCreated(result);setNotice("Your mentorship request was recorded. Matching and mentor acceptance remain explicit next steps.");
-     setSelected(null);setGoals("");setTopics("");setLanguages("");
+     setSelected(null);setShowRequestForm(false);setGoals("");setTopics("");setLanguages("");
    }catch(e){setError(e instanceof ApiError?e.message:"We couldn't submit your mentorship request.");}
    finally{setSubmitting(false);}
  }
@@ -63,6 +64,7 @@ export default function Mentorship(){
      <button className="btn btn-primary" type="submit" disabled={loading}>{loading?"Searching…":"Search mentors"}</button>
      <button className="btn btn-ghost" type="button" onClick={()=>{setQuery("");setTopic("")}}>Clear</button>
    </form></Card>
+   <div style={{marginTop:14}}><button className="btn btn-ghost" type="button" onClick={()=>{setSelected(null);setShowRequestForm(true);setCreated(null);setNotice("");setError("");}}>Request mentorship without a preferred mentor</button><p className="muted">You can submit your goal now; the platform will not invent a match or confirm a mentor until one is eligible and accepts.</p></div>
    {error&&<div className="form-error" role="alert">{error}<button className="btn btn-ghost" type="button" onClick={()=>void load()}>Retry</button></div>}
    {notice&&<p className="muted" role="status">{notice}{!token&&<a href="/login?next=/mentorship"> Sign in</a>}</p>}
    {created&&<Card><Badge tone="green">Request recorded</Badge><h2 className="h2" style={{marginTop:10}}>Your request is in the system</h2><p className="muted">Request reference: {created.id}</p><p className="muted">Status: {created.status}. The platform does not create a mentorship until the matching and acceptance steps are completed.</p><button className="btn btn-ghost" type="button" onClick={()=>setCreated(null)}>Dismiss</button></Card>}
@@ -73,9 +75,9 @@ export default function Mentorship(){
      {values(mentor.expertise).length>0&&<div style={{marginTop:12}}><b>Expertise</b><p className="muted">{values(mentor.expertise).join(" · ")}</p></div>}
      {values(mentor.languages).length>0&&<div className="tagline"><Languages size={14}/> {values(mentor.languages).join(" · ")}</div>}
      {values(mentor.mentoring_modes).length>0&&<div className="tagline" style={{marginTop:8}}><Clock3 size={14}/> {values(mentor.mentoring_modes).join(" · ")}</div>}
-     <button className="btn btn-primary" type="button" style={{width:"100%",marginTop:17}} onClick={()=>{setSelected(mentor);setCreated(null);setGoals("");setNotice("");}}>Request mentorship <HeartHandshake size={16}/></button>
+     <button className="btn btn-primary" type="button" style={{width:"100%",marginTop:17}} onClick={()=>{setSelected(mentor);setShowRequestForm(false);setCreated(null);setGoals("");setNotice("");}}>Request mentorship <HeartHandshake size={16}/></button>
    </Card>)}</div>}
-   {selected&&<Card id="mentor-goal"><div className="row"><div><div className="eyebrow">Mentorship request</div><h2 className="h2">Goal and preferences</h2><p className="muted">Preferred mentor: {selected.display_name}</p></div><button className="btn btn-ghost" type="button" onClick={()=>setSelected(null)}>Close</button></div>
+   {(selected||showRequestForm)&&<Card id="mentor-goal"><div className="row"><div><div className="eyebrow">Mentorship request</div><h2 className="h2">Goal and preferences</h2>{selected?<p className="muted">Preferred mentor: {selected.display_name}</p>:<p className="muted">No preferred mentor selected. Matching remains a separate, governed step.</p>}</div><button className="btn btn-ghost" type="button" onClick={()=>{setSelected(null);setShowRequestForm(false)}}>Close</button></div>
      {!token?<><p className="muted">A formal request requires sign-in and active membership. You can still explore mentor profiles.</p><a className="btn btn-primary" href="/login?next=/mentorship">Sign in to continue</a></>:<form className="form-stack" onSubmit={submit}>
        <label>Your mentorship goal<textarea required rows={4} value={goals} onChange={e=>setGoals(e.target.value)} placeholder="What outcome do you want help achieving?"/></label>
        <label>Topics, separated by commas<input value={topics} onChange={e=>setTopics(e.target.value)} placeholder="e.g. product leadership, finance"/></label>
