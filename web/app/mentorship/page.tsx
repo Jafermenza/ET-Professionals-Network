@@ -20,8 +20,8 @@ export default function Mentorship(){
  const [myRequests,setMyRequests]=useState<RequestResult[]>([]);
  const [matchOffers,setMatchOffers]=useState<MatchOffer[]>([]);
  const [engagements,setEngagements]=useState<MentorshipRecord[]>([]);
- const [currentUserId,setCurrentUserId]=useState(\"\");
- const [matchingRequestId,setMatchingRequestId]=useState(\"\");
+ const [currentUserId,setCurrentUserId]=useState("");
+ const [matchingRequestId,setMatchingRequestId]=useState("");
  const [candidates,setCandidates]=useState<Record<string,MentorCandidate[]>>({});
  const [engagementDetails,setEngagementDetails]=useState<Record<string,{goals:Goal[];sessions:Session[]}>>({});
  const [goalDrafts,setGoalDrafts]=useState<Record<string,string>>({});
@@ -29,10 +29,10 @@ export default function Mentorship(){
  const [sessionEnds,setSessionEnds]=useState<Record<string,string>>({});
  const [sessionAgendas,setSessionAgendas]=useState<Record<string,string>>({});
  const [ownMentorProfile,setOwnMentorProfile]=useState<MentorProfile|null>(null);
- const [mentorForm,setMentorForm]=useState({headline:\"\",bio:\"\",expertise:\"\",languages:\"\",mentoringModes:\"remote\",visibility:\"members\",maxActiveMentees:\"3\"});
- const [mentorDay,setMentorDay]=useState(\"1\");
- const [mentorStart,setMentorStart]=useState(\"09:00\");
- const [mentorEnd,setMentorEnd]=useState(\"12:00\");
+ const [mentorForm,setMentorForm]=useState({headline:"",bio:"",expertise:"",languages:"",mentoringModes:"remote",visibility:"members",maxActiveMentees:"3"});
+ const [mentorDay,setMentorDay]=useState("1");
+ const [mentorStart,setMentorStart]=useState("09:00");
+ const [mentorEnd,setMentorEnd]=useState("12:00");
  const [mentorSaving,setMentorSaving]=useState(false);
  const [loading,setLoading]=useState(true);
  const [error,setError]=useState("");
