@@ -35,6 +35,13 @@ export async function updateProfessionalProfile(userId,input,requestId){
  });
 }
 
+export async function getProfessionalProfile(userId){
+ const db=getPool();
+ const row=(await db.query("select pp.id,pp.professional_title,pp.years_experience,pp.availability_status,pp.location_label,pp.directory_summary,pp.headline,pp.bio,pp.visibility,pp.completion_percent from professional_profile pp join person p on p.id=pp.person_id where p.user_id=$1",[userId])).rows[0];
+ if(!row) throw error(404,"Professional profile not found.","NOT_FOUND");
+ return row;
+}
+
 export async function updateVisibility(userId,input,requestId){
  return withTransaction(async db=>{
   const row=(await db.query("insert into verification_visibility(user_id) values($1) on conflict(user_id) do update set directory_visible=coalesce($2,verification_visibility.directory_visible),show_identity_badge=coalesce($3,verification_visibility.show_identity_badge),show_professional_badge=coalesce($4,verification_visibility.show_professional_badge),show_experience_badge=coalesce($5,verification_visibility.show_experience_badge),show_location=coalesce($6,verification_visibility.show_location),show_experience=coalesce($7,verification_visibility.show_experience),show_contact=coalesce($8,verification_visibility.show_contact),updated_at=now() returning *",[userId,input.directoryVisible,input.showIdentityBadge,input.showProfessionalBadge,input.showExperienceBadge,input.showLocation,input.showExperience,input.showContact])).rows[0];
@@ -48,7 +55,9 @@ export async function getVisibility(userId){ const db=getPool(); const r=await d
 function viewerVisibilityClause(viewerIsMember){ return viewerIsMember ? "(pp.visibility in ('members','public'))" : "pp.visibility='public'"; }
 
 export async function searchTalent(viewerId,filters={}){
- const db=getPool(); const args=[viewerId]; const where=["m.status='active'", "vv.directory_visible=true", viewerVisibilityClause(Boolean(viewerId))];
+ const db=getPool();
+ const viewerIsMember=viewerId?Boolean((await db.query("select 1 from membership_record where user_id=$1 and status='active' limit 1",[viewerId])).rows[0]):false;
+ const args=[viewerId]; const where=["m.status='active'", "vv.directory_visible=true", viewerVisibilityClause(viewerIsMember)];
  if(filters.q){ args.push("%"+String(filters.q).trim()+"%"); where.push("(pp.professional_title ilike $"+args.length+" or pp.headline ilike $"+args.length+" or pp.directory_summary ilike $"+args.length+" or p.display_name ilike $"+args.length+")"); }
  const refFilter=(param,relation)=>{ if(filters[param]){ args.push(String(filters[param])); where.push("exists (select 1 from professional_profile_reference prf join reference_item ri on ri.id=prf.reference_item_id where prf.profile_id=pp.id and prf.relation_type='"+relation+"' and (ri.code=$"+args.length+" or ri.id::text=$"+args.length+"))"); } };
  refFilter("occupation","occupation"); refFilter("industry","industry"); refFilter("educationLevel","education_level"); refFilter("qualificationType","qualification_type"); refFilter("fieldOfStudy","field_of_study");
@@ -68,9 +77,9 @@ export async function searchTalent(viewerId,filters={}){
 
 export async function getTalent(userId,viewerId){
  const db=getPool();
- const viewerMember=Boolean(viewerId);
+ const viewerMember=viewerId?Boolean((await db.query("select 1 from membership_record where user_id=$1 and status='active' limit 1",[viewerId])).rows[0]):false;
  const where=viewerMember?"pp.visibility in ('members','public')":"pp.visibility='public'";
- const row=(await db.query("select u.id user_id,p.display_name,pp.id profile_id,pp.professional_title,pp.headline,pp.bio,pp.directory_summary,pp.years_experience,pp.availability_status,case when vv.show_location then pp.location_label else null end location_label,case when vv.show_contact and u.id=$2 then p.phone else null end phone,vv.show_identity_badge,vv.show_professional_badge,vv.show_experience_badge,vv.show_experience from app_user u join person p on p.user_id=u.id join professional_profile pp on pp.person_id=p.id join membership_record m on m.user_id=u.id and m.status='active' join verification_visibility vv on vv.user_id=u.id where u.id=$1 and vv.directory_visible=true and "+where+" and exists (select 1 from verification_claim vc join verification_case vcase on vcase.id=vc.case_id where vcase.subject_user_id=u.id and vc.status='verified' and vc.claim_code_snapshot in ('professional_certification','education','employment','experience','service_capability'))",[userId,viewerId||null])).rows[0];
+ const row=(await db.query("select u.id user_id,p.display_name,pp.id profile_id,pp.professional_title,pp.headline,pp.bio,pp.directory_summary,pp.years_experience,pp.availability_status,case when vv.show_location then pp.location_label else null end location_label,case when vv.show_contact and u.id=$2 then p.phone else null end phone,vv.show_identity_badge,vv.show_professional_badge,vv.show_experience_badge,vv.show_experience from app_user u join person p on p.user_id=u.id join professional_profile pp on pp.person_id=p.id join membership_record m on m.user_id=u.id and m.status='active' join verification_visibility vv on vv.user_id=u.id where u.id=$1 and vv.directory_visible=true and "+where+" and exists (select 1 from verification_claim vc join verification_case vcase on vcase.id=vc.case_id where vcase.subject_user_id=u.id and vc.status='verified' and lower(vc.claim_code_snapshot) in ('professional_certification','education','employment','experience','service_capability'))",[userId,viewerId||null])).rows[0];
  if(!row) throw error(404,"Professional not found or not visible.","NOT_FOUND");
  const refs=(await db.query("select prf.relation_type,ri.code,ri.label,ri.dataset_version_id from professional_profile_reference prf join reference_item ri on ri.id=prf.reference_item_id where prf.profile_id=$1 order by prf.relation_type,prf.is_primary desc,ri.label",[row.profile_id])).rows;
  const claims=(await db.query("select distinct vc.claim_code_snapshot claim_code from verification_claim vc join verification_case c on c.id=vc.case_id where c.subject_user_id=$1 and vc.status='verified' and lower(vc.claim_code_snapshot) in ('professional_certification','education','employment','experience','service_capability')",[userId])).rows;
