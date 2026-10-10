@@ -380,7 +380,7 @@ export async function listMentors(viewerId,filters={}){
 export async function createMentorshipRequest(menteeId,input,requestId){
   return withTransaction(async db=>{
     if(!(await activeMember(db,menteeId))) throw error(403,"An active membership is required for mentorship.","MEMBERSHIP_REQUIRED");
-    if(!input.goals) throw error(400,"goals are required.","VALIDATION_ERROR");
+    if(typeof input.goals!=="string"||!input.goals.trim()) throw error(400,"A non-empty mentorship goal is required.","VALIDATION_ERROR");
     if(input.preferredMentorUserId===menteeId) throw error(400,"You cannot mentor yourself.","VALIDATION_ERROR");
     const row=(await db.query("insert into mentorship_request(mentee_user_id,preferred_mentor_user_id,goals,topics,preferred_modes,preferred_languages,preferred_days,status) values($1,$2,$3,$4,$5,$6,$7,'requested') returning *",[menteeId,input.preferredMentorUserId||null,input.goals,JSON.stringify(normalizeArray(input.topics)),JSON.stringify(normalizeArray(input.preferredModes||["remote"])),JSON.stringify(normalizeArray(input.preferredLanguages)),JSON.stringify((input.preferredDays||[]).map(Number).filter(n=>n>=0&&n<=6))])).rows[0];
     await audit(db,menteeId,"mentorship.request_created","mentorship_request",row.id,requestId);
