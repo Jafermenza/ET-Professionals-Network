@@ -555,7 +555,7 @@ test("talent directory uses live consent-scoped profiles and inquiry contact-rel
    expect(me.status()).toBe(200);
    const professionalId=(await me.json()).data.user_id;
    const displayName=(await me.json()).data.display_name;
-   const profileSave=await api.patch("/api/v1/me/talent-profile",{headers:{authorization:"Bearer "+professional.token},data:{professionalTitle:"Gate 4 talent discovery specialist",headline:"Gate 4 talent discovery fixture",bio:"Profile for consent-controlled directory acceptance.",directorySummary:"Live profile fixture; no private evidence is exposed.",yearsExperience:8,availabilityStatus:"open_to_opportunities",locationLabel:"Addis Ababa",visibility:"public"}});
+   const profileSave=await api.patch("/api/v1/me/talent-profile",{headers:{authorization:"Bearer "+professional.token},data:{professionalTitle:"Gate 4 talent discovery specialist",headline:"Gate 4 talent discovery fixture",bio:"Profile for consent-controlled directory acceptance.",directorySummary:"Live profile fixture; no private evidence is exposed.",yearsExperience:8,availabilityStatus:"available",locationLabel:"Addis Ababa",visibility:"public"}});
    expect(profileSave.status()).toBe(200);
    const consent=await api.patch("/api/v1/me/talent-visibility",{headers:{authorization:"Bearer "+professional.token},data:{directoryVisible:true,showIdentityBadge:false,showProfessionalBadge:true,showExperienceBadge:false,showLocation:true,showExperience:true,showContact:true}});
    expect(consent.status()).toBe(200);
