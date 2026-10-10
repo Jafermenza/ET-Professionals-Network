@@ -1,6 +1,6 @@
 # Holistic Application Reconciliation Plan
 
-**Status:** Active — Gate 0 baseline recorded; implementation gates not yet passed  
+**Status:** Active — G1 CI evidence green; G2/G3 partial; G4 workflow reconciliation underway; G5/G6 not passed  
 **Working branch:** `reconciliation/holistic-gates`  
 **Base branch:** `main`  
 **Scope:** One auditable branch for build reliability, authorization, database safety, connected workflows, end-to-end verification, and release readiness.
@@ -113,12 +113,24 @@ A failed test must remain visible. Do not replace a failing assertion with a wea
 
 ## 6. Current status and next action
 
-- G0: **IN PROGRESS** — initial contracts and inventory are recorded; finish route-to-screen tracing and migration rerun analysis.
-- G1: **PASS — initial CI baseline only** — the pull-request CI run `38041774483` completed successfully for commit `da1cec8b1d2e0951fa7a59f871b6e8d692869377`. It passed dependency installation, migrations on a fresh CI PostgreSQL service, the configured test suite, Next.js production build, and `/healthz` smoke test. Subsequent security/API commits have not yet been validated by a completed CI run; rerun CI after the latest changes. The successful install used `npm install`, not `npm ci`, so dependency lockfile reproducibility remains open.
-- G2: **IN PROGRESS** — server authentication now reloads current database roles for every authenticated request, admin role changes revoke existing sessions, and a regression test covers stale token role claims. The shadowed duplicate `GET /api/v1/me` handler has been removed so the route can return the profile contract consumed by the dashboard. These changes await CI validation and further role/scope negative tests.
-- G3: **IN PROGRESS** — a checksum-based migration ledger and per-migration transaction boundary have been implemented; CI now checks a second migration invocation. Await the latest CI result, then test the existing-schema/empty-ledger upgrade scenario on disposable PostgreSQL.
-- G4–G6: **NOT PASSED** — complete route-to-screen workflow tracing, browser E2E journeys, and release-readiness checks remain open.
-- The baseline CI run is evidence only for the tested commit; it does not validate later commits or prove every workflow passes.
-- No production database has been touched. No application feature has been intentionally removed or disabled.
+Evidence reviewed on 2026-10-10:
 
-Next action: inspect the latest CI run with the migration ledger enabled; then test a legacy schema with no ledger, confirm checksum-mismatch protection, and continue route-to-screen contract tests on this branch.
+- G0: **IN PROGRESS** — the core contracts and initial risk inventory are recorded. The complete screen-to-route-to-service trace and legacy database inventory are not finished; see [the workflow reconciliation matrix](31-workflow-reconciliation-matrix.md).
+- G1: **PASS for commit `90f5d8ed9df7bd306194b231e14b9faeb24cd011`** — GitHub Actions push run [38045217283](https://github.com/Jafermenza/ET-Professionals-Network/actions/runs/38045217283) and PR run [38045220106](https://github.com/Jafermenza/ET-Professionals-Network/actions/runs/38045220106) both completed successfully. Each passed `npm install --no-audit --no-fund`, fresh PostgreSQL migrations, migration rerun, `npm test`, `npm run web:build`, and the application smoke test. The smoke test verifies bootstrap-admin login, authenticated `GET /api/v1/me`, logout, and denial using the revoked token. This is command-level CI evidence, not full browser E2E. Root `package-lock.json` is still absent; `npm ci` reproducibility remains OPEN.
+- G2: **PARTIAL** — current DB roles replace stale JWT role claims; role changes revoke sessions; the duplicate `GET /api/v1/me` route shadow was removed; logout now revokes the session and audits `account.logout`. CI verifies a basic login/profile/logout/revoked-session journey. Full positive/negative role matrix, organization ownership boundaries, privacy checks and admin separation-of-duties tests remain OPEN.
+- G3: **PARTIAL** — checksum ledger, transactional migration application, checksum mismatch refusal, fresh database migrations and second-run idempotency are implemented/CI-checked. A prior attempt to replay the legacy chain on a populated schema failed at migration `012_outcome_delivery_hardening.sql` because `service_request_agreed_price_check` already existed. Historical migration 012 remains untouched; forward migration `018_service_request_price_constraint_reconciliation.sql` reconciles the constraint. Existing databases without a ledger now require an explicit `MIGRATION_BASELINE`. The production schema and correct baseline have NOT been inspected or verified; the legacy adoption path and checksum-mismatch path still need disposable-database tests. Do not set a production baseline by assumption.
+- G4: **IN PROGRESS / NOT PASSED** — the initial route-to-screen matrix is being recorded. The jobs, mentorship and services pages contain hard-coded sample cards and/or non-functional controls even though corresponding API/service routes exist. Organization registration and verification cards also include non-functional CTAs. These are confirmed UI integration gaps, not completed workflows.
+- G5: **NOT PASSED** — smoke tests are not role-separated browser E2E; full persisted-state and negative-path journey evidence is outstanding.
+- G6: **NOT PASSED** — backup/restore, rollback rehearsal, production-like readiness and residual-risk acceptance remain outstanding.
+- No production database has been touched. No deployment or merge has been performed. No advertised feature has intentionally been removed or disabled.
+
+### Required next sequence
+
+1. Complete G0 route-to-screen and contract inventory, including exact API request/response shapes and authorization boundaries.
+2. Close G1 dependency reproducibility by generating and committing the workspace-compatible lockfile, then switch CI to `npm ci` and verify clean install.
+3. Complete G2 role/scope negative tests before claiming authorization is passed.
+4. Validate G3 legacy baseline adoption and checksum mismatch using disposable PostgreSQL databases; document an operator verification checklist before any production migration.
+5. For G4, connect one workflow at a time (jobs, mentorship, services, organization onboarding), with loading/empty/error states and service/API regression tests. Keep every change on `reconciliation/holistic-gates`.
+6. Run G5 and G6 only after their acceptance criteria and evidence are available.
+
+This roadmap is evidence-driven: green CI is tied to a specific commit and is not a claim that all product workflows are complete.
