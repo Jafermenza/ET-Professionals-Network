@@ -23,7 +23,7 @@ export default function Services(){
    setLoading(true);setError("");
    try{
      const params=new URLSearchParams();if(q.trim())params.set("q",q.trim());
-     const result=await api<{items:Service[]}>("/api/v1/services"+(params.size?"?"+params.toString():""));
+     const result=await api<{items:Service[]}>("/api/v1/services"+(params.toString()?"?"+params.toString():""));
      setItems(Array.isArray(result?.items)?result.items:[]);
    }catch(e){setItems([]);setError(e instanceof ApiError?e.message:"We couldn't load services right now.");}
    finally{setLoading(false);}
