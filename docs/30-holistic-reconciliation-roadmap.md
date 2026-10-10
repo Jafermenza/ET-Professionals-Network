@@ -1,6 +1,6 @@
 # Holistic Application Reconciliation Plan
 
-**Status:** Active — G0 PASS; G1 PASS on its verified implementation head; G2 PASS on its verified implementation head; G3 PASS on disposable PostgreSQL only (production baseline remains unverified); G4 scoped workflows expanded and latest-head CI pending; G5/G6 not passed  
+**Status:** Active — G0 PASS; G1 PASS on its verified implementation head; G2 PASS on its verified implementation head; G3 PASS on disposable PostgreSQL only (production baseline remains unverified); G4 scoped workflows expanded; current-head CI blocked before runner assignment; G5/G6 not passed  
 **Working branch:** `reconciliation/holistic-gates`  
 **Base branch:** `main`  
 **Scope:** One auditable branch for build reliability, authorization, database safety, connected workflows, end-to-end verification, and release readiness.
@@ -147,7 +147,7 @@ Changes made on `reconciliation/holistic-gates` without merging or deploying:
 - Added a membership API/E2E lifecycle: application, correction request/response, approval, fee-checked manual payment, idempotent payment retry, reviewer verification, activation and persisted-history assertions. It also asserts duplicate application, premature activation, incorrect payment amount and member denial from the review queue.
 - Added verification API/E2E assertions for case creation retry/idempotency, member-only case visibility, reviewer-only queue/transition authorization, reviewer assignment, invalid transition rejection and persisted case state.
 - Corrected the verification case-detail and case-action route segment counts/identifiers (consent, assignment, transition, claims, evidence, decision, member response and appeal). The regression test exercises the owner, a different member and a reviewer rather than treating route existence as proof.
-- Retained all existing assertions. The previous failing mentorship assertion remains mandatory; no test was skipped or weakened.
+- Retained all existing assertions. The previous failing mentorship assertion remains mandatory; no test was skipped or weakened. New test-only actors are provisioned through the domain service rather than repeatedly hitting the shared public registration throttle; the public registration endpoint remains covered by API smoke.
 
 **Acceptance rule:** The commits above are implementation/test changes, not a PASS. The most recent successful G4 record remains tied to its exact earlier SHA and does not automatically certify this head. Run the complete CI pipeline on the final code-and-documentation SHA, record both push and pull-request run URLs, and resolve any failure before G4 can be marked PASS.
 
@@ -162,3 +162,12 @@ Changes made on `reconciliation/holistic-gates` without merging or deploying:
 7. Notification preferences persist, but provider-backed delivery, retries and operational delivery monitoring are not proven.
 
 G4 exit is scoped: close only journeys that pass current-head positive, negative, invalid-state, retry and persistence evidence. API-only pieces remain explicit UI/integration gaps. G5 role-separated acceptance and G6 production readiness remain separate, not implied by G4.
+
+
+### Latest CI execution status — do not mark G4 PASS
+
+The latest code head before this documentation update was `067a80ee4fd34a1ce699daff8d672d11645698ab`. Push run [38080672235](https://github.com/Jafermenza/ET-Professionals-Network/actions/runs/38080672235) and PR run [38080675309](https://github.com/Jafermenza/ET-Professionals-Network/actions/runs/38080675309) failed before any CI step started; GitHub job records show no assigned runner and an empty step list. A rerun attempt also ended before step execution. The records do not expose a reliable reason for the runner failure.
+
+The last fully executed run is [38080002701](https://github.com/Jafermenza/ET-Professionals-Network/actions/runs/38080002701) on `a87be60e140a18253366b1de19c89cbb77a5fad5`. It ran migrations, unit tests and web build successfully but failed four browser tests: two newly added fixtures hit the shared public registration rate limit, a downstream test hit the same limit, and the mentorship outage fixture attempted to submit while its button was disabled. These are recorded as failures, not silently reclassified. The test fixtures and search readiness check were corrected after that run, and verification action responses were corrected to return committed state, but the fixes still require execution on the current head.
+
+**Next acceptance action:** restore a working GitHub Actions runner for this repository, rerun push and PR CI on the final head, and resolve any real E2E failure before marking G4 PASS. G4 is not accepted based on unit/build success or a no-runner workflow result.
