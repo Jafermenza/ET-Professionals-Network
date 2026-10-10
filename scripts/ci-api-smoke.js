@@ -19,6 +19,10 @@ async function request(path,{method="GET",token,body}={}){
   return {status:response.status,payload};
 }
 
+const publicMentors=await request("/api/v1/mentors");
+assert.equal(publicMentors.status,200,"public mentor discovery should work without a session");
+assert.ok(Array.isArray(publicMentors.payload?.data),"public mentor discovery should return an array");
+
 let login;
 for(let attempt=0;attempt<20;attempt++){
   login=await request("/api/v1/auth/login",{method:"POST",body:{email,password}});
@@ -35,9 +39,13 @@ assert.equal(me.payload?.data?.email,email,"profile endpoint should return the a
 assert.equal(me.payload?.data?.status,"active","profile endpoint should return account status");
 assert.equal(typeof me.payload?.data?.user_id,"string","profile endpoint should return its user_id contract");
 
+const memberMentors=await request("/api/v1/mentors",{token});
+assert.equal(memberMentors.status,200,"authenticated mentor discovery should return successfully");
+assert.ok(Array.isArray(memberMentors.payload?.data),"authenticated mentor discovery should return an array");
+
 const logout=await request("/api/v1/auth/logout",{method:"POST",token});
 assert.equal(logout.status,200,"logout should revoke the current session");
 const afterLogout=await request("/api/v1/me",{token});
 assert.equal(afterLogout.status,401,"revoked session must not access authenticated profile data");
 
-console.log("Authenticated API smoke passed: login, /me profile contract, logout, revoked-session denial.");
+console.log("API smoke passed: public/member mentor discovery, login, /me profile contract, logout, revoked-session denial.");
