@@ -1,6 +1,6 @@
 # Holistic Application Reconciliation Plan
 
-**Status:** Active — G0 PASS; G1 PASS on clean `npm ci` pipeline; G2 PASS on its verified implementation head `75cb9e7f34f5ef125812bf6b502b9a15e8563198`; G3 passed on disposable PostgreSQL (production baseline remains unverified); G4 workflow reconciliation underway; G5/G6 not passed  
+**Status:** Active — G0 PASS; G1 PASS on its verified implementation head; G2 PASS on its verified implementation head; G3 PASS on disposable PostgreSQL only (production baseline remains unverified); G4 scoped workflows expanded and latest-head CI pending; G5/G6 not passed  
 **Working branch:** `reconciliation/holistic-gates`  
 **Base branch:** `main`  
 **Scope:** One auditable branch for build reliability, authorization, database safety, connected workflows, end-to-end verification, and release readiness.
@@ -135,3 +135,30 @@ Evidence reviewed on 2026-10-10 (latest implementation commit below):
 6. Run G5 and G6 only after their acceptance criteria and evidence are available.
 
 This roadmap is evidence-driven: green CI is tied to a specific commit and is not a claim that all product workflows are complete.
+
+
+## Gate 4 scoped-workflow execution update — 2026-10-10
+
+The authoritative workflow-by-workflow status, assertion coverage, current-head CI record and remaining UI/integration gaps are maintained in [the Workflow Reconciliation Matrix](31-workflow-reconciliation-matrix.md). The matrix is the acceptance detail; this roadmap remains the gate-level authority.
+
+Changes made on `reconciliation/holistic-gates` without merging or deploying:
+
+- Mentorship search now separates draft criteria from submitted criteria. Search and retry cause an intentional API request rather than relying on an input-change effect while the submit button can be disabled by a loading state.
+- Added a membership API/E2E lifecycle: application, correction request/response, approval, fee-checked manual payment, idempotent payment retry, reviewer verification, activation and persisted-history assertions. It also asserts duplicate application, premature activation, incorrect payment amount and member denial from the review queue.
+- Added verification API/E2E assertions for case creation retry/idempotency, member-only case visibility, reviewer-only queue/transition authorization, reviewer assignment, invalid transition rejection and persisted case state.
+- Corrected the verification case-detail route to use the actual case-ID path segment. The regression test exercises the owner, a different member and a reviewer rather than treating route existence as proof.
+- Retained all existing assertions. The previous failing mentorship assertion remains mandatory; no test was skipped or weakened.
+
+**Acceptance rule:** The commits above are implementation/test changes, not a PASS. The most recent successful G4 record remains tied to its exact earlier SHA and does not automatically certify this head. Run the complete CI pipeline on the final code-and-documentation SHA, record both push and pull-request run URLs, and resolve any failure before G4 can be marked PASS.
+
+**Explicit remaining workflow/UI gaps (not to be hidden by green API tests):**
+
+1. Membership has API support for application/review/correction/payment/activation/renewal, but no dedicated member/reviewer membership UI is present in the web route inventory. Renewal, expiry and suspension journeys are not browser-accepted.
+2. Generic professional verification has API support for case, claim, evidence, reviewer, decision, member response and appeal transitions, but no complete member/reviewer case workspace is present. Organization evidence submission is a connected subset, not a replacement for the generic verification journey.
+3. ATS candidate application submission and tracking are connected, but a complete employer-side screening/interview/decision/outcome UI journey is not evidenced.
+4. Organization public inquiry decisions and private evidence submission are connected. Full reviewer-facing organization verification and every evidence failure/retry case remain open.
+5. Services and mentorship core participant workflows are connected and tested; provider-backed notification delivery and payment integrations are not evidenced as operational.
+6. Talent consent-controlled discovery and inquiry/contact release are connected; external notification delivery is not evidenced.
+7. Notification preferences persist, but provider-backed delivery, retries and operational delivery monitoring are not proven.
+
+G4 exit is scoped: close only journeys that pass current-head positive, negative, invalid-state, retry and persistence evidence. API-only pieces remain explicit UI/integration gaps. G5 role-separated acceptance and G6 production readiness remain separate, not implied by G4.
