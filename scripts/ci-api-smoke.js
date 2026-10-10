@@ -24,7 +24,8 @@ async function rawRequest(path,{method="GET",token,body,headers:extraHeaders}={}
   const text=await response.text();let payload=null;try{payload=JSON.parse(text)}catch{}
   return {status:response.status,payload,text};
 }
-\nconst publicMentors=await request("/api/v1/mentors");
+
+const publicMentors=await request("/api/v1/mentors");
 assert.equal(publicMentors.status,200,"public mentor discovery should work without a session");
 assert.ok(Array.isArray(publicMentors.payload?.data),"public mentor discovery should return an array");
 

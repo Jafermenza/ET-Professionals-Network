@@ -6,7 +6,7 @@ test("private upload names are reduced to a safe basename",()=>{
   assert.equal(validatePrivateUploadName("../../evidence.pdf"),"evidence.pdf");
   assert.equal(validatePrivateUploadName("folder\\\\evidence.pdf"),"evidence.pdf");
   assert.throws(()=>validatePrivateUploadName(""),{code:"INVALID_FILE"});
-  assert.throws(()=>validatePrivateUploadName("bad\\nname.pdf"),{code:"INVALID_FILE"});
+  assert.throws(()=>validatePrivateUploadName("bad\nname.pdf"),{code:"INVALID_FILE"});
 });
 
 test("private upload enforces bounded size and allowlisted content type",()=>{
