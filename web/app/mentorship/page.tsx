@@ -28,7 +28,7 @@ export default function Mentorship(){
    setLoading(true);setError("");
    const params=new URLSearchParams();if(query.trim())params.set("q",query.trim());if(topic.trim())params.set("topic",topic.trim());
    try{
-     const result=await api<Mentor[]>(`/api/v1/mentors${params.size?"?"+params.toString():""}`,{},token||undefined);
+     const result=await api<Mentor[]>(`/api/v1/mentors${params.toString()?"?"+params.toString():""}`,{},token||undefined);
      setMentors(Array.isArray(result)?result:[]);
    }catch(e){setMentors([]);setError(e instanceof ApiError?e.message:"We couldn't load mentor profiles right now.");}
    finally{setLoading(false);}
