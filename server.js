@@ -41,8 +41,16 @@ async function auth(req){
   try {
     const identity=verifyToken(header.slice(7),config.jwtSecret);
     if(!identity.sid) throw Object.assign(new Error("Session-bound authentication required."),{statusCode:401});
-    const db=getPool(); const r=await db.query("select s.user_id,u.status from auth_session s join app_user u on u.id=s.user_id where s.id=$1 and s.revoked_at is null and s.expires_at>now()",[identity.sid]);
+    const db=getPool();
+    const r=await db.query(`select s.user_id,u.status,
+      coalesce(json_agg(distinct role.role_code) filter(where role.role_code is not null),'[]'::json) as roles
+      from auth_session s join app_user u on u.id=s.user_id
+      left join app_user_role ur on ur.user_id=u.id left join app_role role on role.id=ur.role_id
+      where s.id=$1 and s.revoked_at is null and s.expires_at>now()
+      group by s.id,u.id,u.status`,[identity.sid]);
     if(!r.rows[0]||r.rows[0].status!=="active"||r.rows[0].user_id!==identity.sub) throw Object.assign(new Error("Session expired or revoked."),{statusCode:401});
+    // Authorization must use current database roles, never stale role claims from a signed token.
+    identity.roles=Array.isArray(r.rows[0].roles)?r.rows[0].roles:JSON.parse(r.rows[0].roles||"[]");
     await db.query("update auth_session set last_seen_at=now() where id=$1",[identity.sid]);
     return identity;
   } catch(e){ throw Object.assign(new Error(e.message),{statusCode:e.statusCode===403?403:401,code:"UNAUTHENTICATED"}); }
