@@ -57,17 +57,22 @@ Gates are sequential for acceptance. A later gate may reveal work for an earlier
 - CI is defined in `.github/workflows/ci.yml`; it provisions PostgreSQL 16, runs `npm install`, migrations, tests, web build and a `/healthz` smoke check.
 - The migration runner in `scripts/migrate.js` enumerates and executes every sorted SQL migration on every run. A migration ledger and safe rerun behavior have not yet been demonstrated.
 - The product contracts explicitly require server-side authorization and resource scope, privacy of sensitive evidence, auditable state changes, idempotent consequential operations, realistic migration tests, and end-to-end acceptance.
+- The repository tree currently contains no npm, pnpm or Yarn lockfile. Existing CI uses `npm install`, so dependency resolution is not yet pinned by a committed lockfile.
+- Existing test files cover identity/password validation, platform foundation/theme, membership import and lifecycle, Reference Portfolio validation/service, verification, organizations/jobs, and services/mentorship.
+- The web app contains public landing, registration/login, profile, dashboard, admin, field operations, jobs/apply, network, organizations, services, mentorship, opportunity intake, and inquiry tracking screens.
+- Only one CI workflow is present in the repository tree. It runs a migration/test/build/smoke sequence but does not itself demonstrate browser E2E coverage of every advertised capability.
 
 ### Initial risk register — hypotheses to verify during the gates
 
 | ID | Area | Initial observation / risk | Required proof or action |
 |---|---|---|---|
-| R-01 | Build/CI | CI uses `npm install`; no root lockfile was confirmed in the inspected root manifest. | Inspect repository tree and clean-install behavior; adopt a reproducible lockfile/install strategy appropriate to workspaces. |
+| R-01 | Build/CI | No lockfile is present; CI uses `npm install`. | Establish reproducible workspace dependency resolution; commit the appropriate lockfile and use `npm ci` where supported. |
 | R-02 | API contract | A duplicate `GET /api/v1/me` handler was identified in the initial code review; the later handler may be unreachable. | Trace both route definitions and frontend consumers; add a contract test before selecting the canonical response. |
 | R-03 | Authorization | Tokens contain role claims while account sessions are checked against the database. A role change may leave old role claims active until expiry unless sessions are revoked or roles are reloaded. | Trace every privileged route and role mutation; test role grant/removal and session revocation. |
-| R-04 | Migrations | The runner has no visible migration-history ledger and invokes every SQL file on each run. | Inspect every migration for repeat safety and partial-failure behavior; test fresh install, upgrade and rerun on disposable databases. |
+| R-04 | Migrations | The runner has no visible migration-history ledger and invokes every SQL file on every run. | Inspect every migration for repeat safety and partial-failure behavior; test fresh install, upgrade and rerun on disposable databases. |
 | R-05 | Rate limiting | Public request limits are held in an in-process map. | Assess process restarts, multiple instances and key retention; document the actual deployment assumptions and suitable bounded/shared alternative if needed. |
 | R-06 | End-to-end coverage | Configured CI commands do not by themselves prove every product workflow is connected. | Build an inventory from UI screens to routes, services, tables, state changes, audit and user-visible follow-up. |
+| R-07 | Branch feedback | The CI push filter initially excluded `reconciliation/**`, preventing immediate push validation on the agreed working branch. | Fixed in this branch by adding `reconciliation/**` to the push branches. Confirm the resulting workflow run. |
 
 These are **open risks**, not claims that all affected workflows are broken. Each must be confirmed or closed with evidence.
 
@@ -108,9 +113,11 @@ A failed test must remain visible. Do not replace a failing assertion with a wea
 
 ## 6. Current status and next action
 
-- G0: **IN PROGRESS** — contract references and initial risk register recorded here; finish route/module/migration/test inventory and commit baseline evidence.
-- G1–G6: **NOT STARTED / NOT PASSED** — runtime commands have not yet been executed as part of this plan.
+- G0: **IN PROGRESS** — contracts, codebase shape, module/screen/test/migration inventory and initial risk register are recorded. Route-level contract tracing and remaining open questions continue.
+- G1: **RUN QUEUED** — CI push coverage for this branch has been enabled. No result is claimed until the GitHub Actions run completes and is inspected.
+- G2–G6: **NOT STARTED / NOT PASSED**.
+- Baseline CI on `main` has recent successful runs, but that is not evidence that this reconciliation branch or every workflow passes.
 - No production database has been touched.
 - No application feature has been intentionally removed or disabled.
 
-Next action: complete G0 inventory from the repository tree and code, then run the clean-build/test baseline in an environment with the repository checkout and a disposable PostgreSQL service. Fix failures on this same branch and record the actual results before advancing.
+Next action: inspect the branch CI result; resolve build/test failures on this same branch, then continue the security/session and migration gates with regression coverage.
