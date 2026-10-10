@@ -151,6 +151,66 @@ async function createPublishedJob(api,token){
   return {title,jobId:job.id};
 }
 
+test("membership application, correction, fee verification and activation persist in order",async()=>{
+ const {api,token:adminToken}=await apiContext();
+ const suffix=randomUUID();
+ const email="gate4-membership-"+suffix+"@example.test";
+ const password="gate4-membership-password-12345";
+ try{
+   const registered=await api.post("/api/v1/auth/register",{data:{email,password,firstName:"Gate4",lastName:"Membership"}});
+   expect(registered.status()).toBe(201);
+   const memberToken=(await registered.json()).data.token;
+   const memberHeaders={authorization:"Bearer "+memberToken};
+   const reviewerToken=await independentReviewerToken(api,adminToken);
+   const reviewerHeaders={authorization:"Bearer "+reviewerToken};
+   const products=await api.get("/api/v1/membership/products");
+   expect(products.status()).toBe(200);
+   const product=(await products.json()).data.find(row=>row.product_code==="BASIC");
+   expect(product,"the acceptance environment must seed the BASIC membership product").toBeTruthy();
+   const created=await api.post("/api/v1/membership/applications",{headers:memberHeaders,data:{productCode:product.product_code}});
+   expect(created.status()).toBe(201);
+   const application=(await created.json()).data;
+   expect(application.status).toBe("submitted");
+   const duplicate=await api.post("/api/v1/membership/applications",{headers:memberHeaders,data:{productCode:product.product_code}});
+   expect(duplicate.status(),"a second active application must be rejected, not duplicated").toBe(409);
+   const earlyActivation=await api.post("/api/v1/membership/applications/"+application.id+"/activate",{headers:reviewerHeaders});
+   expect(earlyActivation.status(),"membership cannot activate before payment is confirmed").toBe(409);
+   const correction=await api.post("/api/v1/membership/applications/"+application.id+"/review",{headers:reviewerHeaders,data:{decision:"correction_required",note:"Add the missing membership application detail.",requestedFields:["phone"]}});
+   expect(correction.status()).toBe(200);
+   const correctionState=(await api.get("/api/v1/review/membership/applications",{headers:reviewerHeaders})).json();
+   const correctionRows=(await correctionState).data;
+   expect(correctionRows.some(row=>row.id===application.id&&row.status==="correction_required")).toBeTruthy();
+   const response=await api.post("/api/v1/membership/applications/"+application.id+"/correction",{headers:memberHeaders,data:{response:{phone:"0911000000"}}});
+   expect(response.status()).toBe(200);
+   expect((await response.json()).data.status).toBe("submitted");
+   const approval=await api.post("/api/v1/membership/applications/"+application.id+"/review",{headers:reviewerHeaders,data:{decision:"approved",note:"Application details reviewed."}});
+   expect(approval.status()).toBe(200);
+   const paymentPending=(await api.get("/api/v1/review/membership/applications",{headers:reviewerHeaders})).json();
+   expect((await paymentPending).data.some(row=>row.id===application.id&&row.status==="payment_pending")).toBeTruthy();
+   const badAmount=await api.post("/api/v1/membership/applications/"+application.id+"/payment",{headers:memberHeaders,data:{amount:Number(application.fee_snapshot.amount)+1,channel:"bank_transfer",reference:"G4-"+suffix,idempotencyKey:"g4-bad-"+suffix}});
+   expect(badAmount.status(),"payment amount must match the approved fee exactly").toBe(400);
+   const paymentBody={amount:Number(application.fee_snapshot.amount),channel:"bank_transfer",reference:"G4-"+suffix,idempotencyKey:"g4-membership-"+suffix};
+   const payment=await api.post("/api/v1/membership/applications/"+application.id+"/payment",{headers:memberHeaders,data:paymentBody});
+   expect(payment.status()).toBe(201);
+   const paymentRow=(await payment.json()).data;
+   expect(paymentRow.status).toBe("pending");
+   const retriedPayment=await api.post("/api/v1/membership/applications/"+application.id+"/payment",{headers:memberHeaders,data:paymentBody});
+   expect(retriedPayment.status()).toBe(201);
+   expect((await retriedPayment.json()).data.id).toBe(paymentRow.id,"retries with the same idempotency key must not create a second payment");
+   const verified=await api.post("/api/v1/payments/"+paymentRow.id+"/verify",{headers:reviewerHeaders,data:{decision:"approved",note:"Payment evidence reviewed.",evidenceChecked:["reference","amount"]}});
+   expect(verified.status()).toBe(200);
+   expect((await verified.json()).data.status).toBe("succeeded");
+   const activated=await api.post("/api/v1/membership/applications/"+application.id+"/activate",{headers:reviewerHeaders});
+   expect(activated.status()).toBe(200);
+   expect((await activated.json()).data.status).toBe("active");
+   const history=await api.get("/api/v1/membership/history",{headers:memberHeaders});
+   expect(history.status()).toBe(200);
+   expect((await history.json()).data.some(row=>row.application_id===application.id&&row.status==="active")).toBeTruthy();
+   const finalApplications=await api.get("/api/v1/review/membership/applications",{headers:reviewerHeaders});
+   expect((await finalApplications.json()).data.some(row=>row.id===application.id&&row.status==="activated")).toBeTruthy();
+ }finally{await api.dispose();}
+});
+
 test("public jobs, services, mentorship and organization screens load without runtime errors",async({page})=>{
   const failures=[];
   page.on("pageerror",error=>failures.push(error.message));
