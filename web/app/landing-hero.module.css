@@ -74,5 +74,5 @@
 @media(max-width:480px){ .landingBackdrop::before{right:-105px;top:0;width:220px;height:300px} .landingBackdrop::after{right:-54px;top:44px;width:155px;height:215px}}
 @media(hover:none){.journeys :global(.card):hover{transform:none;box-shadow:none}}
 @media(prefers-reduced-motion:reduce){ .landingBackdrop::before, .landingBackdrop::after,.heroCopy,.heroVisual,.heroVisual :global(.card),.visualLogo,.journeys :global(.card){animation:none;transition:none}.heroActions :global(.btn),.loginLink{transition:none}.heroActions :global(.btn):hover,.loginLink:hover,.journeys :global(.card):hover{transform:none}}
-.dark  .landingBackdrop::before{background:linear-gradient(180deg,color-mix(in srgb,var(--primary) 12%,transparent),color-mix(in srgb,var(--gold) 5%,transparent));opacity:.6}
-.dark  .landingBackdrop::after{background:linear-gradient(180deg,color-mix(in srgb,var(--gold) 7%,transparent),transparent);opacity:.52}
+:global(.dark) .landingBackdrop::before{background:linear-gradient(180deg,color-mix(in srgb,var(--primary) 12%,transparent),color-mix(in srgb,var(--gold) 5%,transparent));opacity:.6}
+:global(.dark) .landingBackdrop::after{background:linear-gradient(180deg,color-mix(in srgb,var(--gold) 7%,transparent),transparent);opacity:.52}
