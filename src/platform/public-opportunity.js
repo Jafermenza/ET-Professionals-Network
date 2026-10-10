@@ -90,7 +90,7 @@ export async function listInquiries(userId,filters={}){
 
 export async function decideInquiry(inquiryId,userId,input,requestId){
  return withTransaction(async db=>{
-  const r=(await db.query("select i.*,j.organization_id from public_opportunity_inquiry i left join job j on j.id=i.job_id where i.id=$1 for update",[inquiryId])).rows[0];
+  const r=(await db.query("select i.*,j.organization_id from public_opportunity_inquiry i left join job j on j.id=i.job_id where i.id=$1 for update of i",[inquiryId])).rows[0];
   if(!r) throw error(404,"Inquiry not found.","NOT_FOUND");
   const admin=await hasRole(db,userId,["system_admin","admin","supporting_staff"]);
   const allowed=r.inquiry_type==="job" ? await orgAuthorized(db,r.job_id,userId) : await mentorAuthorized(db,r.preferred_mentor_user_id,userId);
