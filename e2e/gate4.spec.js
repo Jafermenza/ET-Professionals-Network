@@ -580,7 +580,10 @@ test("talent directory uses live consent-scoped profiles and inquiry contact-rel
    expect(duplicate.status()).toBe(409);
    const beforeResponse=await api.get("/api/v1/talent/inquiries",{headers:{authorization:"Bearer "+adminToken}});
    expect(beforeResponse.status()).toBe(200);
-   const inquiry=(await beforeResponse.json()).data.find(row=>row.subject==="Gate 4 opportunity inquiry"&&row.requester_user_id===(await api.get("/api/v1/me",{headers:{authorization:"Bearer "+adminToken}}).then(r=>r.json())).data.user_id);
+   const adminIdentity=await api.get("/api/v1/me",{headers:{authorization:"Bearer "+adminToken}});
+   expect(adminIdentity.status()).toBe(200);
+   const adminId=(await adminIdentity.json()).data.user_id;
+   const inquiry=(await beforeResponse.json()).data.find(row=>row.subject==="Gate 4 opportunity inquiry"&&row.requester_user_id===adminId);
    expect(inquiry).toBeTruthy();
    expect(inquiry.contact_release).toBeFalsy();
    await page.getByRole("button",{name:"Logout"}).click();
