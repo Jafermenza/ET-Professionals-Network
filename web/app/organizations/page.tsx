@@ -24,6 +24,8 @@ export default function Organizations(){
  const [evidenceNote,setEvidenceNote]=useState("");
  const [evidenceFile,setEvidenceFile]=useState<File|null>(null);
  const [uploading,setUploading]=useState(false);
+ const [inquiryDrafts,setInquiryDrafts]=useState<Record<string,{status:string;considerNonMember:boolean;note:string}>>({});
+ const [savingInquiry,setSavingInquiry]=useState("");
 
  const load=useCallback(async()=>{
    if(!token){setOrganizations([]);setInquiries([]);return;}
@@ -61,6 +63,18 @@ export default function Organizations(){
      setNotice("Organization registered. It is not verified yet; publishing privileges remain subject to the verification workflow.");
    }catch(e){setError(e instanceof ApiError?e.message:"We couldn't register this organization.");}
    finally{setSubmitting(false);}
+ }
+ async function decideInquiry(inquiry:Inquiry){
+   if(!token)return;
+   const draft=inquiryDrafts[inquiry.id]||{status:inquiry.status,considerNonMember:inquiry.consider_non_member,note:""};
+   setSavingInquiry(inquiry.id);setError("");setNotice("");
+   try{
+     const updated=await api<Inquiry>("/api/v1/opportunity-inquiries/"+encodeURIComponent(inquiry.id),{method:"PATCH",body:JSON.stringify({status:draft.status,considerNonMember:draft.considerNonMember,note:draft.note.trim()||undefined})},token);
+     setInquiries(current=>current.map(item=>item.id===inquiry.id?{...item,...updated}:item));
+     setInquiryDrafts(current=>({...current,[inquiry.id]:{status:updated.status,considerNonMember:updated.consider_non_member,note:""}}));
+     setNotice("Inquiry decision saved. A public inquiry remains separate from a formal job application.");
+   }catch(e){setError(e instanceof ApiError?e.message:"We couldn't save this inquiry decision.");}
+   finally{setSavingInquiry("");}
  }
  async function uploadEvidence(e:FormEvent){
    e.preventDefault();
@@ -130,7 +144,7 @@ export default function Organizations(){
        </form>}
        <Badge>Tabayyun · Verification / due diligence</Badge></Card>
      <Card><div className="row"><div><div className="h2">Public job inquiries</div><p className="muted">First-stage public interest is not a formal eligible application. Only authorized organization users can inspect and decide inquiries.</p></div><UsersRound color="var(--primary)"/></div>
-       {loading?<p className="muted">Loading inquiries…</p>:inquiries.length===0?<p className="muted">No public job inquiries are currently visible to this account.</p>:<div className="grid">{inquiries.map(i=><div className="case-row" key={i.id}><div><div className="row" style={{justifyContent:"flex-start"}}><b>{i.contact_name}</b><Badge>{i.status}</Badge>{i.consider_non_member&&<Badge tone="gold">Non-member considered</Badge>}</div><div className="muted">{i.job_title||"General public job interest"} · {i.contact_email||i.contact_phone}</div><p className="muted" style={{margin:"6px 0"}}>{i.intent}</p><small className="muted">Reference {i.public_reference}</small></div></div>)}</div>}
+       {loading?<p className="muted">Loading inquiries…</p>:inquiries.length===0?<p className="muted">No public job inquiries are currently visible to this account.</p>:<div className="grid">{inquiries.map(i=>{const draft=inquiryDrafts[i.id]||{status:i.status,considerNonMember:i.consider_non_member,note:""};return <div className="case-row" key={i.id}><div><div className="row" style={{justifyContent:"flex-start"}}><b>{i.contact_name}</b><Badge>{i.status}</Badge>{i.consider_non_member&&<Badge tone="gold">Non-member considered</Badge>}</div><div className="muted">{i.job_title||"General public job interest"} · {i.contact_email||i.contact_phone}</div><p className="muted" style={{margin:"6px 0"}}>{i.intent}</p><small className="muted">Reference {i.public_reference}</small><div className="form-grid" style={{marginTop:12}}><label>Decision<select aria-label={"Decision for "+i.public_reference} value={draft.status} onChange={e=>setInquiryDrafts(current=>({...current,[i.id]:{...draft,status:e.target.value}}))}><option value="received">Received</option><option value="contacted">Contacted</option><option value="considering">Considering</option><option value="invited">Invited</option><option value="converted">Converted</option><option value="declined">Declined</option><option value="closed">Closed</option></select></label><label className="checkbox-row"><input aria-label={"Consider non-member for "+i.public_reference} type="checkbox" checked={draft.considerNonMember} onChange={e=>setInquiryDrafts(current=>({...current,[i.id]:{...draft,considerNonMember:e.target.checked}}))}/> Consider non-member</label><label className="full-width">Decision note<textarea aria-label={"Decision note for "+i.public_reference} rows={2} maxLength={4000} value={draft.note} onChange={e=>setInquiryDrafts(current=>({...current,[i.id]:{...draft,note:e.target.value}}))}/></label></div><button className="btn btn-primary" type="button" disabled={savingInquiry===i.id} onClick={()=>void decideInquiry(i)}>{savingInquiry===i.id?"Saving…":"Save inquiry decision"}</button></div></div>})}</div>}
      </Card>
    </>}
    {error&&<div className="form-error" role="alert">{error}</div>}

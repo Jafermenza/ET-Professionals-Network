@@ -109,6 +109,18 @@ assert.equal(jobPublished.status,200,"verified organization owner should publish
 const publicJobs=await request("/api/v1/jobs?q="+encodeURIComponent(jobTitle));
 assert.equal(publicJobs.status,200,"public job discovery should return successfully");
 assert.ok((publicJobs.payload?.data?.items||[]).some(j=>j.id===jobId),"published job must be discoverable from persisted data");
+const publicInquiry=await request("/api/v1/public/opportunity-inquiries",{method:"POST",body:{inquiryType:"job",jobId,contactName:"Gate4 CI Candidate",contactEmail:"gate4-ci-"+Date.now()+"@example.test",intent:"I would like to learn more about this vacancy.",consent:true}});
+assert.equal(publicInquiry.status,201,"public job inquiry should persist with explicit consent");
+const publicInquiryId=publicInquiry.payload?.data?.id;
+assert.equal(typeof publicInquiryId,"string","public inquiry should return a stable identifier");
+const unauthorizedInquiryDecision=await request("/api/v1/opportunity-inquiries/"+publicInquiryId,{method:"PATCH",token:memberToken,body:{status:"contacted"}});
+assert.equal(unauthorizedInquiryDecision.status,403,"unrelated member cannot decide an organization's inquiry");
+const authorizedInquiryDecision=await request("/api/v1/opportunity-inquiries/"+publicInquiryId,{method:"PATCH",token,body:{status:"contacted",considerNonMember:true,note:"CI-only decision"}});
+assert.equal(authorizedInquiryDecision.status,200,"authorized reviewer should persist the inquiry decision");
+const filteredInquiries=await request("/api/v1/opportunity-inquiries?type=job&status=contacted",{token});
+assert.equal(filteredInquiries.status,200,"admin inquiry list should support status filtering");
+assert.ok((filteredInquiries.payload?.data||[]).some(i=>i.id===publicInquiryId&&i.consider_non_member===true),"inquiry decision and non-member consideration must persist");
+
 const saved=await request("/api/v1/jobs/"+jobId+"/save",{method:"POST",token:memberToken});
 assert.ok(saved.status===200||saved.status===201,"authenticated user should be able to save a public job");
 const savedList=await request("/api/v1/me/saved-jobs",{token:memberToken});

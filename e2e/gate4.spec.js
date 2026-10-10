@@ -113,6 +113,18 @@ test("organization screen uploads private evidence and submits verification",asy
     const uploadErrors=(await page.getByRole("alert").allTextContents()).filter(text=>text.trim());
     if(uploadErrors.length) throw new Error("Private evidence upload failed: "+uploadErrors.join(" | ")+". Network: "+uploadDiagnostics.join(" | "));
     await expect(page.getByRole("status")).toContainText("Private evidence uploaded, checksum-verified and attached");
+    const {title,jobId}=await createPublishedJob(api,token);
+    const inquiryName="Browser Inquiry "+suffix;
+    const inquiryResponse=await api.post("/api/v1/public/opportunity-inquiries",{data:{inquiryType:"job",jobId,contactName:inquiryName,contactEmail:"browser-inquiry-"+suffix+"@example.test",intent:"Browser inquiry decision test",consent:true}});
+    expect(inquiryResponse.status()).toBe(201);
+    const inquiry=(await inquiryResponse.json()).data;
+    await page.reload();
+    await expect(page.getByText(inquiryName,{exact:true})).toBeVisible();
+    await page.getByLabel("Decision for "+inquiry.public_reference).selectOption("contacted");
+    await page.getByLabel("Consider non-member for "+inquiry.public_reference).check();
+    await page.getByLabel("Decision note for "+inquiry.public_reference).fill("Browser decision persisted");
+    await page.getByRole("button",{name:"Save inquiry decision"}).click();
+    await expect(page.getByRole("status")).toContainText("Inquiry decision saved.");
     await page.getByRole("button",{name:"Submit for verification"}).first().click();
     await expect(page.getByRole("status")).toContainText("Verification submission was accepted by the server.");
     const detail=await api.get("/api/v1/organizations/"+organization.id,{headers:{authorization:"Bearer "+token}});
