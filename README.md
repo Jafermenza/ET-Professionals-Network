@@ -26,6 +26,7 @@ For MPA: turn membership into measurable professional, economic and community va
 - docs/10-implementation-plan.md
 - docs/11-quality-acceptance.md
 - docs/12-developer-guide.md
+- [cPanel deployment guide](docs/CPANEL_DEPLOYMENT.md)
 - docs/adr/README.md
 - docs/20-reference-portfolio-implementation.md
 
