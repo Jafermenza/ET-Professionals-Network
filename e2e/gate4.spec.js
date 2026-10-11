@@ -319,6 +319,9 @@ test("ATS workspace loads the authorized organization's persisted candidate pipe
   const jobResponse=await api.get("/api/v1/jobs/"+fixture.jobId,{headers:{authorization:"Bearer "+adminToken}});
   expect(jobResponse.status()).toBe(200);
   const organizationId=(await jobResponse.json()).data.organization_id;
+  const teamFixture=await registerMember({email:"gate4-ats-team-"+randomUUID()+"@example.test",password:"gate4-ats-team-password-12345",firstName:"Gate4",lastName:"ATSInterviewer"},randomUUID());
+  const orgMember=await api.post("/api/v1/organizations/"+organizationId+"/users",{headers:{authorization:"Bearer "+adminToken},data:{userId:teamFixture.user.id,roleCode:"read_only"}});
+  expect(orgMember.status(),"organization owner can add a scoped organization member").toBe(201);
   const candidate=await ensureGate4Professional(api);
   const draft=await api.post("/api/v1/jobs/"+fixture.jobId+"/application-drafts",{headers:{authorization:"Bearer "+candidate.token},data:{coverLetter:"Gate 4 ATS pipeline UI fixture"}});
   expect(draft.status(),"candidate draft creation").toBe(201);
@@ -338,6 +341,9 @@ test("ATS workspace loads the authorized organization's persisted candidate pipe
   await page.getByLabel("Organization").selectOption(organizationId);
   await expect(page.getByLabel("Job")).toBeVisible();
   await page.getByLabel("Job").selectOption(fixture.jobId);
+  await page.getByLabel("Organization member user ID").fill(teamFixture.user.id);
+  await page.getByRole("button",{name:"Add team member"}).click();
+  await expect(page.getByText(teamFixture.user.id,{exact:true})).toBeVisible();
   await expect(page.getByText(candidate.displayName,{exact:true})).toBeVisible();
   const candidateRow=()=>page.locator(".case-row").filter({hasText:applicationId});
   await expect(candidateRow().getByText("submitted",{exact:true})).toBeVisible();
