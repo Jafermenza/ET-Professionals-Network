@@ -36,7 +36,7 @@ Authoritative contracts:
 | Private files | `src/platform/private-file-storage.js`; upload authorization/content/confirm and authorized read routes in `server.js` | Keep storage outside public web root; test owner/organization/reviewer access and denial |
 | Domain modules | `src/membership/`, `src/verification/`, `src/talent/`, `src/organization-jobs/`, `src/services-mentorship/`, `src/reference-portfolio/`, plus `src/platform/` | See workflow matrix for screen/API/service/persistence mapping and unverified paths |
 | Test suites | `test/identity-password-validation.test.js`; `test/membership/`; `test/platform/`; `test/verification/`; `test/organization-jobs/`; `test/services-mentorship/`; `test/reference-portfolio/`; `scripts/ci-api-smoke.js`; `e2e/gate4.spec.js` | Unit/API/migration/browser checks are different evidence classes and must not be conflated |
-| CI | `.github/workflows/ci.yml`; PostgreSQL 16 service; install, migrations + rerun, isolated legacy-adoption scenario, unit tests, Next build, API smoke, Playwright Chromium/browser workflow | Current install uses `npm install --no-audit --no-fund`; no root or workspace lockfile was present at the inspected commit |
+| CI | `.github/workflows/ci.yml`; PostgreSQL 16 service; install, migrations + rerun, isolated legacy-adoption scenario, unit tests, Next build, API smoke, Playwright Chromium/browser workflow | Historical baseline at `dd5eb406e04e4a775711c8f01c8c33bd32ea382a` lacked a lockfile and used `npm install`. Gate 1 subsequently committed `package-lock.json` and changed CI to `npm ci --no-audit --no-fund`; this inventory row is historical, not a current install claim. Current-head CI execution is deferred by the maintainer due to billing. |
 | Operational files | `.env.example`, `Dockerfile`, deployment and migration runbooks | Secrets stay in environment/secret store; no production operation is authorized by this inventory |
 
 ## UI screen → API/service boundary
@@ -126,7 +126,7 @@ The CI fixture establishes a known disposable baseline by applying migrations 00
 | G0-05 | Public rate limit uses process-local memory | Document single-process assumptions and assess shared store/retention before production scale |
 | G0-06 | Some advertised modules (events, learning/Moodle, payments/donations/projects) have contract references but full UI/service integration is not evidenced by the current screen inventory | Treat as gaps to verify; do not imply completion from requirements docs |
 | G0-07 | Browser tests cover selected workflows only; role-separated E2E and negative ownership/privacy matrix remain incomplete | G2/G5 |
-| G0-08 | CI uses a broad semver dependency graph and `npm install`; repeat builds can resolve newer compatible versions | Gate 1 lockfile and clean-install acceptance |
+| G0-08 | Historical baseline used a broad semver dependency graph and `npm install`; repeat builds could resolve newer compatible versions | Gate 1 addressed this with the committed npm lockfile and `npm ci`; preserve that contract |
 
 ## Gate 0 exit decision
 
