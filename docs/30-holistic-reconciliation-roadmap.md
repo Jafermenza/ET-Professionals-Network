@@ -153,12 +153,12 @@ Changes made on `reconciliation/holistic-gates` without merging or deploying:
 
 **Explicit remaining workflow/UI gaps (not to be hidden by green API tests):**
 
-1. Membership has API support for application/review/correction/payment/activation/renewal, but no dedicated member/reviewer membership UI is present in the web route inventory. Renewal, expiry and suspension journeys are not browser-accepted.
-2. Generic professional verification has API support for case, claim, evidence, reviewer, decision, member response and appeal transitions, but no complete member/reviewer case workspace is present. Organization evidence submission is a connected subset, not a replacement for the generic verification journey.
-3. ATS candidate application submission and tracking are connected, but a complete employer-side screening/interview/decision/outcome UI journey is not evidenced.
-4. Organization public inquiry decisions and private evidence submission are connected. Full reviewer-facing organization verification and every evidence failure/retry case remain open.
-5. Services and mentorship core participant workflows are connected and tested; provider-backed notification delivery and payment integrations are not evidenced as operational.
-6. Talent consent-controlled discovery and inquiry/contact release are connected; external notification delivery is not evidenced.
+1. Membership now has a dedicated /membership UI for plan selection, application submission, correction response, manual payment submission, reviewer decisions, payment verification and separate activation. Renewal selection is present; expiry/suspension and member evidence-attachment UI remain unaccepted.
+2. Generic verification now has a /verification member/reviewer workspace for active program discovery, owned cases, consent, claim metadata, private file evidence, member response, appeal submission, reviewer assignment, state transition and reasoned decision. Checklist/referee/concern review and independent appeal-review UI remain open.
+3. ATS now has a /recruitment organization-scoped candidate pipeline, job draft/publication, contract-valid candidate state changes and interview scheduling. Screening-question authoring, team assignment, scorecards/feedback, offer approval and complete candidate timeline UI remain open.
+4. Organization public inquiry decisions and private evidence submission remain connected; an authorized reviewer queue, authenticated private evidence download and reasoned decision UI are now present. Missing/failed evidence and required-evidence policy variants remain open.
+5. Services and mentorship core participant workflows are connected and tested; provider-backed notification delivery and payment integrations are not configured or evidenced as operational.
+6. Talent consent-controlled discovery and inquiry/contact release are connected; external notification delivery is not configured. Additional dedicated consent-revocation/cross-owner browser cases remain open.
 7. Notification preferences persist, but provider-backed delivery, retries and operational delivery monitoring are not proven.
 
 G4 exit is scoped: close only journeys that pass current-head positive, negative, invalid-state, retry and persistence evidence. API-only pieces remain explicit UI/integration gaps. G5 role-separated acceptance and G6 production readiness remain separate, not implied by G4.
@@ -166,11 +166,11 @@ G4 exit is scoped: close only journeys that pass current-head positive, negative
 
 ### Latest CI execution status — do not mark G4 PASS
 
-The latest code head before this documentation update was `067a80ee4fd34a1ce699daff8d672d11645698ab`. Push run [38080672235](https://github.com/Jafermenza/ET-Professionals-Network/actions/runs/38080672235) and PR run [38080675309](https://github.com/Jafermenza/ET-Professionals-Network/actions/runs/38080675309) failed before any CI step started; GitHub job records show no assigned runner and an empty step list. A rerun attempt also ended before step execution. The records do not expose a reliable reason for the runner failure.
+Historical runner-blocker evidence on SHA `067a80ee4fd34a1ce699daff8d672d11645698ab`: push run [38080672235](https://github.com/Jafermenza/ET-Professionals-Network/actions/runs/38080672235) and PR run [38080675309](https://github.com/Jafermenza/ET-Professionals-Network/actions/runs/38080675309) ended before any CI step started. The maintainer has since explicitly deferred CI because of billing; no CI run is being requested for the subsequent implementation commits.
 
 The last fully executed run is [38080002701](https://github.com/Jafermenza/ET-Professionals-Network/actions/runs/38080002701) on `a87be60e140a18253366b1de19c89cbb77a5fad5`. It ran migrations, unit tests and web build successfully but failed four browser tests: two newly added fixtures hit the shared public registration rate limit, a downstream test hit the same limit, and the mentorship outage fixture attempted to submit while its button was disabled. These are recorded as failures, not silently reclassified. The test fixtures and search readiness check were corrected after that run, and verification action responses were corrected to return committed state, but the fixes still require execution on the current head.
 
-**Next acceptance action:** restore a working GitHub Actions runner for this repository, rerun push and PR CI on the final head, and resolve any real E2E failure before marking G4 PASS. G4 is not accepted based on unit/build success or a no-runner workflow result.
+**Next acceptance action:** after billing is restored, run push and PR CI on the same final head, resolve actual failures without weakening assertions, and record exact links. Until then G4 is implemented but unaccepted.
 
 
 ## Scoped G4 implementation follow-through (CI deferred by billing)
