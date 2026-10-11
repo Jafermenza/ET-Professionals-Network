@@ -99,7 +99,8 @@ Migration filenames observed at the baseline:
 17. `017_production_security_and_sessions.sql`
 18. `018_service_request_price_constraint_reconciliation.sql`
 19. `019_gate4_private_uploads.sql`
-20. `020_gate4_draft_verification_timestamp.sql`\n21. `20261010190000_separate_directory_visibility.sql`
+20. `020_gate4_draft_verification_timestamp.sql`
+21. `20261010190000_separate_directory_visibility.sql`
 
 The CI fixture establishes a known disposable baseline by applying migrations 001–010, then testing adoption and forward application. It does **not** establish that production has any particular prefix applied. Production baseline, backup/restore and rollback rehearsal remain operationally unverified and are explicitly outside G0/G1 sign-off.
 
