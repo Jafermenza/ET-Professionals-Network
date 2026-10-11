@@ -194,3 +194,15 @@ Gate acceptance still requires automated tests for positive paths, authorization
 - `GET /api/v1/me/mentorship-requests` — only the authenticated mentee's request history.
 
 These additions are not a relaxation of authorization. Mentor profile eligibility, resource participation, availability and state transitions remain enforced by the service layer.
+
+
+## Gate 4 workflow UI endpoints
+
+- `GET /api/v1/membership/applications/me` — authenticated member's own membership applications, latest correction and latest payment projection. Ownership is enforced in the query; do not use this projection for another applicant.
+- `GET /api/v1/verification/programs` — active verification program catalogue; contains policy metadata, not evidence.
+- `GET /api/v1/me/verification/cases` — authenticated member's own verification case summaries. Reviewer-only fields and confidential evidence metadata are excluded from the member case detail projection.
+- `GET /api/v1/review/organizations` — authorized reviewer/system-admin organization verification queue with evidence metadata and private file-object references. Reading each file still requires the authenticated private-file endpoint and server-side scope authorization.
+- `GET /api/v1/jobs/{id}/applications` — candidate pipeline for a job; `src/organization-jobs/service.js` must enforce organization/job-team scope before returning candidate details.
+- `GET /api/v1/review/membership/applications` includes submitted/in-review/correction-required applications plus payment-pending/paid items and their latest payment projection for the reviewer/finance workspace. Payment confirmation and membership activation remain separate commands.
+
+These endpoints support the added `/membership`, `/verification`, and `/recruitment` screens. They do not replace the existing workflow command contracts or permit client-side role checks to substitute for server authorization.
