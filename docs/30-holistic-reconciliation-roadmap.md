@@ -166,7 +166,7 @@ G4 exit is scoped: close only journeys that pass current-head positive, negative
 
 ### Latest CI execution status — do not mark G4 PASS
 
-Historical runner-blocker evidence on SHA `067a80ee4fd34a1ce699daff8d672d11645698ab`: push run [38080672235](https://github.com/Jafermenza/ET-Professionals-Network/actions/runs/38080672235) and PR run [38080675309](https://github.com/Jafermenza/ET-Professionals-Network/actions/runs/38080675309) ended before any CI step started. The maintainer has since explicitly deferred CI because of billing; no CI run is being requested for the subsequent implementation commits.
+Latest automatic workflow events on code SHA `7fa48319799d7d3a84437cefe1b847c67414759a`: push run [38149759804](https://github.com/Jafermenza/ET-Professionals-Network/actions/runs/38149759804) and PR run [38149763811](https://github.com/Jafermenza/ET-Professionals-Network/actions/runs/38149763811) ended before any CI step started. The job record reports `runner_id: 0` and `steps: []`; this is not a test result. The maintainer has deferred intentional CI reruns because of billing. Documentation-only commits followed this code SHA, so the final head also remains unaccepted.
 
 The last fully executed run is [38080002701](https://github.com/Jafermenza/ET-Professionals-Network/actions/runs/38080002701) on `a87be60e140a18253366b1de19c89cbb77a5fad5`. It ran migrations, unit tests and web build successfully but failed four browser tests: two newly added fixtures hit the shared public registration rate limit, a downstream test hit the same limit, and the mentorship outage fixture attempted to submit while its button was disabled. These are recorded as failures, not silently reclassified. The test fixtures and search readiness check were corrected after that run, and verification action responses were corrected to return committed state, but the fixes still require execution on the current head.
 
@@ -175,7 +175,7 @@ The last fully executed run is [38080002701](https://github.com/Jafermenza/ET-Pr
 
 ## Scoped G4 implementation follow-through (CI deferred by billing)
 
-The maintainer has explicitly deferred CI execution until repository Actions billing is available. Work therefore continues through repository inspection and code/documentation updates, but implementation is not labelled tested or accepted merely because CI cannot run.
+The maintainer has explicitly deferred intentional CI reruns until repository Actions billing is available. GitHub nevertheless created automatic push/PR workflow events for commits; those attempts ended before runner assignment. Work therefore continues through repository inspection and code/documentation updates, but implementation is not labelled tested or accepted merely because CI cannot run.
 
 The current branch now adds:
 - Owner-scoped membership application history and a `/membership` UI spanning plan selection, application submission, correction response, manual payment submission, reviewer decisions, finance verification and separately gated activation.
@@ -186,6 +186,6 @@ The current branch now adds:
 
 ### Current acceptance status
 
-**G4 = IMPLEMENTED — EXECUTION DEFERRED, not PASS.** CI was not started in accordance with the maintainer's billing instruction. The final suite must be run on one exact branch SHA once billing permits it. Any actual failures must be corrected without removing or weakening assertions.
+**G4 = IMPLEMENTED — EXECUTION DEFERRED, not PASS.** Automatic push/PR workflow events ended before any step ran (`runner_id: 0`, empty steps); no executable test result exists for the landing-page code or later documentation commits. Run the final suite on one exact branch SHA once billing permits it. Any actual failures must be corrected without removing or weakening assertions.
 
 Still open beyond the scoped workflow UI: project/task linkage and sync conflict semantics for the new encrypted offline field evidence queue; live payment and notification providers; verification checklist/referee/concern review UI and dedicated appeal-lifecycle browser acceptance; ATS interviewer feedback/ratings and complete candidate timeline UI; external calendar integration; events/calendar, learning/Moodle, projects/volunteers/donations and payment-to-donation allocation. These are recorded as implementation gaps rather than being represented as operational.
