@@ -305,7 +305,6 @@ test("field evidence is encrypted offline, survives reload and syncs to private 
   await page.reload();
   await expect(page.getByText("offline-field-evidence.pdf",{exact:true})).toBeVisible();
   await expect(page.getByText("Project/task linkage still open",{exact:true})).toBeVisible();
-  await page.getByRole("button",{name:"Sync now"}).click();
   await expect(page.getByText("uploaded private unlinked",{exact:true})).toBeVisible({timeout:15000});
   await expect(page.getByRole("status")).toContainText("Private upload confirmed");
   expect(failures,"field queue must not raise browser runtime errors").toEqual([]);
