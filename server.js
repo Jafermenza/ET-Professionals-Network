@@ -218,7 +218,7 @@ const server=http.createServer(async (req,res)=>{
     if(req.method==="GET" && p==="api/v1/me") return ok(res,await membership.getMe(identity.sub),requestId);
     if(req.method==="PATCH" && p==="api/v1/me/profile") return ok(res,await membership.updateProfile(identity.sub,await body(req),requestId),requestId);
     if(req.method==="GET" && p==="api/v1/membership/history") return ok(res,await membership.history(identity.sub),requestId);
-    if(req.method==="GET" && p==="api/v1/membership/applications/me") { requireRole(identity,"member"); return ok(res,await membership.listMyApplications(identity.sub),requestId); }
+    if(req.method==="GET" && p==="api/v1/membership/applications/me") return ok(res,await membership.listMyApplications(identity.sub),requestId);
     if(req.method==="GET" && p==="api/v1/notifications/preferences") return ok(res,await membership.notificationPreferences(identity.sub),requestId);
     if(req.method==="PATCH" && p==="api/v1/notifications/preferences") return ok(res,await membership.notificationPreferences(identity.sub,await body(req)),requestId);
     if(req.method==="POST" && p==="api/v1/membership/applications") {
@@ -261,7 +261,7 @@ const server=http.createServer(async (req,res)=>{
     if(req.method==="POST" && parts.length===6 && p.startsWith("api/v1/talent/inquiries/") && parts[5]==="close") return ok(res,await talent.closeTalentInquiry(parts[4],identity.sub,requestId),requestId);
 
     if(req.method==="GET" && p==="api/v1/verification/programs") return ok(res,await verification.listPrograms(),requestId);
-    if(req.method==="GET" && p==="api/v1/me/verification/cases") { requireRole(identity,"member"); return ok(res,await verification.listCases({subjectUserId:identity.sub}),requestId); }
+    if(req.method==="GET" && p==="api/v1/me/verification/cases") return ok(res,await verification.listCases({subjectUserId:identity.sub}),requestId);
     if(req.method==="POST" && p==="api/v1/verification/cases"){
       const b=await body(req);
       if(b.subjectUserId && b.subjectUserId!==identity.sub) anyRole(identity,["verification_reviewer","ethics_reviewer","system_admin"]);
