@@ -202,6 +202,7 @@ These additions are not a relaxation of authorization. Mentor profile eligibilit
 - `GET /api/v1/verification/programs` — active verification program catalogue; contains policy metadata, not evidence.
 - `GET /api/v1/me/verification/cases` — authenticated member's own verification case summaries. Reviewer-only fields and confidential evidence metadata are excluded from the member case detail projection.
 - `GET /api/v1/review/organizations` — authorized reviewer/system-admin organization verification queue with evidence metadata and private file-object references. Reading each file still requires the authenticated private-file endpoint and server-side scope authorization.
+- `GET /api/v1/review/verification/appeals` — independent appeal-review queue for `appeal_reviewer`/`system_admin`, excluding the subject and original decision maker; appeal decisions remain on `POST /api/v1/verification/appeals/{id}/decision`.
 - `GET /api/v1/jobs/{id}/applications` — candidate pipeline for a job; `src/organization-jobs/service.js` must enforce organization/job-team scope before returning candidate details.
 - `GET /api/v1/review/membership/applications` includes submitted/in-review/correction-required applications plus payment-pending/paid items and their latest payment projection for the reviewer/finance workspace. Payment confirmation and membership activation remain separate commands.
 
