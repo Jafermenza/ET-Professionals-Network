@@ -83,6 +83,17 @@ export async function submitOrganizationVerification(orgId,userId,requestId){
  });
 }
 
+export async function listOrganizationVerificationQueue(reviewerId){
+ const db=getPool();
+ const allowed=(await db.query("select 1 from app_user_role ur join app_role r on r.id=ur.role_id where ur.user_id=$1 and r.role_code in ('reviewer','system_admin') limit 1",[reviewerId])).rows[0];
+ if(!allowed) throw error(403,"Organization verification reviewer role required.","FORBIDDEN");
+ return (await db.query(`select o.id organization_id,o.legal_name,o.display_name,o.organization_type,o.verification_status,
+   c.id case_id,c.status case_status,c.submitted_by,c.submitted_at,c.decision_reason,
+   coalesce((select jsonb_agg(jsonb_build_object('id',e.id,'fileObjectId',e.file_object_id,'evidenceType',e.evidence_type,'note',e.note,'createdAt',e.created_at) order by e.created_at desc) from organization_verification_evidence e where e.case_id=c.id),'[]'::jsonb) evidence
+   from organization_verification_case c join organization o on o.id=c.organization_id
+   where c.status in ('submitted','correction_required')
+   order by c.submitted_at nulls last,c.created_at`)).rows;
+}
 export async function reviewOrganization(orgId,reviewerId,input,requestId){
  return withTransaction(async db=>{
   const allowed=(await db.query("select 1 from app_user_role ur join app_role r on r.id=ur.role_id where ur.user_id=$1 and r.role_code in ('reviewer','system_admin') limit 1",[reviewerId])).rows[0];
