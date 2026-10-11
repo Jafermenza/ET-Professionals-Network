@@ -414,6 +414,23 @@ test("organization screen uploads private evidence and submits verification",asy
     const tracking=await api.get("/api/v1/me/application-tracking",{headers:{authorization:"Bearer "+token}});
     expect(tracking.status(),"organization application tracking must not reference nonexistent schema columns").toBe(200);
     expect(Array.isArray((await tracking.json()).data.items),"application tracking returns a structured list").toBeTruthy();
+    // Exercise the independent organization reviewer UI after the owner has submitted the case.
+    await page.evaluate(()=>sessionStorage.removeItem("mpa-session-token"));
+    await page.goto("/login");
+    await page.getByLabel("Email").fill("gate4-reviewer-ci@example.test");
+    await page.getByLabel("Password").fill("gate4-reviewer-password-12345");
+    await page.getByRole("button",{name:"Login"}).click();
+    await expect(page.getByRole("button",{name:"Logout"})).toBeVisible();
+    await page.goto("/organizations");
+    const reviewRow=page.locator(".case-row").filter({hasText:name}).filter({hasText:"submitted"});
+    await expect(reviewRow).toBeVisible();
+    await reviewRow.locator("select").selectOption("correction_required");
+    await reviewRow.locator("textarea").fill("Browser reviewer requests one additional organization document.");
+    await reviewRow.getByRole("button",{name:"Record organization decision"}).click();
+    await expect(page.getByRole("status")).toContainText("Organization verification decision recorded.");
+    const reviewedDetail=await api.get("/api/v1/organizations/"+organization.id,{headers:{authorization:"Bearer "+token}});
+    expect(reviewedDetail.status()).toBe(200);
+    expect((await reviewedDetail.json()).data.verification_status).toBe("correction_required");
   }finally{await api.dispose();}
 });
 
