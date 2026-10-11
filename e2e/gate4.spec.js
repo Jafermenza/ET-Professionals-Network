@@ -275,20 +275,27 @@ test("membership UI submits and reloads the signed-in member's persisted applica
  expect(failures,"membership UI must not raise browser runtime errors").toEqual([]);
 });
 
-test("field evidence is encrypted into a durable offline queue rather than a click counter",async({page})=>{
- const failures=[];page.on("pageerror",e=>failures.push(e.message));
- await page.goto("/field");
- await page.context().setOffline(true);
- await page.getByLabel("Photo or document").setInputFiles({name:"offline-field-evidence.png",mimeType:"image/png",buffer:Buffer.from([137,80,78,71,13,10,26,10])});
- await page.getByLabel("Field notes (avoid unnecessary personal data)").fill("Offline queue persistence fixture");
- await page.getByRole("button",{name:/Encrypt and queue evidence/}).click();
- await expect(page.getByRole("status")).toContainText("Evidence encrypted and saved");
- await expect(page.getByText("offline-field-evidence.png",{exact:true})).toBeVisible();
- await page.context().setOffline(false);
- await page.reload();
- await expect(page.getByText("offline-field-evidence.png",{exact:true})).toBeVisible();
- await expect(page.getByText("Project/task linkage still open",{exact:true})).toBeVisible();
- expect(failures,"field queue must not raise browser runtime errors").toEqual([]);
+test("field evidence is encrypted offline, survives reload and syncs to private storage",async({page})=>{
+ const {api,token}=await apiContext();
+ try{
+  const failures=[];page.on("pageerror",e=>failures.push(e.message));
+  await page.goto("/field");
+  await page.context().setOffline(true);
+  await page.getByLabel("Photo or document").setInputFiles({name:"offline-field-evidence.pdf",mimeType:"application/pdf",buffer:Buffer.from("%PDF-1.7\nOffline field evidence fixture\n%%EOF")});
+  await page.getByLabel("Field notes (avoid unnecessary personal data)").fill("Offline queue persistence fixture");
+  await page.getByRole("button",{name:/Encrypt and queue evidence/}).click();
+  await expect(page.getByRole("status")).toContainText("Evidence encrypted and saved");
+  await expect(page.getByText("offline-field-evidence.pdf",{exact:true})).toBeVisible();
+  await page.context().setOffline(false);
+  await page.evaluate(value=>sessionStorage.setItem("mpa-session-token",value),token);
+  await page.reload();
+  await expect(page.getByText("offline-field-evidence.pdf",{exact:true})).toBeVisible();
+  await expect(page.getByText("Project/task linkage still open",{exact:true})).toBeVisible();
+  await page.getByRole("button",{name:"Sync now"}).click();
+  await expect(page.getByText("uploaded private unlinked",{exact:true})).toBeVisible({timeout:15000});
+  await expect(page.getByRole("status")).toContainText("Private upload confirmed");
+  expect(failures,"field queue must not raise browser runtime errors").toEqual([]);
+ }finally{await api.dispose();}
 });
 
 test("ATS workspace loads the authorized organization's persisted candidate pipeline",async({page})=>{
