@@ -178,6 +178,8 @@ test("verification case ownership, reviewer assignment and state transitions are
    expect(foreignRead.status(),"another member must not read private verification evidence").toBe(403);
    const memberReviewQueue=await api.get("/api/v1/review/verification/cases",{headers:memberHeaders});
    expect(memberReviewQueue.status(),"members cannot enumerate the private verification queue").toBe(403);
+   const memberAppealQueue=await api.get("/api/v1/review/verification/appeals",{headers:memberHeaders});
+   expect(memberAppealQueue.status(),"members cannot enumerate the independent appeal-review queue").toBe(403);
    const assigned=await api.post("/api/v1/verification/cases/"+verificationCase.id+"/assign",{headers:{authorization:"Bearer "+reviewerToken},data:{reviewerId}});
    expect(assigned.status()).toBe(200);
    const transition=await api.post("/api/v1/verification/cases/"+verificationCase.id+"/transition",{headers:{authorization:"Bearer "+reviewerToken},data:{status:"review"}});
