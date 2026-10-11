@@ -30,7 +30,7 @@ Authoritative contracts:
 | Runtime | Root ESM Node.js HTTP server, `server.js`; declared Node engine `>=20` | Keep API validation/authentication at server boundary |
 | Web | npm workspace `web/`, package `@mpa/web`, Next.js 14, React 18, TypeScript, Tailwind, TanStack Query, Zustand, Framer Motion, Radix Dialog, Lucide, Playwright | Web build is separate from API server; browser coverage is currently smoke-level rather than complete role-separated acceptance |
 | Persistence | PostgreSQL via `pg`; shared pool/config in `src/platform/db.js` and `src/platform/config.js` | No production DB was inspected as part of this baseline |
-| Migrations | `db/migrations/*.sql`, sorted by filename; runner `scripts/migrate.js`; checksum/history logic in `src/platform/migration-ledger.js` | Current migration chain contains 20 files, 001–020. Do not infer production baseline from CI fixtures |
+| Migrations | `db/migrations/*.sql`, sorted by filename; runner `scripts/migrate.js`; checksum/history logic in `src/platform/migration-ledger.js` | Current migration chain contains 21 files: numbered migrations 001–020 plus `20261010190000_separate_directory_visibility.sql`. Do not infer production baseline from CI fixtures. Do not infer production baseline from CI fixtures |
 | Auth/session | `src/platform/auth.js`, `src/platform/user-admin.js`; DB-current role resolution and session revocation were added in reconciliation work | Full role/resource scope matrix remains open under G2 |
 | Audit/notifications/payments | `src/platform/audit.js`, `notifications.js`, `payment-workflow.js`, `payments.js` | Each consequential state transition must be checked for audit/idempotency; implementation existence alone is not acceptance |
 | Private files | `src/platform/private-file-storage.js`; upload authorization/content/confirm and authorized read routes in `server.js` | Keep storage outside public web root; test owner/organization/reviewer access and denial |
@@ -43,15 +43,15 @@ Authoritative contracts:
 
 | Web route | Main API/domain boundary | Known state and required verification |
 |---|---|---|
-| `/`, `/login`, `/register` | `POST /api/v1/auth/register`, `POST /api/v1/auth/login`; public experience/reference endpoints | Registration/login, invalid credentials, expiry and role-change browser cases remain open |
+| `/`, `/login`, `/register` | Public landing and current route entry points; `POST /api/v1/auth/register`, `POST /api/v1/auth/login` | Landing now presents current membership, job, mentorship, organization and tracking entry points. Visual/build/browser acceptance is still pending on the current head because CI has no assigned runner; auth expiry and role-change browser cases remain open |
 | `/profile` | `GET /api/v1/me`, `PATCH /api/v1/me/profile`, `PATCH /api/v1/me/talent-profile`, `GET/PATCH /api/v1/me/talent-visibility` | API contracts exist; field-level persistence and private/public visibility must be tested |
 | `/dashboard`, `/track` | `GET /api/v1/me`, `/api/v1/me/application-tracking`, membership history and notification preferences | Verify loading/empty/error states and role-specific visibility |
 | `/jobs`, `/apply/job` | Jobs list/detail, eligibility, draft/apply/submit, saved jobs, alerts, application progress/notes/interviews | Public inquiry must not be represented as a formal application; ID-specific application and persisted candidate visibility remain open |
-| `/organizations` | Organization registration/list/detail, organization users, evidence and verification submission/review; organization/job services | Evidence UI/upload and complete owner/reviewer journey need end-to-end proof; organization scope negative tests remain open |
-| `/services` | Service listings, requests, request status, milestones, deliveries, payments, reviews and feedback | UI connected for discovery/request/listing; active-member, self-request, duplicate/retry and provider transition tests remain open |
-| `/mentorship`, `/apply/mentorship` | Mentor discovery/profile/availability, mentorship requests/matches/goals/sessions/status/feedback | API smoke covers public/member mentor discovery; request state persistence and role-separated browser cases remain open |
+| `/organizations` | Organization registration/list/detail, organization users, evidence and verification submission/review; organization/job services | Owner submission and reviewer queue/decision UI exist; required-evidence policy variants and complete owner/reviewer role-separated browser matrix remain open |
+| `/services` | Service listings, requests, request status, milestones, deliveries, payments, reviews and feedback | UI connected for listing/request and participant lifecycle actions. Full delivery/revision/acceptance/payment/feedback browser lifecycle and operational payment/notification providers remain open |
+| `/mentorship`, `/apply/mentorship` | Mentor discovery/profile/availability, mentorship requests/matches/goals/sessions/status/feedback | Request/match/session UI and persistence assertions exist; provider-backed notifications and external calendar integration are not configured; current-head browser acceptance is pending |
 | `/network` | Talent discovery, visibility, saved searches, talent inquiries/responses | Verify consent, privacy, ownership and organization boundaries |
-| `/field` | Field/project workflows and private evidence contracts | Offline queue, retry, conflict policy and file flow have not been demonstrated end to end |
+| `/field` | Encrypted offline private-file queue, IndexedDB persistence, retry and private upload/checksum confirmation | Partial only: evidence is not linked to project/task records; domain operation UUID/timestamp, reviewer acknowledgement and entity-specific conflict policy remain missing |
 | `/admin` | User status/role/session administration, organization verification requirements, review routes, experience/demo guide management | Role-by-role allow/deny, self-approval prevention and separation of duties remain open |
 | `/apply`, `/apply/opportunity` | Public opportunity intake, details/token, account linking, inquiry list/decision | Validate token boundaries, error states and cross-organization denial |
 | `/error` | Next.js error boundary | Verify user-safe rendering and correlation IDs without exposing stack traces |
@@ -99,7 +99,7 @@ Migration filenames observed at the baseline:
 17. `017_production_security_and_sessions.sql`
 18. `018_service_request_price_constraint_reconciliation.sql`
 19. `019_gate4_private_uploads.sql`
-20. `020_gate4_draft_verification_timestamp.sql`
+20. `020_gate4_draft_verification_timestamp.sql`\n21. `20261010190000_separate_directory_visibility.sql`
 
 The CI fixture establishes a known disposable baseline by applying migrations 001–010, then testing adoption and forward application. It does **not** establish that production has any particular prefix applied. Production baseline, backup/restore and rollback rehearsal remain operationally unverified and are explicitly outside G0/G1 sign-off.
 
