@@ -120,7 +120,9 @@ export async function listMyApplications(userId){
        from membership_application_payment ap join payment_transaction p on p.id=ap.payment_transaction_id
        where ap.application_id=a.id order by p.created_at desc limit 1) as payment,
       (select jsonb_build_object('id',c.id,'requested_fields',c.requested_fields,'reviewer_note',c.reviewer_note,'status',c.status,'applicant_response',c.applicant_response)
-       from membership_correction c where c.application_id=a.id order by c.created_at desc limit 1) as latest_correction
+       from membership_correction c where c.application_id=a.id order by c.created_at desc limit 1) as latest_correction,
+      coalesce((select jsonb_agg(jsonb_build_object('id',aa.id,'fileObjectId',f.id,'fileName',f.original_name,'attachmentType',aa.attachment_type,'createdAt',aa.created_at) order by aa.created_at desc)
+       from membership_application_attachment aa join file_object f on f.id=aa.file_object_id where aa.application_id=a.id),'[]'::jsonb) attachments
     from membership_application a where a.user_id=$1 order by a.created_at desc`,[userId])).rows;
 }
 
