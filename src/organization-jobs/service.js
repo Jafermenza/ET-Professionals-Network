@@ -92,7 +92,7 @@ export async function listOrganizationVerificationQueue(reviewerId){
    coalesce((select jsonb_agg(jsonb_build_object('id',e.id,'fileObjectId',e.file_object_id,'evidenceType',e.evidence_type,'note',e.note,'createdAt',e.created_at) order by e.created_at desc) from organization_verification_evidence e where e.case_id=c.id),'[]'::jsonb) evidence
    from organization_verification_case c join organization o on o.id=c.organization_id
    where c.status in ('submitted','correction_required')
-   order by c.submitted_at nulls last,c.created_at`)).rows;
+   order by c.submitted_at nulls last,o.created_at`)).rows;
 }
 export async function reviewOrganization(orgId,reviewerId,input,requestId){
  return withTransaction(async db=>{
