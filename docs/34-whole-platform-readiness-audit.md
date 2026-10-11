@@ -10,6 +10,25 @@ The product requirements define a coherent professional ecosystem, but the curre
 
 A working release must pass every journey and role acceptance test in this document. Do not resolve gaps by hiding errors, making protected APIs public, fabricating activity, or presenting sample data as live data.
 
+## Gate 6 checkpoint — 2026-10-11
+
+Current status remains: Gate 6 is not production-ready. The repository has verified security and core-domain checks, but the release gate is still blocked by product-level proof requirements rather than a single code bug.
+
+What is already validated:
+- seed/config enforcement for required JWT secrets and strong bootstrap admin configuration remains in place;
+- the authenticated user session and current-role contract has been preserved and regression-tested;
+- the scoped G4 domain workflow blockers were corrected without weakening earlier assertions;
+- the core unit and API-level regression suite is passing on the current head.
+
+What still remains before production deployment:
+- a fresh GitHub Actions runner must execute the final branch SHA; no workflow result on the final head can be treated as a production pass;
+- actual production-like smoke testing against a real PostgreSQL instance and the deployed runtime remains outstanding;
+- provider-backed payment and notification integrations still require operational configuration and delivery-proven evidence;
+- project/event/learning route coverage and cross-role workspace readiness remain incomplete under the product audit;
+- the audit still requires explicit release-risk acceptance for rollback, backup/restore, and deployment readiness.
+
+Gate 6 should remain in a blocked or pending state until the final head has passing CI and the operational readiness checklist is completed with evidence.
+
 ## Business outcomes the UI must support
 
 1. **Identity and trust:** account creation, sign-in/out, consent, profile visibility, verification cases and auditable decisions.
