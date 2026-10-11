@@ -33,6 +33,10 @@ This is a **manual reconciliation workflow**, not a claim of live payment-gatewa
 
 Existing private-evidence and independent-reviewer tests remain in `e2e/gate4.spec.js`; these new tests supplement them rather than replacing or weakening their assertions.
 
+### ATS interview feedback and candidate timeline
+
+`e2e/gate4-ats-interview-scope.spec.js` covers a published job and submitted application, interview scheduling, candidate acceptance, feedback denial for the candidate and an unassigned platform reviewer, feedback submission by the assigned interviewer, timeline note persistence/read access for the authorized team, and denial of timeline access to an out-of-scope reviewer.
+
 ## Explicitly deferred integrations
 
 Do not block this scoped workflow closure on building the following integrations. Do not fake their status or expose non-functional actions as operational:
