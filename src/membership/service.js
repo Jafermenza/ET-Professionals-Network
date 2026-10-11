@@ -89,7 +89,8 @@ export async function login(email,password,requestId,requestMeta={}){
 export async function getMe(userId){
   const db=getPool();
   const r=await db.query(`select u.id user_id,u.email,u.status,p.id person_id,p.first_name,p.middle_name,p.last_name,p.display_name,p.phone,p.date_of_birth,p.sex,p.nationality,
-    pr.id profile_id,pr.headline,pr.bio,pr.visibility,pr.completion_percent
+    pr.id profile_id,pr.headline,pr.bio,pr.visibility,pr.completion_percent,
+    coalesce((select jsonb_agg(r.role_code order by r.role_code) from app_user_role ur join app_role r on r.id=ur.role_id where ur.user_id=u.id),'[]'::jsonb) roles
     from app_user u left join person p on p.user_id=u.id left join professional_profile pr on pr.person_id=p.id where u.id=$1`,[userId]);
   if(!r.rows[0]) throw httpError(404,"Account not found.","NOT_FOUND");
   return r.rows[0];
