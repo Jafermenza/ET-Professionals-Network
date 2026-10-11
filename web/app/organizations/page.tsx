@@ -7,12 +7,16 @@ import {useUiStore} from "../../lib/store";
 
 type Inquiry={id:string;public_reference:string;status:string;consider_non_member:boolean;contact_name:string;contact_email?:string;contact_phone?:string;intent:string;job_title?:string};
 type Organization={id:string;legal_name:string;display_name:string;organization_type?:string;verification_status?:string;role_code?:string;created_at?:string};
+type OrgReviewCase={organization_id:string;legal_name:string;display_name:string;organization_type?:string;verification_status?:string;case_id:string;case_status:string;submitted_by:string;evidence:{id:string;fileObjectId:string;evidenceType:string;note?:string;createdAt:string}[]};
 type OrgForm={legalName:string;displayName:string;organizationType:string;description:string;website:string;email:string;phone:string;addressText:string};
 const blank:OrgForm={legalName:"",displayName:"",organizationType:"",description:"",website:"",email:"",phone:"",addressText:""};
 export default function Organizations(){
  const token=useUiStore(s=>s.token);
  const [inquiries,setInquiries]=useState<Inquiry[]>([]);
  const [organizations,setOrganizations]=useState<Organization[]>([]);
+ const [reviewQueue,setReviewQueue]=useState<OrgReviewCase[]>([]);
+ const [reviewDrafts,setReviewDrafts]=useState<Record<string,{decision:string;reason:string}>>({});
+ const [reviewingOrg,setReviewingOrg]=useState("");
  const [form,setForm]=useState<OrgForm>(blank);
  const [showForm,setShowForm]=useState(false);
  const [loading,setLoading]=useState(false);
@@ -28,11 +32,12 @@ export default function Organizations(){
  const [savingInquiry,setSavingInquiry]=useState("");
 
  const load=useCallback(async()=>{
-   if(!token){setOrganizations([]);setInquiries([]);return;}
+   if(!token){setOrganizations([]);setInquiries([]);setReviewQueue([]);return;}
    setLoading(true);setError("");
    const results=await Promise.allSettled([
      api<Organization[]>("/api/v1/organizations",{},token),
-     api<Inquiry[]>("/api/v1/opportunity-inquiries?type=job",{},token)
+     api<Inquiry[]>("/api/v1/opportunity-inquiries?type=job",{},token),
+     api<{roles?:string[]}>("/api/v1/me",{},token)
    ]);
    const organizationResult=results[0];
    if(organizationResult.status==="fulfilled")setOrganizations(Array.isArray(organizationResult.value)?organizationResult.value:[]);
@@ -44,6 +49,11 @@ export default function Organizations(){
      const message=reason instanceof ApiError&&reason.status!==403?reason.message:"";
      if(message)setError(current=>current||message);
    }
+   const meResult=results[2];
+   if(meResult.status==="fulfilled"&&(meResult.value.roles||[]).some(role=>["reviewer","system_admin"].includes(role))){
+     try{const queue=await api<OrgReviewCase[]>("/api/v1/review/organizations",{},token);setReviewQueue(Array.isArray(queue)?queue:[]);}
+     catch(e){setReviewQueue([]);const reason=e instanceof ApiError?e.message:"We couldn't load the organization review queue.";setError(current=>current||reason);}
+   }else setReviewQueue([]);
    setLoading(false);
  },[token]);
  useEffect(()=>{void load()},[load]);
@@ -97,6 +107,17 @@ export default function Organizations(){
    }catch(e){setError((e instanceof ApiError||e instanceof Error)?(e.message||"Evidence upload failed. Please retry."):"Evidence upload failed. Please retry.");}
    finally{setUploading(false);}
  }
+ async function reviewOrganizationCase(row:OrgReviewCase){
+   const draft=reviewDrafts[row.organization_id]||{decision:"correction_required",reason:""};
+   if(!draft.reason.trim()){setError("Provide a reason for every organization verification decision.");return;}
+   setReviewingOrg(row.organization_id);setError("");setNotice("");
+   try{
+     await api("/api/v1/review/organizations",{method:"POST",body:JSON.stringify({organizationId:row.organization_id,decision:draft.decision,reason:draft.reason.trim()})},token);
+     setNotice("Organization verification decision recorded. The organization can view its updated status.");
+     await load();
+   }catch(e){setError(e instanceof ApiError?e.message:"Organization review failed. The server enforces reviewer authorization, conflict-of-interest and state rules.");}
+   finally{setReviewingOrg("");}
+ }
  async function submitVerification(org:Organization){
    if(!token)return;
    setError("");setNotice("");
@@ -143,6 +164,7 @@ export default function Organizations(){
          <button className="btn btn-primary" type="submit" disabled={uploading||!evidenceFile||!evidenceOrg}>{uploading?"Uploading and verifying…":"Upload and attach private evidence"}</button>
        </form>}
        <Badge>Tabayyun · Verification / due diligence</Badge></Card>
+     {reviewQueue.length>0&&<Card><div className="row"><div><div className="h2">Organization verification review queue</div><p className="muted">Available only to reviewers and system administrators. A reviewer cannot decide a case for an organization they created, submitted or belong to.</p></div><ShieldCheck color="var(--primary)"/></div>{reviewQueue.map(row=>{const draft=reviewDrafts[row.organization_id]||{decision:"correction_required",reason:""};return <div className="case-row" key={row.case_id}><div style={{flex:1,minWidth:0}}><div className="row"><b>{row.display_name||row.legal_name}</b><Badge>{row.case_status.replaceAll("_"," ")}</Badge></div><p className="muted">{row.legal_name} · {row.organization_type||"Organization"}</p><div className="grid">{row.evidence.map(ev=><div className="row" key={ev.id}><span>{ev.evidenceType}{ev.note?" · "+ev.note:""}</span><a href={(process.env.NEXT_PUBLIC_API_BASE_URL||"").replace(/\\/$/,"")+"/api/v1/files/"+encodeURIComponent(ev.fileObjectId)} target="_blank" rel="noreferrer">Open private evidence</a></div>)}</div><div className="form-grid"><label>Decision<select value={draft.decision} onChange={e=>setReviewDrafts(current=>({...current,[row.organization_id]:{...draft,decision:e.target.value}}))}><option value="verified">Verify</option><option value="correction_required">Request correction</option><option value="rejected">Reject</option></select></label><label>Reason<textarea required value={draft.reason} onChange={e=>setReviewDrafts(current=>({...current,[row.organization_id]:{...draft,reason:e.target.value}}))}/></label></div><button className="btn btn-primary" disabled={reviewingOrg===row.organization_id||!draft.reason.trim()} onClick={()=>void reviewOrganizationCase(row)}>{reviewingOrg===row.organization_id?"Recording…":"Record organization decision"}</button></div></div>})}</Card>}
      <Card><div className="row"><div><div className="h2">Public job inquiries</div><p className="muted">First-stage public interest is not a formal eligible application. Only authorized organization users can inspect and decide inquiries.</p></div><UsersRound color="var(--primary)"/></div>
        {loading?<p className="muted">Loading inquiries…</p>:inquiries.length===0?<p className="muted">No public job inquiries are currently visible to this account.</p>:<div className="grid">{inquiries.map(i=>{const draft=inquiryDrafts[i.id]||{status:i.status,considerNonMember:i.consider_non_member,note:""};return <div className="case-row" key={i.id}><div><div className="row" style={{justifyContent:"flex-start"}}><b>{i.contact_name}</b><Badge>{i.status}</Badge>{i.consider_non_member&&<Badge tone="gold">Non-member considered</Badge>}</div><div className="muted">{i.job_title||"General public job interest"} · {i.contact_email||i.contact_phone}</div><p className="muted" style={{margin:"6px 0"}}>{i.intent}</p><small className="muted">Reference {i.public_reference}</small><div className="form-grid" style={{marginTop:12}}><label>Decision<select aria-label={"Decision for "+i.public_reference} value={draft.status} onChange={e=>setInquiryDrafts(current=>({...current,[i.id]:{...draft,status:e.target.value}}))}><option value="received">Received</option><option value="contacted">Contacted</option><option value="considering">Considering</option><option value="invited">Invited</option><option value="converted">Converted</option><option value="declined">Declined</option><option value="closed">Closed</option></select></label><label className="checkbox-row"><input aria-label={"Consider non-member for "+i.public_reference} type="checkbox" checked={draft.considerNonMember} onChange={e=>setInquiryDrafts(current=>({...current,[i.id]:{...draft,considerNonMember:e.target.checked}}))}/> Consider non-member</label><label className="full-width">Decision note<textarea aria-label={"Decision note for "+i.public_reference} rows={2} maxLength={4000} value={draft.note} onChange={e=>setInquiryDrafts(current=>({...current,[i.id]:{...draft,note:e.target.value}}))}/></label></div><button className="btn btn-primary" type="button" disabled={savingInquiry===i.id} onClick={()=>void decideInquiry(i)}>{savingInquiry===i.id?"Saving…":"Save inquiry decision"}</button></div></div>})}</div>}
      </Card>
