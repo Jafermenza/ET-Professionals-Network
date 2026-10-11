@@ -6,7 +6,7 @@ import {useUiStore} from "../lib/store";
 import {useEffect,useState} from "react";
 import {GuideLauncher} from "./guide";
 import {api} from "../lib/api";
-const nav=[["/","Home",Home],["/network","Network",Network],["/jobs","Jobs",BriefcaseBusiness],["/mentorship","Mentorship",UserRound],["/apply/job","Apply",BriefcaseBusiness],["/profile","Profile",UserRound]] as const;
+const nav=[["/","Home",Home],["/network","Network",Network],["/jobs","Jobs",BriefcaseBusiness],["/mentorship","Mentorship",UserRound],["/membership","Membership",ShieldCheck],["/profile","Profile",UserRound]] as const;
 export function Shell({children}:{children:React.ReactNode}){const pathname=usePathname();const router=useRouter();const mode=useUiStore(s=>s.mode),setMode=useUiStore(s=>s.setMode),language=useUiStore(s=>s.language),setLanguage=useUiStore(s=>s.setLanguage),queue=useUiStore(s=>s.queue),token=useUiStore(s=>s.token),setToken=useUiStore(s=>s.setToken),clearSession=useUiStore(s=>s.clearSession);const [search,setSearch]=useState("");const [demo,setDemo]=useState<{title:string;persona:string}|null>(null);
 useEffect(()=>{try{const saved=sessionStorage.getItem("mpa-session-token");if(saved&&!useUiStore.getState().token)setToken(saved);const x=JSON.parse(localStorage.getItem("mpa-demo-case")||"null");if(x)setDemo(x)}catch{}},[setToken]);
 async function logout(){try{if(token)await api("/api/v1/auth/logout",{method:"POST"},token)}catch{}finally{clearSession();router.replace("/login");router.refresh()}}
