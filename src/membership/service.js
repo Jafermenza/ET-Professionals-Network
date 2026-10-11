@@ -280,9 +280,12 @@ export async function history(userId){
 
 export async function listApplicationsForReview(){
   const db=getPool();
-  const r=await db.query(`select a.id,a.user_id,a.application_type,a.status,a.submitted_at,a.created_at,a.data_snapshot,a.fee_snapshot,p.product_code,p.name
+  const r=await db.query(`select a.id,a.user_id,a.application_type,a.status,a.submitted_at,a.created_at,a.updated_at,a.data_snapshot,a.fee_snapshot,p.product_code,p.name,
+      (select jsonb_build_object('id',pt.id,'status',pt.status,'amount',pt.amount,'currency',pt.currency,'channel',pt.channel,'created_at',pt.created_at)
+       from membership_application_payment ap join payment_transaction pt on pt.id=ap.payment_transaction_id
+       where ap.application_id=a.id order by pt.created_at desc limit 1) payment
     from membership_application a join membership_product p on p.id=a.membership_product_id
-    where a.status in ('submitted','in_review','correction_required') order by a.created_at asc`);
+    where a.status in ('submitted','in_review','correction_required','payment_pending','paid') order by a.created_at asc`);
   return r.rows;
 }
 
