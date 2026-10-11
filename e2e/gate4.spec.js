@@ -366,6 +366,33 @@ test("ATS workspace loads the authorized organization's persisted candidate pipe
  }finally{await api.dispose();}
 });
 
+test("membership reviewer UI approves only the scoped submitted application",async({page})=>{
+ const {api,token:adminToken}=await apiContext();
+ try{
+  const suffix=randomUUID();
+  const member=await registerMember({email:"gate4-membership-review-ui-"+suffix+"@example.test",password:"gate4-membership-review-ui-password-12345",firstName:"Gate4",lastName:"ReviewUI"},randomUUID());
+  const products=await api.get("/api/v1/membership/products");
+  expect(products.status()).toBe(200);
+  const product=(await products.json()).data[0];
+  expect(product,"a membership product is required for the review UI fixture").toBeTruthy();
+  const created=await api.post("/api/v1/membership/applications",{headers:{authorization:"Bearer "+member.token},data:{productCode:product.product_code,applicationType:"new"}});
+  expect(created.status()).toBe(201);
+  const applicationId=(await created.json()).data.id;
+  await page.goto("/membership");
+  await page.evaluate(value=>sessionStorage.setItem("mpa-session-token",value),adminToken);
+  await page.reload();
+  await expect(page.getByRole("heading",{name:"Reviewer and finance queue"})).toBeVisible();
+  const row=page.locator(".case-row").filter({hasText:applicationId});
+  await expect(row.getByText("submitted",{exact:true})).toBeVisible();
+  await row.getByRole("button",{name:"Approve application"}).click();
+  await expect(page.getByRole("status")).toContainText("Membership review decision recorded.");
+  await expect(row.getByText("payment pending",{exact:true})).toBeVisible();
+  const ownerHistory=await api.get("/api/v1/membership/applications/me",{headers:{authorization:"Bearer "+member.token}});
+  expect(ownerHistory.status()).toBe(200);
+  expect((await ownerHistory.json()).data.find(app=>app.id===applicationId).status).toBe("payment_pending");
+ }finally{await api.dispose();}
+});
+
 test("verification UI opens an owned case and preserves private case state on reload",async({page})=>{
  const suffix=randomUUID();
  const member=await registerMember({email:"gate4-verification-ui-"+suffix+"@example.test",password:"gate4-verification-ui-password-12345",firstName:"Gate4",lastName:"VerificationUI"},randomUUID());
