@@ -948,6 +948,12 @@ test("talent directory uses live consent-scoped profiles and inquiry contact-rel
    const inquiry=(await beforeResponse.json()).data.find(row=>row.subject==="Gate 4 opportunity inquiry"&&row.requester_user_id===adminId);
    expect(inquiry).toBeTruthy();
    expect(inquiry.contact_release).toBeFalsy();
+   const outsider=await registerMember({email:"gate4-talent-outsider-"+randomUUID()+"@example.test",password:"gate4-talent-outsider-password-12345",firstName:"Gate4",lastName:"TalentOutsider"},randomUUID());
+   const outsiderInquiries=await api.get("/api/v1/talent/inquiries",{headers:{authorization:"Bearer "+outsider.token}});
+   expect(outsiderInquiries.status()).toBe(200);
+   expect((await outsiderInquiries.json()).data.some(row=>row.id===inquiry.id),"an unrelated account must not see another person's inquiry").toBe(false);
+   const outsiderResponse=await api.post("/api/v1/talent/inquiries/"+inquiry.id+"/response",{headers:{authorization:"Bearer "+outsider.token},data:{status:"accepted",releaseContact:true}});
+   expect(outsiderResponse.status(),"an unrelated account cannot respond to another person's inquiry").toBe(403);
    await api.patch("/api/v1/me/talent-visibility",{headers:{authorization:"Bearer "+professional.token},data:{showContact:false}});
    const blockedRelease=await api.post("/api/v1/talent/inquiries/"+inquiry.id+"/response",{headers:{authorization:"Bearer "+professional.token},data:{status:"accepted",releaseContact:true}});
    expect(blockedRelease.status(),"a release request cannot override the professional's saved consent").toBe(409);
