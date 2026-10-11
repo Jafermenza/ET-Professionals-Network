@@ -258,6 +258,41 @@ test("membership application, correction, fee verification and activation persis
  }finally{await api.dispose();}
 });
 
+test("membership UI submits and reloads the signed-in member's persisted application",async({page})=>{
+ const suffix=randomUUID();
+ const member=await registerMember({email:"gate4-membership-ui-"+suffix+"@example.test",password:"gate4-membership-ui-password-12345",firstName:"Gate4",lastName:"MembershipUI"},randomUUID());
+ await page.addInitScript(token=>sessionStorage.setItem("mpa-session-token",token),member.token);
+ const failures=[];page.on("pageerror",e=>failures.push(e.message));
+ await page.goto("/membership");
+ await expect(page.getByRole("heading",{name:"Your membership, clearly tracked."})).toBeVisible();
+ await expect(page.getByRole("heading",{name:"Available membership plans"})).toBeVisible();
+ await expect(page.getByRole("heading",{name:"My applications"})).toBeVisible();
+ await page.getByRole("button",{name:/Submit membership application/}).click();
+ await expect(page.getByRole("status").filter({hasText:"Application submitted"})).toBeVisible();
+ await expect(page.getByText("submitted",{exact:true})).toBeVisible();
+ await page.reload();
+ await expect(page.getByText("submitted",{exact:true})).toBeVisible();
+ expect(failures,"membership UI must not raise browser runtime errors").toEqual([]);
+});
+
+test("verification UI opens an owned case and preserves private case state on reload",async({page})=>{
+ const suffix=randomUUID();
+ const member=await registerMember({email:"gate4-verification-ui-"+suffix+"@example.test",password:"gate4-verification-ui-password-12345",firstName:"Gate4",lastName:"VerificationUI"},randomUUID());
+ const programCode=("G4_UI_"+suffix.replace(/-/g,"").slice(0,12)).toUpperCase();
+ await getPool().query("insert into verification_program(program_code,name,purpose,requires_consent,active) values($1,$2,'Gate 4 verification UI fixture',false,true)",[programCode,"Gate 4 UI Verification "+suffix.slice(0,8)]);
+ await page.addInitScript(token=>sessionStorage.setItem("mpa-session-token",token),member.token);
+ const failures=[];page.on("pageerror",e=>failures.push(e.message));
+ await page.goto("/verification");
+ await expect(page.getByRole("heading",{name:"Evidence first. Decisions with reasons."})).toBeVisible();
+ await page.getByLabel("Verification program").selectOption(programCode);
+ await page.getByRole("button",{name:"Open case"}).click();
+ await expect(page.getByText("Verification case created.",{exact:false})).toBeVisible();
+ await expect(page.getByText("Gate 4 UI Verification "+suffix.slice(0,8))).toBeVisible();
+ await page.reload();
+ await expect(page.getByText("Gate 4 UI Verification "+suffix.slice(0,8))).toBeVisible();
+ expect(failures,"verification UI must not raise browser runtime errors").toEqual([]);
+});
+
 test("public jobs, services, mentorship and organization screens load without runtime errors",async({page})=>{
   const failures=[];
   page.on("pageerror",error=>failures.push(error.message));
