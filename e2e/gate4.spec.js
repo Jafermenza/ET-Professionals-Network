@@ -275,6 +275,36 @@ test("membership UI submits and reloads the signed-in member's persisted applica
  expect(failures,"membership UI must not raise browser runtime errors").toEqual([]);
 });
 
+test("ATS workspace loads the authorized organization's persisted candidate pipeline",async({page})=>{
+ const {api,token:adminToken}=await apiContext();
+ try{
+  const fixture=await createPublishedJob(api,adminToken);
+  const jobResponse=await api.get("/api/v1/jobs/"+fixture.jobId,{headers:{authorization:"Bearer "+adminToken}});
+  expect(jobResponse.status()).toBe(200);
+  const organizationId=(await jobResponse.json()).data.organization_id;
+  const candidate=await ensureGate4Professional(api);
+  const draft=await api.post("/api/v1/jobs/"+fixture.jobId+"/application-drafts",{headers:{authorization:"Bearer "+candidate.token},data:{coverLetter:"Gate 4 ATS pipeline UI fixture"}});
+  expect(draft.status(),"candidate draft creation").toBe(201);
+  const applicationId=(await draft.json()).data.id;
+  const submitted=await api.post("/api/v1/job-applications/"+applicationId+"/submit",{headers:{authorization:"Bearer "+candidate.token},data:{}});
+  expect(submitted.status(),"formal application submission").toBe(200);
+  const pipeline=await api.get("/api/v1/jobs/"+fixture.jobId+"/applications",{headers:{authorization:"Bearer "+adminToken}});
+  expect(pipeline.status()).toBe(200);
+  expect((await pipeline.json()).data.some(row=>row.id===applicationId&&row.status==="submitted")).toBeTruthy();
+  await page.addInitScript(token=>sessionStorage.setItem("mpa-session-token",token),adminToken);
+  const failures=[];page.on("pageerror",e=>failures.push(e.message));
+  await page.goto("/recruitment");
+  await expect(page.getByRole("heading",{name:"Move candidates through a traceable pipeline."})).toBeVisible();
+  await expect(page.getByLabel("Organization")).toBeVisible();
+  await page.getByLabel("Organization").selectOption(organizationId);
+  await expect(page.getByLabel("Job")).toBeVisible();
+  await page.getByLabel("Job").selectOption(fixture.jobId);
+  await expect(page.getByText(candidate.displayName,{exact:true})).toBeVisible();
+  await expect(page.getByText("submitted",{exact:true})).toBeVisible();
+  expect(failures,"ATS UI must not raise browser runtime errors").toEqual([]);
+ }finally{await api.dispose();}
+});
+
 test("verification UI opens an owned case and preserves private case state on reload",async({page})=>{
  const suffix=randomUUID();
  const member=await registerMember({email:"gate4-verification-ui-"+suffix+"@example.test",password:"gate4-verification-ui-password-12345",firstName:"Gate4",lastName:"VerificationUI"},randomUUID());
