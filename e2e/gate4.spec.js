@@ -270,7 +270,12 @@ test("membership UI submits and reloads the signed-in member's persisted applica
  await page.getByRole("button",{name:/Submit membership application/}).click();
  await expect(page.getByRole("status").filter({hasText:"Application submitted"})).toBeVisible();
  await expect(page.getByText("submitted",{exact:true})).toBeVisible();
+ await page.getByLabel("Private document").setInputFiles({name:"membership-ui-evidence.pdf",mimeType:"application/pdf",buffer:Buffer.from("%PDF-1.7\\nMembership UI evidence\\n%%EOF")});
+ await page.getByRole("button",{name:"Upload and attach evidence"}).click();
+ await expect(page.getByRole("status")).toContainText("uploaded, checksum-confirmed and attached");
+ await expect(page.getByText("membership-ui-evidence.pdf",{exact:false})).toBeVisible();
  await page.reload();
+ await expect(page.getByText("membership-ui-evidence.pdf",{exact:false})).toBeVisible();
  await expect(page.getByText("submitted",{exact:true})).toBeVisible();
  expect(failures,"membership UI must not raise browser runtime errors").toEqual([]);
 });
