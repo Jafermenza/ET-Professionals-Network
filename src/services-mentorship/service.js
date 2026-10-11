@@ -256,6 +256,17 @@ export async function listServiceMilestones(requestId,userId){
   return (await db.query("select * from service_request_milestone where request_id=$1 order by due_at nulls last,created_at",[requestId])).rows;
 }
 
+export async function listServiceDeliveries(requestId,userId){
+ const db=getPool();
+ const participant=(await db.query("select provider_user_id,requester_user_id from service_request where id=$1",[requestId])).rows[0];
+ if(!participant) throw error(404,"Service request not found.","NOT_FOUND");
+ if(participant.provider_user_id!==userId&&participant.requester_user_id!==userId) throw error(403,"You are not a participant in this service request.","FORBIDDEN");
+ return (await db.query(`select d.*,m.title milestone_title,p.display_name submitter_name
+  from service_request_delivery d left join service_request_milestone m on m.id=d.milestone_id
+  join person p on p.user_id=d.submitted_by
+  where d.request_id=$1 order by d.created_at desc`,[requestId])).rows;
+}
+
 export async function submitServiceDelivery(requestId,userId,input,requestIdHeader){
   return withTransaction(async db=>{
     const r=(await db.query("select * from service_request where id=$1 for update",[requestId])).rows[0];
@@ -289,6 +300,38 @@ export async function reviewServiceDelivery(deliveryId,userId,input,requestIdHea
     await audit(db,userId,"service.delivery_reviewed","service_request_delivery",deliveryId,requestIdHeader,{status:input.status});
     return row;
   });
+}
+
+export async function listServicePaymentsForReview(reviewerId){
+ const db=getPool();
+ const allowed=(await db.query("select 1 from app_user_role ur join app_role r on r.id=ur.role_id where ur.user_id=$1 and r.role_code in ('finance_officer','system_admin') limit 1",[reviewerId])).rows[0];
+ if(!allowed) throw error(403,"Finance reviewer role required.","FORBIDDEN");
+ return (await db.query(`select sp.id,sp.request_id,sp.payment_transaction_id,sp.payer_user_id,sp.provider_user_id,sp.amount,sp.currency,sp.channel,sp.status,sp.created_at,
+  pt.status transaction_status,pt.idempotency_key,pt.purpose_reference,
+  sr.status request_status,s.title service_title,pr.display_name requester_name,pv.display_name provider_name
+  from service_payment sp join payment_transaction pt on pt.id=sp.payment_transaction_id
+  join service_request sr on sr.id=sp.request_id join service_listing s on s.id=sr.service_listing_id
+  join person pr on pr.user_id=sp.payer_user_id join person pv on pv.user_id=sp.provider_user_id
+  where sp.status='pending' order by sp.created_at`)).rows;
+}
+export async function verifyServicePayment(servicePaymentId,verifierId,input,requestIdHeader){
+ return withTransaction(async db=>{
+  const allowed=(await db.query("select 1 from app_user_role ur join app_role r on r.id=ur.role_id where ur.user_id=$1 and r.role_code in ('finance_officer','system_admin') limit 1",[verifierId])).rows[0];
+  if(!allowed) throw error(403,"Finance reviewer role required.","FORBIDDEN");
+  const row=(await db.query(`select sp.*,pt.status transaction_status,pt.channel transaction_channel,pt.source,sp.payer_user_id,sp.provider_user_id
+   from service_payment sp join payment_transaction pt on pt.id=sp.payment_transaction_id where sp.id=$1 for update of sp,pt`,[servicePaymentId])).rows[0];
+  if(!row) throw error(404,"Service payment not found.","NOT_FOUND");
+  if(row.payer_user_id===verifierId||row.provider_user_id===verifierId) throw error(403,"A service participant cannot verify their own payment.","CONFLICT_OF_INTEREST");
+  if(row.status!=="pending"||row.transaction_status!=="pending") throw error(409,"Only a pending service payment can be verified.","INVALID_STATE");
+  if(!["manual","bank_transfer","cash","other"].includes(row.transaction_channel)||row.source==="provider_webhook") throw error(400,"This payment is not eligible for manual verification.","INVALID_PAYMENT_CHANNEL");
+  if(!["approved","rejected","needs_correction"].includes(input.decision)) throw error(400,"Invalid service payment decision.","VALIDATION_ERROR");
+  const next=input.decision==="approved"?"succeeded":input.decision==="rejected"?"failed":"pending";
+  await db.query("insert into payment_verification(payment_transaction_id,verifier_user_id,decision,evidence_checked,note) values($1,$2,$3,$4,$5)",[row.payment_transaction_id,verifierId,input.decision,JSON.stringify(input.evidenceChecked||[]),input.note||null]);
+  const updated=(await db.query("update service_payment set status=$1,verified_by=$2,verified_at=case when $1<>'pending' then now() else null end,verification_note=$3,updated_at=now() where id=$4 returning *",[next,verifierId,input.note||null,servicePaymentId])).rows[0];
+  await db.query("update payment_transaction set status=$1,verified_by=$2,verified_at=now(),verification_note=$3,completed_at=case when $1 in ('succeeded','failed') then now() else completed_at end,updated_at=now() where id=$4",[next,verifierId,input.note||null,row.payment_transaction_id]);
+  await audit(db,verifierId,"service.payment_verified","service_payment",servicePaymentId,requestIdHeader,{decision:input.decision,requestId:row.request_id});
+  return updated;
+ });
 }
 
 export async function submitServiceFeedback(requestId,userId,input,requestIdHeader){
