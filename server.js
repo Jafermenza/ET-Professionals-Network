@@ -15,6 +15,7 @@ import * as experience from "./src/platform/experience.js";
 import * as applicationTracking from "./src/platform/application-tracking.js";
 import * as publicOpportunity from "./src/platform/public-opportunity.js";
 import * as userAdmin from "./src/platform/user-admin.js";
+import { resolveAllowedOrigin } from "./src/platform/config.js";
 
 const config=loadConfig();
 const logger=createLogger({level:config.logLevel});
@@ -76,8 +77,13 @@ async function bootstrapAdmin(){ if(!config.bootstrapAdminEmail||!config.bootstr
 
 const server=http.createServer(async (req,res)=>{
   const requestId=req.headers["x-request-id"]||randomUUID();
-  if(req.method==="OPTIONS"){res.writeHead(204,{"access-control-allow-origin":config.corsOrigin||"*","access-control-allow-methods":"GET,POST,PUT,PATCH,DELETE,OPTIONS","access-control-allow-headers":"Authorization,Content-Type,X-Request-Id,X-Upload-Token","access-control-max-age":"600"});return res.end();}
-  if(config.corsOrigin) res.setHeader("access-control-allow-origin",config.corsOrigin);
+  const allowOrigin = resolveAllowedOrigin(req.headers.origin, config.corsOrigin);
+  if(req.method==="OPTIONS"){
+    const headers={"access-control-allow-methods":"GET,POST,PUT,PATCH,DELETE,OPTIONS","access-control-allow-headers":"Authorization,Content-Type,X-Request-Id,X-Upload-Token","access-control-max-age":"600"};
+    if(allowOrigin) headers["access-control-allow-origin"]=allowOrigin;
+    res.writeHead(204,headers);return res.end();
+  }
+  if(allowOrigin) res.setHeader("access-control-allow-origin",allowOrigin);
   res.setHeader("vary","Origin"); res.setHeader("x-content-type-options","nosniff"); res.setHeader("x-frame-options","DENY"); res.setHeader("referrer-policy","strict-origin-when-cross-origin"); res.setHeader("permissions-policy","camera=(),microphone=(),geolocation=()"); if(config.nodeEnv==="production") res.setHeader("strict-transport-security","max-age=31536000; includeSubDomains");
   res.on("finish",()=>logger.info("http.request",{requestId,method:req.method,path:req.url,status:res.statusCode}));
   try {
@@ -108,9 +114,10 @@ const server=http.createServer(async (req,res)=>{
 
     if(req.method==="POST" && p==="api/v1/auth/logout") { const identity=await auth(req); return ok(res,await userAdmin.logout(identity.sub,identity.sid,requestId),requestId); }
     if(req.method==="GET" && p==="api/v1/admin/users") { const identity=await auth(req); return ok(res,await userAdmin.listUsers(identity,{q:query(req.url).get("q"),status:query(req.url).get("status")}),requestId); }
+    if(req.method==="GET" && p==="api/v1/admin/roles") { const identity=await auth(req); return ok(res,await userAdmin.listRoles(identity.sub),requestId); }
     if(req.method==="PATCH" && parts.length===5 && p.startsWith("api/v1/admin/users/")) { const identity=await auth(req); return ok(res,await userAdmin.updateUser(identity.sub,parts[4],await body(req),requestId),requestId); }
-    if(req.method==="POST" && parts.length===6 && p.startsWith("api/v1/admin/users/") && parts[5]==="revoke-sessions") { const identity=await auth(req); return ok(res,await userAdmin.revokeSessions(identity.sub,parts[4],requestId),requestId); }
-    if(req.method==="POST" && parts.length===6 && p.startsWith("api/v1/admin/users/") && parts[5]==="reset-password") { const identity=await auth(req); const b=await body(req); return ok(res,await userAdmin.resetPassword(identity.sub,parts[4],b.password,requestId),requestId); }
+    if(req.method==="POST" && parts.length===6 && p.startsWith("api/v1/admin/users/") && parts[5]==="revoke-sessions") { const identity=await auth(req); const b=await body(req); return ok(res,await userAdmin.revokeSessions(identity.sub,parts[4],requestId,b.reason),requestId); }
+    if(req.method==="POST" && parts.length===6 && p.startsWith("api/v1/admin/users/") && parts[5]==="reset-password") { const identity=await auth(req); const b=await body(req); return ok(res,await userAdmin.resetPassword(identity.sub,parts[4],b.password,requestId,b.reason),requestId); }
     if(req.method==="GET" && p==="api/v1/experience/demo-cases") return ok(res,await experience.listDemoCases(),requestId);
     if(req.method==="GET" && parts.length===5 && p.startsWith("api/v1/experience/demo-cases/")) return ok(res,await experience.getDemoCase(parts[4]),requestId);
     if(req.method==="GET" && p==="api/v1/experience/guides") { const q=query(req.url); return ok(res,await experience.listGuides(q.get("route")),requestId); }
@@ -214,7 +221,7 @@ const server=http.createServer(async (req,res)=>{
     if(req.method==="GET" && p==="api/v1/me/outcomes") return ok(res,await stakeholderOutcomes.getMyOutcomeWorkspace(identity.sub),requestId);
     if(req.method==="GET" && p==="api/v1/opportunity-inquiries") { const identity=await auth(req); return ok(res,await publicOpportunity.listInquiries(identity.sub,{type:query(req.url).get("type"),status:query(req.url).get("status")}),requestId); }
     if(req.method==="PATCH" && parts.length===4 && p.startsWith("api/v1/opportunity-inquiries/")) { const identity=await auth(req); const b=await body(req); return ok(res,await publicOpportunity.decideInquiry(parts[3],identity.sub,b,requestId),requestId); }
-    if(req.method==="GET" && p==="api/v1/me/application-tracking") return ok(res,await applicationTracking.getApplicationTracking(identity.sub),requestId);
+    if(req.method==="GET" && p==="api/v1/me/application-tracking") { const q=query(req.url); return ok(res,await applicationTracking.getApplicationTracking(identity.sub,{limit:q.get("limit")||undefined,offset:q.get("offset")||undefined,reference:q.get("reference")||undefined}),requestId); }
     if(req.method==="GET" && p==="api/v1/me") return ok(res,await membership.getMe(identity.sub),requestId);
     if(req.method==="PATCH" && p==="api/v1/me/profile") return ok(res,await membership.updateProfile(identity.sub,await body(req),requestId),requestId);
     if(req.method==="GET" && p==="api/v1/membership/history") return ok(res,await membership.history(identity.sub),requestId);

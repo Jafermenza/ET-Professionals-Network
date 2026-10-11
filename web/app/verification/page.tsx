@@ -10,7 +10,7 @@ type Me={user_id:string;roles?:string[]};
 type AppealRow={appeal_id:string;case_id:string;status:string;grounds:string;submitted_at:string;subject_user_id:string;case_status:string;subject_name?:string;program_code:string;program_name:string;original_decision:string;original_decider:string};
 const reviewRoles=["verification_reviewer","ethics_reviewer","system_admin"];
 const allowedNext:Record<string,string[]>={draft:["consent_pending","submitted","withdrawn"],consent_pending:["submitted","withdrawn"],submitted:["screening","evidence_required","review","withdrawn"],screening:["evidence_required","review","member_response_required","withdrawn"],evidence_required:["screening","review","member_response_required","withdrawn"],member_response_required:["review","decision_pending","withdrawn"],review:["decision_pending","evidence_required","member_response_required","withdrawn"],decision_pending:["approved","partially_verified","rejected","member_response_required","appeal_pending","closed"],approved:["closed","appeal_pending"],partially_verified:["closed","appeal_pending","evidence_required"],rejected:["appeal_pending","closed"],appeal_pending:["appealed","closed"],appealed:["review","decision_pending","closed"],closed:[],withdrawn:[]};
-const tone=(s:string)=>["approved","partially_verified"].includes(s)?"green":["rejected","closed","withdrawn"].includes(s)?"red":["consent_pending","evidence_required","member_response_required","appeal_pending"].includes(s)?"gold":"slate";
+const tone=(s:string)=>["approved","partially_verified"].includes(s)?"green":["rejected","closed","withdrawn","consent_pending","evidence_required","member_response_required","appeal_pending"].includes(s)?"gold":"slate";
 export default function Verification(){
  const token=useUiStore(s=>s.token),hydrated=useUiStore(s=>s.hydrated);
  const [me,setMe]=useState<Me|null>(null),[programs,setPrograms]=useState<Program[]>([]),[cases,setCases]=useState<CaseRow[]>([]),[queue,setQueue]=useState<CaseRow[]>([]),[appealQueue,setAppealQueue]=useState<AppealRow[]>([]),[appealDrafts,setAppealDrafts]=useState<Record<string,{outcome:string;reason:string}>>({});
@@ -38,7 +38,7 @@ export default function Verification(){
     const digest=await crypto.subtle.digest("SHA-256",bytes);
     const checksum=Array.from(new Uint8Array(digest)).map(x=>x.toString(16).padStart(2,"0")).join("");
     const upload=await api<{uploadId:string;uploadToken:string;uploadUrl:string}>("/api/v1/files/uploads",{method:"POST",body:JSON.stringify({fileName:evidenceFile.name,contentType:evidenceFile.type,byteSize:evidenceFile.size,checksumSha256:checksum})},token);
-    const base=(process.env.NEXT_PUBLIC_API_BASE_URL||"").replace(/\\/$/,"");
+    const base="";
     const response=await fetch(base+upload.uploadUrl,{method:"PUT",headers:{Authorization:"Bearer "+token,"Content-Type":"application/octet-stream","X-Upload-Token":upload.uploadToken},body:evidenceFile,cache:"no-store"});
     if(!response.ok)throw new Error(response.status===413?"The evidence file is too large.":"Private evidence upload failed. Retry the upload.");
     const confirmed=await api<{id:string}>("/api/v1/files/uploads/"+encodeURIComponent(upload.uploadId)+"/confirm",{method:"POST"},token);

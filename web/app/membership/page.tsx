@@ -7,7 +7,7 @@ import {useUiStore} from "../../lib/store";
 type Product={product_code:string;name:string;description?:string;billing_model:string;price:string|number;currency:string;duration_days?:number|null;renewal_required:boolean;benefits?:unknown};
 type Application={id:string;user_id?:string;application_type:string;status:string;created_at:string;updated_at:string;fee_snapshot:any;product_code?:string;name?:string;payment?:{id:string;status:string;amount:string|number;currency:string;channel:string}|null;latest_correction?:{id:string;requested_fields:any;reviewer_note?:string;status:string}|null;attachments?:{id:string;fileObjectId:string;fileName:string;attachmentType:string;createdAt:string}[]};
 type Me={roles?:string[]};
-const statusTone=(status:string)=>["active","paid","approved","succeeded"].includes(status)?"green":["rejected","failed","closed"].includes(status)?"red":["correction_required","payment_pending","pending"].includes(status)?"gold":"slate";
+const statusTone=(status:string)=>["active","paid","approved","succeeded"].includes(status)?"green":["rejected","failed","closed"].includes(status)?"gold":["correction_required","payment_pending","pending"].includes(status)?"gold":"slate";
 export default function Membership(){
  const token=useUiStore(s=>s.token),hydrated=useUiStore(s=>s.hydrated);
  const [products,setProducts]=useState<Product[]>([]),[applications,setApplications]=useState<Application[]>([]),[reviewApplications,setReviewApplications]=useState<Application[]>([]),[roles,setRoles]=useState<string[]>([]);
@@ -30,7 +30,7 @@ export default function Membership(){
   try{
    const bytes=await file.arrayBuffer();const digest=await crypto.subtle.digest("SHA-256",bytes);const checksum=Array.from(new Uint8Array(digest)).map(x=>x.toString(16).padStart(2,"0")).join("");
    const auth=await api<{uploadId:string;uploadToken:string;uploadUrl:string}>("/api/v1/files/uploads",{method:"POST",body:JSON.stringify({fileName:file.name,contentType:file.type,byteSize:file.size,checksumSha256:checksum})},token);
-   const base=(process.env.NEXT_PUBLIC_API_BASE_URL||"").replace(/\/$/,"");
+  const base="";
    const response=await fetch(base+auth.uploadUrl,{method:"PUT",headers:{Authorization:"Bearer "+token,"Content-Type":"application/octet-stream","X-Upload-Token":auth.uploadToken},body:file,cache:"no-store"});
    if(!response.ok)throw new Error("Private file upload failed. Retry without changing the application.");
    const confirmed=await api<{id:string}>("/api/v1/files/uploads/"+encodeURIComponent(auth.uploadId)+"/confirm",{method:"POST"},token);

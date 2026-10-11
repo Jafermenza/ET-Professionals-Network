@@ -6,6 +6,13 @@ async function allowed(db,userId){const r=await db.query("select r.role_code fro
 function admin(roles){if(!roles.some(x=>["system_admin","admin"].includes(x)))throw err(403,"Administrator role required.","FORBIDDEN")}
 const SYSTEM_ROLE="system_admin";
 const PRIVILEGED_ROLES=new Set([SYSTEM_ROLE,"super_admin","admin","reviewer","verification_reviewer","ethics_reviewer","appeal_reviewer","finance_officer"]);
+const NON_PLATFORM_ROLES={
+ organization_admin:{scope:"organization",reason:"Use an organization membership role instead."},
+ recruiter:{scope:"organization_or_job",reason:"Use organization membership or job-team scope instead."},
+ project_manager:{scope:"organization_or_project",reason:"Use organization or project assignment scope instead."},
+ read_only:{scope:"organization",reason:"Use an organization membership role instead."},
+ mentor:{scope:"profile",reason:"Mentor eligibility is based on a verified professional profile, not a platform role."}
+};
 
 export async function logout(userId,sessionId,requestId){
  return withTransaction(async tx=>{
@@ -23,6 +30,16 @@ export async function listUsers(actor,input={}){
  return (await db.query(sql,[q,status||null])).rows;
 }
 
+export async function listRoles(actor){
+ const actorRoles=await allowed(getPool(),actor); admin(actorRoles);
+ const rows=(await getPool().query("select role_code,name,description from app_role order by name,role_code")).rows;
+ return rows.map(row=>{
+  const nonPlatform=NON_PLATFORM_ROLES[row.role_code];
+  const privileged=PRIVILEGED_ROLES.has(row.role_code);
+  return {...row,scope:nonPlatform?.scope||"platform",assignable:!nonPlatform&&(!privileged||actorRoles.includes(SYSTEM_ROLE)),privileged,assignmentNote:nonPlatform?.reason||null};
+ });
+}
+
 export async function updateUser(actor,userId,input,requestId){
  const db=getPool();
  return withTransaction(async tx=>{
@@ -34,6 +51,8 @@ export async function updateUser(actor,userId,input,requestId){
   if(status!==undefined && !["active","suspended","disabled"].includes(status))throw err(400,"Invalid user status.","VALIDATION_ERROR");
   if(status && userId===actor && status!=="active")throw err(400,"You cannot suspend or disable your own account.","SELF_LOCKOUT");
   if((roleCode!==undefined||removeRoleCode!==undefined)&&userId===actor)throw err(403,"Administrators cannot change their own roles. Use a separately authorized administrator account.","SELF_ROLE_CHANGE");
+  const reason=String(input.reason||"").trim().slice(0,500)||null;
+  if((status!==undefined||roleCode!==undefined||removeRoleCode!==undefined)&&!reason)throw err(400,"An audit reason is required for account status and role changes.","AUDIT_REASON_REQUIRED");
 
   const currentRoles=await allowed(tx,userId);
   const requestedRoles=[roleCode,removeRoleCode].filter(v=>v!==undefined);
@@ -68,7 +87,6 @@ export async function updateUser(actor,userId,input,requestId){
   if(roleCode!==undefined||removeRoleCode!==undefined||status!==undefined)
    await tx.query("update auth_session set revoked_at=now() where user_id=$1 and revoked_at is null",[userId]);
   const newRoles=await allowed(tx,userId);
-  const reason=String(input.reason||"").trim().slice(0,500)||null;
   await tx.query("insert into audit_log(actor_user_id,action,resource_type,resource_id,request_id,outcome,metadata) values($1,'admin.user.updated','app_user',$2,$3,'success',$4)",[
    actor,userId,requestId,JSON.stringify({scope:"platform",previousStatus:u.status,currentStatus:status??u.status,status:status??null,previousRoles:currentRoles,currentRoles:newRoles,roleCode:roleCode??null,removeRoleCode:removeRoleCode??null,reason})
   ]);
@@ -76,21 +94,25 @@ export async function updateUser(actor,userId,input,requestId){
  });
 }
 
-export async function revokeSessions(actor,userId,requestId){
+export async function revokeSessions(actor,userId,requestId,reasonInput){
  const db=getPool(); const actorRoles=await allowed(db,actor); admin(actorRoles);
+ const reason=String(reasonInput||"").trim().slice(0,500);
+ if(!reason)throw err(400,"An audit reason is required to revoke sessions.","AUDIT_REASON_REQUIRED");
  return withTransaction(async tx=>{
   const target=(await tx.query("select id from app_user where id=$1 for update",[userId])).rows[0];
   if(!target)throw err(404,"User not found.","NOT_FOUND");
   const targetRoles=await allowed(tx,userId);
   if(targetRoles.some(r=>PRIVILEGED_ROLES.has(r))&&!actorRoles.includes(SYSTEM_ROLE))throw err(403,"Only a system administrator may revoke sessions for a privileged account.","PRIVILEGED_ACCOUNT_CHANGE");
   const r=await tx.query("update auth_session set revoked_at=now() where user_id=$1 and revoked_at is null",[userId]);
-  await tx.query("insert into audit_log(actor_user_id,action,resource_type,resource_id,request_id,outcome,metadata) values($1,'admin.sessions.revoked','app_user',$2,$3,'success',$4)",[actor,userId,requestId,JSON.stringify({count:r.rowCount})]);
+  await tx.query("insert into audit_log(actor_user_id,action,resource_type,resource_id,request_id,outcome,metadata) values($1,'admin.sessions.revoked','app_user',$2,$3,'success',$4)",[actor,userId,requestId,JSON.stringify({count:r.rowCount,reason})]);
   return {revoked:r.rowCount};
  });
 }
-export async function resetPassword(actor,userId,newPassword,requestId){
+export async function resetPassword(actor,userId,newPassword,requestId,reasonInput){
  const db=getPool(); const actorRoles=await allowed(db,actor); admin(actorRoles);
  if(String(newPassword||"").length<12)throw err(400,"Password must be at least 12 characters.","VALIDATION_ERROR");
+ const reason=String(reasonInput||"").trim().slice(0,500);
+ if(!reason)throw err(400,"An audit reason is required to reset a password.","AUDIT_REASON_REQUIRED");
  return withTransaction(async tx=>{
   const target=(await tx.query("select id from app_user where id=$1 for update",[userId])).rows[0];
   if(!target)throw err(404,"User not found.","NOT_FOUND");
@@ -98,7 +120,7 @@ export async function resetPassword(actor,userId,newPassword,requestId){
   if(targetRoles.some(r=>PRIVILEGED_ROLES.has(r))&&!actorRoles.includes(SYSTEM_ROLE))throw err(403,"Only a system administrator may reset a privileged account.","PRIVILEGED_ACCOUNT_CHANGE");
   await tx.query("update app_user set password_hash=$1,updated_at=now() where id=$2",[hashPassword(newPassword),userId]);
   await tx.query("update auth_session set revoked_at=now() where user_id=$1 and revoked_at is null",[userId]);
-  await tx.query("insert into audit_log(actor_user_id,action,resource_type,resource_id,request_id,outcome,metadata) values($1,'admin.password.reset','app_user',$2,$3,'success','{}')",[actor,userId,requestId]);
+  await tx.query("insert into audit_log(actor_user_id,action,resource_type,resource_id,request_id,outcome,metadata) values($1,'admin.password.reset','app_user',$2,$3,'success',$4)",[actor,userId,requestId,JSON.stringify({reason})]);
   return {id:userId,sessionsRevoked:true};
  });
 }

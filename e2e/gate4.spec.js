@@ -25,6 +25,8 @@ async function browserLogin(page,email=ADMIN_EMAIL,password=ADMIN_PASSWORD){
   await page.getByLabel("Email").fill(email);
   await page.getByLabel("Password").fill(password);
   await page.getByRole("button",{name:"Login"}).click();
+  await expect(page).toHaveURL(/\/dashboard$/);
+  await expect(page.getByRole("heading",{name:/Good to see you/})).toBeVisible();
   await expect(page.getByRole("button",{name:"Logout"})).toBeVisible();
 }
 let cachedReviewerToken=null;
@@ -145,6 +147,26 @@ async function createPublishedJob(api,token){
   return {title,jobId:job.id};
 }
 
+  test("platform role catalog distinguishes global and scoped roles and remains administrator-only",async()=>{
+   const {api,token:adminToken}=await apiContext();
+   try{
+    const headers={authorization:"Bearer "+adminToken};
+    const catalogResponse=await api.get("/api/v1/admin/roles",{headers});
+    expect(catalogResponse.status()).toBe(200);
+    const catalog=(await catalogResponse.json()).data;
+    expect(catalog.find(role=>role.role_code==="member")?.assignable).toBe(true);
+    expect(catalog.find(role=>role.role_code==="recruiter")?.assignable).toBe(false);
+    expect(catalog.find(role=>role.role_code==="recruiter")?.scope).toBe("organization_or_job");
+    const suffix=randomUUID();
+    const member=await registerMember({email:"gate4-role-catalog-"+suffix+"@example.test",password:"gate4-role-catalog-password-12345",firstName:"Gate4",lastName:"RoleCatalog"+suffix.slice(0,6)},randomUUID());
+    const memberHeaders={authorization:"Bearer "+member.token};
+    const hiddenCatalog=await api.get("/api/v1/admin/roles",{headers:memberHeaders});
+    expect(hiddenCatalog.status(),"members cannot inspect platform role administration").toBe(403);
+    const hiddenUsers=await api.get("/api/v1/admin/users",{headers:memberHeaders});
+    expect(hiddenUsers.status(),"members cannot enumerate platform accounts").toBe(403);
+   }finally{await api.dispose();}
+  });
+
 test("verification case ownership, reviewer assignment and state transitions are enforced",async()=>{
  const {api,token:adminToken}=await apiContext();
  const suffix=randomUUID();
@@ -219,7 +241,7 @@ test("membership application, correction, fee verification and activation persis
    const ownApplicationList=await api.get("/api/v1/membership/applications/me",{headers:memberHeaders});
    expect(ownApplicationList.status()).toBe(200);
    expect((await ownApplicationList.json()).data.some(row=>row.id===application.id)).toBe(true);
-   const unrelatedMember=await registerMember({email:"gate4-membership-outsider-"+suffix+"@example.test",password:"gate4-membership-outsider-password-12345",firstName:"Gate4",lastName:"MembershipOutsider"},randomUUID());
+  const unrelatedMember=await registerMember({email:"gate4-membership-outsider-"+suffix+"@example.test",password:"gate4-membership-outsider-password-12345",firstName:"Gate4",lastName:"MembershipOutsider"+suffix.slice(0,6)},randomUUID());
    const unrelatedList=await api.get("/api/v1/membership/applications/me",{headers:{authorization:"Bearer "+unrelatedMember.token}});
    expect(unrelatedList.status()).toBe(200);
    expect((await unrelatedList.json()).data.some(row=>row.id===application.id),"membership application history must remain owner-scoped").toBe(false);

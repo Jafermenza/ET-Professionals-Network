@@ -79,7 +79,7 @@ jobs:
             exit 1
           fi
           node scripts/ci-api-smoke.js
-          NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:3000 npm run dev --workspace @mpa/web -- --hostname 127.0.0.1 --port 3001 > /tmp/mpa-web.log 2>&1 &
+          API_SERVER_BASE_URL=http://127.0.0.1:3000 npm run dev --workspace @mpa/web -- --hostname 127.0.0.1 --port 3001 > /tmp/mpa-web.log 2>&1 &
           web_pid=$!
           web_healthy=0
           for i in {1..60}; do

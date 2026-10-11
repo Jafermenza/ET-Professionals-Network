@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { withTransaction, getPool } from "../platform/db.js";
 import { signToken, newSessionToken, hashSessionToken, sessionTokenPayload } from "../platform/auth.js";
 import { loadConfig } from "../platform/config.js";
+import { nextTrackingReference } from "../platform/tracking-reference.js";
 import { hashPassword, verifyPassword, normalizeEmail, normalizePhone, normalizeName, validatePersonInput } from "./identity.js";
 
 function httpError(status,message,code="BUSINESS_RULE"){
@@ -114,7 +115,7 @@ export async function updateProfile(userId,input,requestId){
 
 export async function listMyApplications(userId){
   const db=getPool();
-  return (await db.query(`select a.id,a.application_type,a.status,a.submitted_at,a.reviewed_at,a.approved_at,a.created_at,a.updated_at,
+  return (await db.query(`select a.id,a.tracking_reference,a.application_type,a.status,a.submitted_at,a.reviewed_at,a.approved_at,a.created_at,a.updated_at,
       a.data_snapshot,a.fee_snapshot,
       (select jsonb_build_object('id',p.id,'status',p.status,'amount',p.amount,'currency',p.currency,'channel',p.channel,'created_at',p.created_at,'verified_at',p.verified_at)
        from membership_application_payment ap join payment_transaction p on p.id=ap.payment_transaction_id
@@ -153,8 +154,9 @@ export async function createApplication(userId,input,requestId){
     const me=await getMe(userId);
     const snapshot={person:{firstName:me.first_name,middleName:me.middle_name,lastName:me.last_name,displayName:me.display_name,phone:me.phone,dateOfBirth:me.date_of_birth,sex:me.sex,nationality:me.nationality},profile:{headline:me.headline,bio:me.bio}};
     const fee={productCode:prod.product_code,productName:prod.name,amount:amountFromProduct(prod),currency:prod.currency,billingModel:prod.billing_model,durationDays:prod.duration_days};
-    const row=(await db.query(`insert into membership_application(user_id,application_type,previous_membership_id,membership_product_id,status,submitted_at,data_snapshot,fee_snapshot)
-      values($1,$2,$3,$4,'submitted',now(),$5,$6) returning *`,[userId,type,active.rows[0]?.id||null,prod.id,snapshot,fee])).rows[0];
+    const trackingReference=await nextTrackingReference(db,"membership");
+    const row=(await db.query(`insert into membership_application(user_id,tracking_reference,application_type,previous_membership_id,membership_product_id,status,submitted_at,data_snapshot,fee_snapshot)
+      values($1,$2,$3,$4,$5,'submitted',now(),$6,$7) returning *`,[userId,trackingReference,type,active.rows[0]?.id||null,prod.id,snapshot,fee])).rows[0];
     await audit(db,userId,"membership.application_submitted","membership_application",row.id,requestId,{applicationType:type,productCode:prod.product_code});
     await notify(db,userId,"membership_application_submitted","membership_application",row.id,{productCode:prod.product_code});
     return row;

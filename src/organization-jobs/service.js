@@ -1,4 +1,5 @@
 import { getPool, withTransaction } from "../platform/db.js";
+import { nextTrackingReference } from "../platform/tracking-reference.js";
 
 function error(status,message,code="BUSINESS_RULE"){ const e=new Error(message); e.statusCode=status; e.code=code; return e; }
 const ORG_WRITE_ROLES=["owner","administrator","recruiter"];
@@ -29,7 +30,8 @@ export async function registerOrganization(userId,input,requestId){
   const existing=(await db.query("select id from organization where lower(legal_name)=lower($1)",[String(input.legalName).trim()])).rows[0];
   if(existing) throw error(409,"An organization with this legal name already exists.","DUPLICATE_ORGANIZATION");
   const geography=await validateReference(db,input.geographyReferenceItemId,"geography");
-  const org=(await db.query("insert into organization(legal_name,display_name,organization_type,description,website,email,phone,geography_reference_item_id,address_text,created_by) values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) returning *",[input.legalName,input.displayName,input.organizationType||null,input.description||null,input.website||null,input.email||null,input.phone||null,geography,input.addressText||null,userId])).rows[0];
+  const trackingReference=await nextTrackingReference(db,"organization");
+  const org=(await db.query("insert into organization(legal_name,display_name,tracking_reference,organization_type,description,website,email,phone,geography_reference_item_id,address_text,created_by) values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) returning *",[input.legalName,input.displayName,trackingReference,input.organizationType||null,input.description||null,input.website||null,input.email||null,input.phone||null,geography,input.addressText||null,userId])).rows[0];
   await db.query("insert into organization_membership(organization_id,user_id,role_code,status,joined_at) values($1,$2,'owner','active',now())",[org.id,userId]);
   await db.query("insert into organization_verification_case(organization_id,status,submitted_by,submitted_at) values($1,'draft',$2,null)",[org.id,userId]);
   await audit(db,userId,"organization.created","organization",org.id,requestId,{});
@@ -315,9 +317,10 @@ export async function saveApplicationDraft(jobId,userId,input={},requestId){
   const existing=(await db.query("select * from job_application where job_id=$1 and applicant_user_id=$2 for update",[jobId,userId])).rows[0];
   if(existing && !["draft","withdrawn"].includes(existing.status)) throw error(409,"You already have an active or completed application for this job.","DUPLICATE_APPLICATION");
   const snapshot=await safeProfileSnapshot(db,userId);
+  const trackingReference=existing?.tracking_reference||await nextTrackingReference(db,"job");
   const app=existing?.status==="withdrawn"
-    ? (await db.query("update job_application set status='draft',cover_letter=$1,profile_snapshot=$2,eligibility_snapshot='{}'::jsonb,submitted_at=null,withdrawn_at=null,decided_at=null,updated_at=now() where id=$3 returning *",[input.coverLetter||null,snapshot,existing.id])).rows[0]
-    : (await db.query("insert into job_application(job_id,applicant_user_id,status,cover_letter,profile_snapshot) values($1,$2,'draft',$3,$4) returning *",[jobId,userId,input.coverLetter||null,snapshot])).rows[0];
+    ? (await db.query("update job_application set tracking_reference=$1,status='draft',cover_letter=$2,profile_snapshot=$3,eligibility_snapshot='{}'::jsonb,submitted_at=null,withdrawn_at=null,decided_at=null,updated_at=now() where id=$4 returning *",[trackingReference,input.coverLetter||null,snapshot,existing.id])).rows[0]
+    : (await db.query("insert into job_application(job_id,applicant_user_id,tracking_reference,status,cover_letter,profile_snapshot) values($1,$2,$3,'draft',$4,$5) returning *",[jobId,userId,trackingReference,input.coverLetter||null,snapshot])).rows[0];
   await db.query("insert into job_application_event(application_id,actor_user_id,from_status,to_status,note) values($1,$2,$3,'draft',$4)",[app.id,userId,existing?.status||null,input.note||null]);
   await audit(db,userId,"job.application_draft_saved","job_application",app.id,requestId,{jobId});
   return app;
@@ -361,7 +364,8 @@ export async function applyToJob(jobId,userId,input,requestId){
   const snapshot=await safeProfileSnapshot(db,userId);
   const existing=(await db.query("select id,status from job_application where job_id=$1 and applicant_user_id=$2 for update",[jobId,userId])).rows[0];
   if(existing) throw error(409,"You already have an application for this job. Use the draft endpoint or withdraw before reapplying.","DUPLICATE_APPLICATION");
-  const app=(await db.query("insert into job_application(job_id,applicant_user_id,status,cover_letter,profile_snapshot,eligibility_snapshot,submitted_at) values($1,$2,'submitted',$3,$4,$5,now()) returning *",[jobId,userId,input.coverLetter||null,snapshot,eligibility])).rows[0];
+  const trackingReference=await nextTrackingReference(db,"job");
+  const app=(await db.query("insert into job_application(job_id,applicant_user_id,tracking_reference,status,cover_letter,profile_snapshot,eligibility_snapshot,submitted_at) values($1,$2,$3,'submitted',$4,$5,$6,now()) returning *",[jobId,userId,trackingReference,input.coverLetter||null,snapshot,eligibility])).rows[0];
   await saveScreeningAnswers(db,app.id,jobId,input.answers||[]);
   await db.query("insert into job_application_event(application_id,actor_user_id,from_status,to_status,note) values($1,$2,null,'submitted',$3)",[app.id,userId,input.note||null]);
   await audit(db,userId,"job.application_submitted","job_application",app.id,requestId,{jobId});

@@ -1,5 +1,3 @@
-const API_BASE=(process.env.NEXT_PUBLIC_API_BASE_URL||"").replace(/\/$/,"");
-
 export class ApiError extends Error {
   readonly code?: string;
   readonly status: number;
@@ -59,7 +57,7 @@ export async function api<T>(path:string,init:RequestInit={},token?:string):Prom
   if(token) headers.set("Authorization","Bearer "+token);
   let response: Response;
   try {
-    response = await fetch(API_BASE+path,{...init,headers,cache:"no-store"});
+    response = await fetch(path,{...init,headers,cache:"no-store"});
   } catch {
     throw new ApiError("We could not reach the service. Check your connection and try again.",0,"NETWORK_ERROR");
   }
