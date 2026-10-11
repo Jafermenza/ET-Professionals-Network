@@ -694,6 +694,14 @@ export async function referCandidate(jobId,userId,input,requestId){
   return row;
  });
 }
+export async function listJobApplications(jobId,userId){
+ const db=getPool(); await jobRole(db,jobId,userId,["hiring_manager","recruiter","interviewer","observer"]);
+ return (await db.query(`select a.id,a.job_id,a.status,a.cover_letter,a.submitted_at,a.created_at,a.updated_at,
+   a.offer_amount,a.offer_currency,a.offer_approval_status,a.eligibility_snapshot,
+   p.display_name candidate_name
+   from job_application a join person p on p.user_id=a.applicant_user_id
+   where a.job_id=$1 order by a.submitted_at desc nulls last,a.created_at desc`,[jobId])).rows;
+}
 export async function jobDashboard(jobId,userId){
  const db=getPool(); await jobRole(db,jobId,userId,["hiring_manager","recruiter","interviewer","observer"]);
  const job=(await db.query("select j.*,o.display_name organization_name from job j join organization o on o.id=j.organization_id where j.id=$1",[jobId])).rows[0];
