@@ -265,7 +265,10 @@ test("public jobs, services, mentorship and organization screens load without ru
     ["/jobs","Opportunities, without the maze."],
     ["/services","Find help, then deliver it well."],
     ["/mentorship","One goal. One good match."],
-    ["/organizations","Build a trusted organization profile."]
+    ["/organizations","Build a trusted organization profile."],
+    ["/membership","Your membership, clearly tracked."],
+    ["/verification","Verification workspace"],
+    ["/recruitment","Recruitment workspace"]
   ];
   for(const [path,heading] of screens){
     await page.goto(path);
