@@ -287,7 +287,7 @@ test("field evidence is encrypted into a durable offline queue rather than a cli
  await page.context().setOffline(false);
  await page.reload();
  await expect(page.getByText("offline-field-evidence.png",{exact:true})).toBeVisible();
- await expect(page.getByText(/Not attached to a project\/task/)).toBeVisible();
+ await expect(page.getByText("Project/task linkage still open",{exact:true})).toBeVisible();
  expect(failures,"field queue must not raise browser runtime errors").toEqual([]);
 });
 
