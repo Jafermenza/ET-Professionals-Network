@@ -214,6 +214,13 @@ test("membership application, correction, fee verification and activation persis
    expect(created.status()).toBe(201);
    const application=(await created.json()).data;
    expect(application.status).toBe("submitted");
+   const ownApplicationList=await api.get("/api/v1/membership/applications/me",{headers:memberHeaders});
+   expect(ownApplicationList.status()).toBe(200);
+   expect((await ownApplicationList.json()).data.some(row=>row.id===application.id)).toBe(true);
+   const unrelatedMember=await registerMember({email:"gate4-membership-outsider-"+suffix+"@example.test",password:"gate4-membership-outsider-password-12345",firstName:"Gate4",lastName:"MembershipOutsider"},randomUUID());
+   const unrelatedList=await api.get("/api/v1/membership/applications/me",{headers:{authorization:"Bearer "+unrelatedMember.token}});
+   expect(unrelatedList.status()).toBe(200);
+   expect((await unrelatedList.json()).data.some(row=>row.id===application.id),"membership application history must remain owner-scoped").toBe(false);
    const duplicate=await api.post("/api/v1/membership/applications",{headers:memberHeaders,data:{productCode:product.product_code}});
    expect(duplicate.status(),"a second active application must be rejected, not duplicated").toBe(409);
    const earlyActivation=await api.post("/api/v1/membership/applications/"+application.id+"/activate",{headers:reviewerHeaders});
