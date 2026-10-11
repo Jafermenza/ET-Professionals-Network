@@ -344,6 +344,9 @@ test("ATS workspace loads the authorized organization's persisted candidate pipe
   await page.getByLabel("Scorecard title").fill("Gate 4 Interview Rubric");
   await page.getByRole("button",{name:"Save scorecard"}).click();
   await expect(page.getByText("Gate 4 Interview Rubric",{exact:true})).toBeVisible();
+  await page.getByLabel("Question").fill("Can you work in the listed location?");
+  await page.getByRole("button",{name:"Add screening question"}).click();
+  await expect(page.getByText("Can you work in the listed location?",{exact:true})).toBeVisible();
   for(const stage of ["screening","shortlisted","interview"]){
     await candidateRow().locator("select").first().selectOption(stage);
     await expect(candidateRow().getByText(stage,{exact:true})).toBeVisible();
