@@ -67,7 +67,7 @@ Gates are sequential for acceptance. A later gate may reveal work for an earlier
 
 | ID | Area | Initial observation / risk | Required proof or action |
 |---|---|---|---|
-| R-01 | Build/CI | No lockfile is present; CI uses `npm install`. | Establish reproducible workspace dependency resolution; commit the appropriate lockfile and use `npm ci` where supported. |
+| R-01 | Build/CI | Historical baseline lacked a lockfile and used `npm install`; Gate 1 later committed `package-lock.json` and switched CI to `npm ci`. | Preserve the committed lockfile and clean-install contract; current-head execution is deferred by maintainer billing instruction. |
 | R-02 | API contract | Two `GET /api/v1/me` handlers existed; the first returned only account/role data and shadowed the later profile response consumed by the dashboard. | **Fix committed on this branch:** removed the shadowing handler; CI passed on the resulting server change. Add a focused authenticated route contract test during G5. |
 | R-03 | Authorization | Tokens contain role claims while account sessions are checked against the database. A role change may leave old role claims active until expiry unless sessions are revoked or roles are reloaded. | Trace every privileged route and role mutation; test role grant/removal and session revocation. |
 | R-04 | Migrations | The original runner had no history ledger and reran every SQL file on every invocation. | **Fix under CI validation:** migration runner now records filename + SHA-256 checksum, refuses edits to already-applied migration files, and applies each new migration and ledger entry in one transaction. CI now runs the migration command twice. A fresh-DB rerun is not a substitute for validating an existing-schema upgrade. |
