@@ -41,7 +41,7 @@ export async function getOrganization(orgId,viewerId=null){
  const db=getPool();
  const org=(await db.query("select o.*,ri.code geography_code,ri.label geography_label from organization o left join reference_item ri on ri.id=o.geography_reference_item_id where o.id=$1",[orgId])).rows[0];
  if(!org) throw error(404,"Organization not found.","NOT_FOUND");
- if(!org.public_visible && (!viewerId || !(await db.query("select 1 from organization_membership where organization_id=$1 and user_id=$2 and status='active'",[orgId,viewerId])).rows[0])) throw error(404,"Organization not found.","NOT_FOUND");
+ if(!org.public_visible && (!viewerId || !(await db.query("select 1 from organization_membership where organization_id=$1 and user_id=$2 and status='active'",[orgId,viewerId])).rows[0])) throw error(403,"You do not have access to this organization.","FORBIDDEN");
  const users=(await db.query("select om.user_id,om.role_code,om.status from organization_membership om where om.organization_id=$1 and om.status='active'",[orgId])).rows;
  return {...org,users};
 }
@@ -670,8 +670,11 @@ export async function submitInterviewFeedback(interviewId,userId,input,requestId
  return withTransaction(async db=>{
   const p=(await db.query("select jp.*,ji.application_id,a.job_id from job_interview_participant jp join job_interview ji on ji.id=jp.interview_id join job_application a on a.id=ji.application_id where ji.id=$1 and jp.user_id=$2 and jp.role_code='interviewer'",[interviewId,userId])).rows[0];
   if(!p) throw error(403,"Only assigned interviewers can submit feedback.","FORBIDDEN");
-  const row=(await db.query("insert into job_interview_feedback(interview_id,interviewer_user_id,scorecard_id,ratings,recommendation,comments) values($1,$2,$3,$4,$5,$6) on conflict(interview_id,interviewer_user_id) do update set ratings=excluded.ratings,recommendation=excluded.recommendation,comments=excluded.comments,submitted_at=now() returning *",[interviewId,userId,input.scorecardId||null,input.ratings||{},input.recommendation||"no_decision",input.comments||null])).rows[0];
-  await audit(db,userId,"job.interview_feedback_submitted","job_interview",interviewId,requestId,{});
+  const recommendation=String(input.recommendation ?? "no_decision");
+  const allowedRecommendations=["strong_yes","yes","mixed","no","strong_no","no_decision","advance"];
+  if(!allowedRecommendations.includes(recommendation)) throw error(400,"Unsupported interview recommendation.","VALIDATION_ERROR");
+  const row=(await db.query("insert into job_interview_feedback(interview_id,interviewer_user_id,scorecard_id,ratings,recommendation,comments) values($1,$2,$3,$4,$5,$6) on conflict(interview_id,interviewer_user_id) do update set ratings=excluded.ratings,recommendation=excluded.recommendation,comments=excluded.comments,submitted_at=now() returning *",[interviewId,userId,input.scorecardId||null,input.ratings||{},recommendation,input.comments||null])).rows[0];
+  await audit(db,userId,"job.interview_feedback_submitted","job_interview",interviewId,requestId,{recommendation});
   return row;
  });
 }

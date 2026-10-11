@@ -202,22 +202,6 @@ export async function submitServicePayment(requestId,userId,input,requestIdHeade
   });
 }
 
-export async function verifyServicePayment(paymentId,verifierId,input,requestIdHeader){
-  return withTransaction(async db=>{
-    const allowed=(await db.query("select 1 from app_user_role ur join app_role r on r.id=ur.role_id where ur.user_id=$1 and r.role_code in ('finance_officer','reviewer','system_admin') limit 1",[verifierId])).rows[0];
-    if(!allowed) throw error(403,"Finance or reviewer authorization is required to verify service payment.","FORBIDDEN");
-    const p=(await db.query("select * from service_payment where id=$1 for update",[paymentId])).rows[0];
-    if(!p) throw error(404,"Service payment not found.","NOT_FOUND");
-    if(!["approved","rejected","needs_correction"].includes(input.decision)) throw error(400,"Invalid payment verification decision.","VALIDATION_ERROR");
-    const next=input.decision==="approved"?"succeeded":input.decision==="rejected"?"failed":"pending";
-    await db.query("insert into payment_verification(payment_transaction_id,verifier_user_id,decision,evidence_checked,note) values($1,$2,$3,$4,$5)",[p.payment_transaction_id,verifierId,input.decision,JSON.stringify(input.evidenceChecked||[]),input.note||null]);
-    await db.query("update payment_transaction set status=$1,verified_by=$2,verified_at=now(),verification_note=$3,completed_at=case when $1 in ('succeeded','failed') then now() else completed_at end,updated_at=now() where id=$4",[next,verifierId,input.note||null,p.payment_transaction_id]);
-    const row=(await db.query("update service_payment set status=$1,verified_by=$2,verified_at=now(),verification_note=$3,updated_at=now() where id=$4 returning *",[next,verifierId,input.note||null,paymentId])).rows[0];
-    await audit(db,verifierId,"service.payment_verified","service_payment",paymentId,requestIdHeader,{decision:input.decision});
-    return row;
-  });
-}
-
 export async function acceptServiceCompletion(requestId,userId,note,requestIdHeader){
   return withTransaction(async db=>{
     const r=(await db.query("select * from service_request where id=$1 for update",[requestId])).rows[0];
