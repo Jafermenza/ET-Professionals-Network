@@ -319,6 +319,8 @@ test("ATS workspace loads the authorized organization's persisted candidate pipe
   const pipeline=await api.get("/api/v1/jobs/"+fixture.jobId+"/applications",{headers:{authorization:"Bearer "+adminToken}});
   expect(pipeline.status()).toBe(200);
   expect((await pipeline.json()).data.some(row=>row.id===applicationId&&row.status==="submitted")).toBeTruthy();
+  const foreignPipeline=await api.get("/api/v1/jobs/"+fixture.jobId+"/applications",{headers:{authorization:"Bearer "+candidate.token}});
+  expect(foreignPipeline.status(),"a candidate cannot enumerate the employer's pipeline").toBe(403);
   await page.addInitScript(token=>sessionStorage.setItem("mpa-session-token",token),adminToken);
   const failures=[];page.on("pageerror",e=>failures.push(e.message));
   await page.goto("/recruitment");
