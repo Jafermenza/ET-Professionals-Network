@@ -4,7 +4,7 @@ import Link from "next/link";
 import { motion, useReducedMotion } from "framer-motion";
 import {
   ArrowRight, UserCheck, BriefcaseBusiness, GraduationCap, Building2,
-  ShieldCheck, CheckCircle2, LineChart, LogIn, FileText, Search,
+  ShieldCheck, CheckCircle2, LogIn, FileText, Search,
   HeartHandshake, Network, ClipboardCheck, LockKeyhole, UsersRound
 } from "lucide-react";
 import styles from "./landing-redesign.module.css";
@@ -26,10 +26,10 @@ const capabilities = [
 function MpaMark() {
   return (
     <svg viewBox="0 0 100 120" fill="none" className={styles.logoMark} aria-hidden="true">
-      <motion.path d="M15 110V60C15 35 50 15 50 15V45C32 52 30 70 30 110Z" fill="#0A3258"
+      <motion.path d="M15 110V60C15 35 50 15 50 15V45C32 52 30 70 30 110Z" fill="#0A3258" stroke="#0A3258" strokeWidth="2"
         initial={{ pathLength: 0 }} animate={{ pathLength: 1 }} transition={{ duration: 1.1, ease: "easeInOut" }} />
       <motion.path d="M85 35C85 35 50 15 50 15V45C68 52 78 57 78 70C78 78 73 85 65 85H32V70H65C78 70 78 57 68 52C50 45 50 15 50 15"
-        fill="#97C024" initial={{ pathLength: 0 }} animate={{ pathLength: 1 }}
+        fill="#97C024" stroke="#97C024" strokeWidth="2" initial={{ pathLength: 0 }} animate={{ pathLength: 1 }}
         transition={{ duration: 1.1, delay: 0.2, ease: "easeInOut" }} />
     </svg>
   );
