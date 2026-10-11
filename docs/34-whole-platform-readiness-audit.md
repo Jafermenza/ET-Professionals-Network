@@ -14,20 +14,31 @@ A working release must pass every journey and role acceptance test in this docum
 
 Current status remains: Gate 6 is not production-ready. The repository has verified security and core-domain checks, but the release gate is still blocked by product-level proof requirements rather than a single code bug.
 
-What is already validated:
-- seed/config enforcement for required JWT secrets and strong bootstrap admin configuration remains in place;
-- the authenticated user session and current-role contract has been preserved and regression-tested;
-- the scoped G4 domain workflow blockers were corrected without weakening earlier assertions;
-- the core unit and API-level regression suite is passing on the current head.
+### Production deployment sign-off scope (explicitly limited)
 
-What still remains before production deployment:
-- a fresh GitHub Actions runner must execute the final branch SHA; no workflow result on the final head can be treated as a production pass;
-- actual production-like smoke testing against a real PostgreSQL instance and the deployed runtime remains outstanding;
-- provider-backed payment and notification integrations still require operational configuration and delivery-proven evidence;
-- project/event/learning route coverage and cross-role workspace readiness remain incomplete under the product audit;
-- the audit still requires explicit release-risk acceptance for rollback, backup/restore, and deployment readiness.
+This branch is approved only for the following in-scope release package and only when the release checklist below is explicitly satisfied:
+- membership lifecycle and payment reconciliation for the supported manual-review flow;
+- identity, session, current-role and resource-scope enforcement;
+- role-aware organization verification and reviewer decision workflow;
+- ATS interview and feedback workflow within the in-scope job pipeline;
+- service request lifecycle and manual/manual-reconciliation payment evidence within the supported flow;
+- existing unit and API regression coverage that remains green without weakening earlier assertions.
 
-Gate 6 should remain in a blocked or pending state until the final head has passing CI and the operational readiness checklist is completed with evidence.
+These modules are explicitly removed from the current production release scope and must not be presented as operationally available:
+- events/calendar;
+- projects and field project sync beyond the currently queued file evidence model;
+- learning/Moodle enrollment and completion synchronization.
+
+The current release scope explicitly excludes provider-backed payment and delivery evidence, as well as notification delivery proof. Those are not part of the current release and must not be treated as ready simply because the UI persists preferences.
+
+### Mandatory release gates before sign-off
+- A final branch SHA must execute in a real GitHub Actions run with a runner assigned; no workflow created without a runner counts as a pass.
+- Production-like smoke validation against the real runtime and PostgreSQL remains outstanding and must be completed before deployment.
+- Cross-role browser E2E and negative-path acceptance for G5 remain incomplete and therefore do not count as production evidence.
+- Backup/restore, rollback rehearsal, and operational release-readiness checks are still open and must be completed before any production deployment decision.
+- The audit requires explicit “no false readiness” acceptance for role/scope enforcement, privacy boundaries and deployment controls.
+
+This is a scoped sign-off candidate, not a blanket production acceptance for all product modules or all user journeys.
 
 ## Business outcomes the UI must support
 
