@@ -162,11 +162,12 @@ test("ATS interview feedback is assigned-interviewer-only and the candidate time
       data: { note: "Interview completed; hiring team review pending.", visibility: "team" }
     });
     expect(note.status()).toBe(201);
+    const noteData = (await note.json()).data;
     const notes = await api.get("/api/v1/job-applications/" + applicationId + "/notes", {
       headers: { authorization: "Bearer " + interviewer.token }
     });
     expect(notes.status()).toBe(200);
-    expect((await notes.json()).data.some(row => row.id === (await note.json()).data.id),
+    expect((await notes.json()).data.some(row => row.id === noteData.id),
       "the authorized interview team can read the persisted candidate timeline note").toBe(true);
 
     const outsiderNotes = await api.get("/api/v1/job-applications/" + applicationId + "/notes", {
