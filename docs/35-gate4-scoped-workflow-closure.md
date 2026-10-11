@@ -47,6 +47,21 @@ Do not block this scoped workflow closure on building the following integrations
 - **Projects and related modules:** no claim of project/task-bound field evidence, volunteer lifecycle, donation allocation, receipts or project outcome tracking. The existing encrypted offline file queue is not full project synchronization.
 - **Automated payment integrations:** no gateway credentials, webhooks, settlement imports or automated refunds. The supported acceptance path is manual evidence submission, finance/reviewer decision, audit and persisted reconciliation.
 
+
+## Remaining in-scope gaps — not accepted by this commit
+
+These are still required before claiming all Gate 4 scoped workflows are closed:
+
+- **Membership:** expiry, suspension with reason/audit, and renewal-period preservation still need an implemented end-to-end lifecycle and acceptance proof beyond new-application/manual-payment activation.
+- **Professional verification:** checklist-by-checklist evidence outcomes, referee/concern management, adverse-decision response, independent appeal decision, and expiry/revocation persistence need full API/browser coverage.
+- **Organization verification:** required-evidence policy variants, missing/invalid upload retry, duplicate evidence handling, and complete owner/admin/read-only/reviewer scope matrix remain open.
+- **Talent privacy:** explicit directory-consent revocation, inquiry accept/decline, and contact release only after acceptance need owner/outsider tests and persisted-state proof.
+- **Field evidence:** queued file evidence is not yet attached to project/task records; operation UUID/timestamp semantics, reviewer acknowledgement, and entity-specific conflict handling remain open. This record does not call the queue full offline synchronization.
+- **Notification delivery:** preference persistence is not proof of delivery. Provider delivery/retry/dead-letter is explicitly deferred with the email/SMS integration.
+- **G5/G6:** no full current-head suite has executed, so no gate is passed on the basis of this change.
+
+The two new scoped workflow tests and the ATS test are additions to the suite, not a waiver of the gaps above.
+
 ## Final execution gate
 
 Run on the same final branch SHA:
