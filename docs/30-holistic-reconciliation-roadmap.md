@@ -171,3 +171,21 @@ The latest code head before this documentation update was `067a80ee4fd34a1ce699d
 The last fully executed run is [38080002701](https://github.com/Jafermenza/ET-Professionals-Network/actions/runs/38080002701) on `a87be60e140a18253366b1de19c89cbb77a5fad5`. It ran migrations, unit tests and web build successfully but failed four browser tests: two newly added fixtures hit the shared public registration rate limit, a downstream test hit the same limit, and the mentorship outage fixture attempted to submit while its button was disabled. These are recorded as failures, not silently reclassified. The test fixtures and search readiness check were corrected after that run, and verification action responses were corrected to return committed state, but the fixes still require execution on the current head.
 
 **Next acceptance action:** restore a working GitHub Actions runner for this repository, rerun push and PR CI on the final head, and resolve any real E2E failure before marking G4 PASS. G4 is not accepted based on unit/build success or a no-runner workflow result.
+
+
+## Scoped G4 implementation follow-through (CI deferred by billing)
+
+The maintainer has explicitly deferred CI execution until repository Actions billing is available. Work therefore continues through repository inspection and code/documentation updates, but implementation is not labelled tested or accepted merely because CI cannot run.
+
+The current branch now adds:
+- Owner-scoped membership application history and a `/membership` UI spanning plan selection, application submission, correction response, manual payment submission, reviewer decisions, finance verification and separately gated activation.
+- Active verification program discovery, member-owned case list and a `/verification` workspace for consent, claims, private evidence upload/attachment, member response, appeals, reviewer assignment, state transitions and reasoned decisions.
+- Organization verification reviewer queue and decision UI, including authenticated private evidence retrieval.
+- Job-scoped candidate listing and a `/recruitment` workspace for authorized organization/job selection, job drafts/publication, candidate pipeline transitions and interview scheduling.
+- Dashboard entry points to these workflows, contract documentation and Playwright coverage for the new membership, verification, ATS and organization-review screens/journeys. Existing assertions were retained.
+
+### Current acceptance status
+
+**G4 = IMPLEMENTED — EXECUTION DEFERRED, not PASS.** CI was not started in accordance with the maintainer's billing instruction. The final suite must be run on one exact branch SHA once billing permits it. Any actual failures must be corrected without removing or weakening assertions.
+
+Still open beyond the scoped workflow UI: encrypted offline field evidence with project/task linkage and sync conflict semantics; live payment and notification providers; complete verification checklist/referee/appeal-review UI; full ATS scorecards/team/offer-approval UI; external calendar integration; events/calendar, learning/Moodle, projects/volunteers/donations and payment-to-donation allocation. These are recorded as implementation gaps rather than being represented as operational.
