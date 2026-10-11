@@ -328,7 +328,21 @@ test("ATS workspace loads the authorized organization's persisted candidate pipe
   await expect(page.getByLabel("Job")).toBeVisible();
   await page.getByLabel("Job").selectOption(fixture.jobId);
   await expect(page.getByText(candidate.displayName,{exact:true})).toBeVisible();
-  await expect(page.getByText("submitted",{exact:true})).toBeVisible();
+  const candidateRow=()=>page.locator(".case-row").filter({hasText:applicationId});
+  await expect(candidateRow().getByText("submitted",{exact:true})).toBeVisible();
+  await page.getByLabel("Scorecard title").fill("Gate 4 Interview Rubric");
+  await page.getByRole("button",{name:"Save scorecard"}).click();
+  await expect(page.getByText("Gate 4 Interview Rubric",{exact:true})).toBeVisible();
+  for(const stage of ["screening","shortlisted","interview"]){
+    await candidateRow().locator("select").first().selectOption(stage);
+    await expect(candidateRow().getByText(stage,{exact:true})).toBeVisible();
+  }
+  const offerForm=candidateRow().locator("form").filter({hasText:"Issue an offer"});
+  await offerForm.locator('input[type="number"]').fill("45000");
+  await offerForm.locator("textarea").fill("Gate 4 offer terms fixture");
+  await offerForm.getByRole("button",{name:"Issue offer"}).click();
+  await expect(candidateRow().getByText("offer",{exact:true})).toBeVisible();
+  await expect(candidateRow().getByText(/45,000|45000/)).toBeVisible();
   expect(failures,"ATS UI must not raise browser runtime errors").toEqual([]);
  }finally{await api.dispose();}
 });
