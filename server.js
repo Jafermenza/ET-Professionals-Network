@@ -273,6 +273,7 @@ const server=http.createServer(async (req,res)=>{
       const c=await verification.getCase(parts[4],identity.sub);
       return ok(res,c,requestId);
     }
+    if(req.method==="GET" && p==="api/v1/review/verification/appeals") return ok(res,await verification.listAppealsForReview(identity.sub),requestId);
     if(req.method==="GET" && p==="api/v1/review/verification/cases"){
       anyRole(identity,["verification_reviewer","ethics_reviewer","system_admin"]);
       const q=query(req.url);
