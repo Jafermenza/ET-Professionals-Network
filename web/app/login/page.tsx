@@ -34,15 +34,16 @@ export default function Login(){
  const [passkeyBusy,setPasskeyBusy]=useState(false);
  const [recoveryMode,setRecoveryMode]=useState(false);
  const [recoveryCode,setRecoveryCode]=useState("");
- async function finishLogin(token:string){
+ async function finishLogin(token:string,passkeyEnrollmentRequired=false){
    setToken(token);
+   if(passkeyEnrollmentRequired){router.replace("/admin/security?enroll=1");return;}
    const requested=new URLSearchParams(window.location.search).get("next");
    const destination=requested&&requested.startsWith("/")&&!requested.startsWith("//")?requested:"/dashboard";
    router.replace(destination);
  }
  async function submit(e:FormEvent){
    e.preventDefault();setBusy(true);setError("");
-   try{const r=await api<any>("/api/v1/auth/login",{method:"POST",body:JSON.stringify({email,password})});await finishLogin(r.token);}
+   try{const r=await api<any>("/api/v1/auth/login",{method:"POST",body:JSON.stringify({email,password})});await finishLogin(r.token,Boolean(r.passkeyEnrollmentRequired));}
    catch(err){setError(err instanceof Error?err.message:"We could not sign you in. Please try again.");}
    finally{setBusy(false);}
  }
