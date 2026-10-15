@@ -76,13 +76,13 @@ Create a second Node.js app:
 - NODE_ENV=production
 - HOST=0.0.0.0
 - PORT=<port assigned by cPanel>
-- NEXT_PUBLIC_API_BASE_URL=https://api.example.org
+- API_SERVER_BASE_URL=https://api.example.org
 
 Before building, from the repository root run:
 npm ci
 npm run web:build
 
-NEXT_PUBLIC_API_BASE_URL is embedded in the browser bundle, so rebuild after changing it. Restart the web app.
+The browser calls the same-origin `/api/*` paths. Next.js rewrites those requests to `API_SERVER_BASE_URL` from the server runtime/build configuration, so the API origin is never embedded in browser JavaScript. Rebuild and restart the web app after changing this value.
 
 ## 8. Smoke test
 API:
@@ -99,7 +99,8 @@ Landing:
 Registration/login:
 1. Create a dedicated test account.
 2. Confirm registration reaches /apply.
-3. Login and open /track.
+3. Login and confirm the browser lands on /dashboard.
+4. Open /track from the dashboard and verify private application progress is scoped to the signed-in account.
 
 Member application:
 1. Apply from /apply.
@@ -134,12 +135,12 @@ npm run web:build
 curl -i https://api.example.org/healthz
 curl -i https://api.example.org/readyz
 
-For browser/API connection failures, verify NEXT_PUBLIC_API_BASE_URL was set before web:build and that the API hostname is reachable over HTTPS.
+For browser/API connection failures, verify the web origin serves `/api/healthz` through its Next.js rewrite and that `API_SERVER_BASE_URL` is reachable from the web server. Do not configure a browser loopback URL such as `127.0.0.1` as a public API base.
 
 ## 10. Production acceptance checklist
 - HTTPS works for web and API.
 - API uses production PostgreSQL.
-- Web uses the correct API base URL.
+- Web's same-origin `/api/*` rewrite reaches the API through `API_SERVER_BASE_URL`.
 - Migrations completed successfully.
 - Health/readiness return 200.
 - Landing page works on desktop/mobile.
@@ -164,7 +165,7 @@ Before the first production start, set these API-only environment variables in c
 - BOOTSTRAP_SUPER_ADMIN_EMAIL — first system administrator email.
 - BOOTSTRAP_SUPER_ADMIN_PASSWORD — unique random password, minimum 14 characters.
 - BOOTSTRAP_ADMIN_NAME — display name for the first administrator.
-- CORS_ORIGIN — exact HTTPS web origin, not * , for production browser access.
+- CORS_ORIGIN — optional comma-separated exact HTTPS origins only for browser clients that call the API domain directly. The standard Next.js web app uses a same-origin API rewrite and does not require cross-origin access.
 
 On startup, the bootstrap is idempotent: it creates the administrator if absent and assigns system_admin; it does not replace an existing account password. Remove the bootstrap password from the hosting environment after the initial administrator is securely established, or rotate it to a value unavailable to application operators.
 
@@ -177,7 +178,7 @@ System administrators can manage account status, assign roles, revoke all sessio
 1. HTTPS/AutoSSL is active on both web and API domains.
 2. PostgreSQL is private to the application account where possible.
 3. DATABASE_URL, JWT_SECRET, and bootstrap credentials are server-side environment secrets only.
-4. CORS_ORIGIN exactly matches the production web origin.
+4. The web app's `/api/*` rewrite reaches the configured API; configure exact `CORS_ORIGIN` values only for any approved clients that bypass the web proxy.
 5. The first administrator signs in, changes the bootstrap password, and confirms a second trusted administrator account before removing bootstrap credentials.
 6. Test logout: the old bearer token must no longer access protected routes.
 7. Test suspension: suspended user sessions must fail immediately.
@@ -185,4 +186,4 @@ System administrators can manage account status, assign roles, revoke all sessio
 9. Confirm audit records exist for bootstrap, login, logout/session revocation, role/status changes and password resets.
 10. Do not expose database credentials, JWT secrets, bootstrap passwords, private evidence, or reviewer notes in frontend builds or logs.
 
-The API uses bearer access tokens rather than browser cookies, so CSRF is not the primary session threat; nevertheless, exact CORS configuration and HTTPS remain mandatory.
+The API uses bearer access tokens rather than browser cookies, so CSRF is not the primary session threat. HTTPS remains mandatory; exact CORS configuration is needed only for approved browser clients that call the API cross-origin instead of using the same-origin web rewrite.

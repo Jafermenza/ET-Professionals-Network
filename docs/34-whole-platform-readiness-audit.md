@@ -10,6 +10,36 @@ The product requirements define a coherent professional ecosystem, but the curre
 
 A working release must pass every journey and role acceptance test in this document. Do not resolve gaps by hiding errors, making protected APIs public, fabricating activity, or presenting sample data as live data.
 
+## Gate 6 checkpoint — 2026-10-11
+
+Current status remains: Gate 6 is not production-ready. The repository has verified security and core-domain checks, but the release gate is still blocked by product-level proof requirements rather than a single code bug.
+
+### Production deployment sign-off scope (explicitly limited)
+
+This branch is approved only for the following in-scope release package and only when the release checklist below is explicitly satisfied:
+- membership lifecycle and payment reconciliation for the supported manual-review flow;
+- identity, session, current-role and resource-scope enforcement;
+- role-aware organization verification and reviewer decision workflow;
+- ATS interview and feedback workflow within the in-scope job pipeline;
+- service request lifecycle and manual/manual-reconciliation payment evidence within the supported flow;
+- existing unit and API regression coverage that remains green without weakening earlier assertions.
+
+These modules are explicitly removed from the current production release scope and must not be presented as operationally available:
+- events/calendar;
+- projects and field project sync beyond the currently queued file evidence model;
+- learning/Moodle enrollment and completion synchronization.
+
+The current release scope explicitly excludes provider-backed payment and delivery evidence, as well as notification delivery proof. Those are not part of the current release and must not be treated as ready simply because the UI persists preferences.
+
+### Mandatory release gates before sign-off
+- A final branch SHA must execute in a real GitHub Actions run with a runner assigned; no workflow created without a runner counts as a pass.
+- Production-like smoke validation against the real runtime and PostgreSQL remains outstanding and must be completed before deployment.
+- Cross-role browser E2E and negative-path acceptance for G5 remain incomplete and therefore do not count as production evidence.
+- Backup/restore, rollback rehearsal, and operational release-readiness checks are still open and must be completed before any production deployment decision.
+- The audit requires explicit “no false readiness” acceptance for role/scope enforcement, privacy boundaries and deployment controls.
+
+This is a scoped sign-off candidate, not a blanket production acceptance for all product modules or all user journeys.
+
 ## Business outcomes the UI must support
 
 1. **Identity and trust:** account creation, sign-in/out, consent, profile visibility, verification cases and auditable decisions.

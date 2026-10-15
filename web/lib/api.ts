@@ -1,5 +1,3 @@
-const API_BASE=(process.env.NEXT_PUBLIC_API_BASE_URL||"").replace(/\/$/,"");
-
 export class ApiError extends Error {
   readonly code?: string;
   readonly status: number;
@@ -17,6 +15,15 @@ const FRIENDLY_ERRORS: Record<string,string> = {
   IDENTITY_CONFLICT: "An account with these details may already exist. Please sign in with your existing account. If you cannot access it, contact membership support. We have not created a duplicate account.",
   PASSWORD_TOO_SHORT: "Choose a password with at least 10 characters.",
   UNAUTHENTICATED: "Your session has expired or you need to sign in. Please log in and try again.",
+  EMAIL_NOT_VERIFIED: "Verify your email before signing in. You can request a new verification link below.",
+  EMAIL_DELIVERY_NOT_CONFIGURED: "Email verification delivery is not configured for this deployment. Registration is temporarily unavailable; contact the platform operator.",
+  PASSKEY_REQUIRED: "This administrator account requires a passkey. Choose “Sign in with administrator passkey” or use a one-time recovery code.",
+  PASSKEY_ENROLLMENT_REQUIRED: "Register an administrator passkey before continuing. Sign in with your password once to complete setup.",
+  PASSKEY_NOT_CONFIGURED: "Administrator passkeys are not configured for this deployment. Contact the platform operator.",
+  CHALLENGE_REQUIRED: "Complete the human check before registering.",
+  CHALLENGE_INVALID: "The human-check token is invalid, expired, or already used. Complete a new check.",
+  CHALLENGE_INCORRECT: "That answer was not correct. Please try a new human check.",
+  PASSWORD_CONFIRMATION_MISMATCH: "Password confirmation does not match.",
   AUTH_RATE_LIMIT: "There have been too many unsuccessful sign-in attempts. Please wait a while and try again.",
   RATE_LIMITED: "Too many requests were made in a short time. Please wait a moment and try again.",
   FORBIDDEN: "Your account does not have permission to perform this action. If you believe this is incorrect, contact support.",
@@ -59,7 +66,7 @@ export async function api<T>(path:string,init:RequestInit={},token?:string):Prom
   if(token) headers.set("Authorization","Bearer "+token);
   let response: Response;
   try {
-    response = await fetch(API_BASE+path,{...init,headers,cache:"no-store"});
+    response = await fetch(path,{...init,headers,cache:"no-store"});
   } catch {
     throw new ApiError("We could not reach the service. Check your connection and try again.",0,"NETWORK_ERROR");
   }

@@ -1,4 +1,5 @@
 import { getPool, withTransaction } from "../platform/db.js";
+import { queueWorkflowEmail } from "../platform/email-operations.js";
 
 function error(status,message,code="BUSINESS_RULE"){ const e=new Error(message); e.statusCode=status; e.code=code; return e; }
 const ACTIVE_MEMBER_SQL="exists (select 1 from membership_record m where m.user_id=$1 and m.status='active')";
@@ -13,7 +14,14 @@ async function activeMember(db,userId){
 async function professionalVerified(db,userId){
   return (await db.query("select 1 from verification_claim vc join verification_case c on c.id=vc.case_id where c.subject_user_id=$1 and vc.status='verified' and lower(vc.claim_code_snapshot)=any($2::text[]) limit 1",[userId,PROFESSIONAL_CLAIMS])).rowCount>0;
 }
-function normalizeArray(v){ return Array.isArray(v)?v.map(x=>String(x).trim().toLowerCase()).filter(Boolean):[]; }
+function normalizeArray(v){
+  // pg commonly decodes json/jsonb columns to arrays already. Accept legacy JSON text
+  // too, but never JSON.parse an already-decoded array or let malformed text crash matching.
+  if(typeof v==="string"){
+    try { v=JSON.parse(v); } catch { return []; }
+  }
+  return Array.isArray(v)?v.map(x=>String(x).trim().toLowerCase()).filter(Boolean):[];
+}
 function overlap(a,b){ const set=new Set(normalizeArray(a)); return normalizeArray(b).filter(x=>set.has(x)).length; }
 async function hasPlatformRole(db,userId,roles){
   const row=(await db.query("select 1 from app_user_role ur join app_role r on r.id=ur.role_id where ur.user_id=$1 and r.role_code=any($2::text[]) limit 1",[userId,roles])).rows[0];
@@ -129,6 +137,8 @@ export async function requestService(listingId,requesterId,input,requestId){
     const row=(await db.query("insert into service_request(service_listing_id,requester_user_id,provider_user_id,status,message,scope,agreed_price,agreed_currency,completion_due_at,requested_start_at,requested_end_at) values($1,$2,$3,'requested',$4,$5,$6,$7,$8,$9,$10) returning *",[listingId,requesterId,listing.provider_user_id,input.message||null,input.scope||null,proposedPrice,input.currency?String(input.currency).toUpperCase():listing.currency,input.completionDueAt||null,input.requestedStartAt||null,input.requestedEndAt||null])).rows[0];
     await db.query("insert into service_request_event(request_id,actor_user_id,to_status,note) values($1,$2,'requested',$3)",[row.id,requesterId,input.message||null]);
     await audit(db,requesterId,"service.request_created","service_request",row.id,requestId,{listingId});
+    await queueWorkflowEmail(db,row.provider_user_id,"professional.workflow_update",{status:"new service request",nextAction:"Review the service request and accept, decline or ask for clarification"},"service_request",row.id);
+    await queueWorkflowEmail(db,requesterId,"professional.workflow_update",{status:"requested",nextAction:"Track the provider response in your service requests"},"service_request",row.id);
     return row;
   });
 }
@@ -158,11 +168,14 @@ export async function changeServiceRequestStatus(requestId,userId,status,note,re
       const updated=(await db.query("update service_request set provider_completed_at=now(),provider_note=coalesce($1,provider_note),updated_at=now() where id=$2 returning *",[note||null,requestId])).rows[0];
       await db.query("insert into service_request_event(request_id,actor_user_id,from_status,to_status,note) values($1,$2,$3,$4,$5)",[requestId,userId,r.status,r.status,note||"Provider submitted completion; requester acceptance is still required."]);
       await audit(db,userId,"service.request_completion_submitted","service_request",requestId,requestIdHeader,{status:r.status});
+      await queueWorkflowEmail(db,r.requester_user_id,"professional.workflow_update",{status:"provider submitted completion",nextAction:"Review the delivered work and accept completion or raise a dispute"},"service_request",requestId);
       return updated;
     }
     const updated=(await db.query("update service_request set status=$1,provider_note=case when $2::uuid=provider_user_id then $3 else provider_note end,requester_note=case when $2::uuid=requester_user_id then $3 else requester_note end,accepted_at=case when $1='accepted' then now() else accepted_at end,started_at=case when $1='in_progress' then now() else started_at end,cancelled_at=case when $1='cancelled' then now() else cancelled_at end,updated_at=now() where id=$4 returning *",[status,userId,note||null,requestId])).rows[0];
     await db.query("insert into service_request_event(request_id,actor_user_id,from_status,to_status,note) values($1,$2,$3,$4,$5)",[requestId,userId,r.status,status,note||null]);
     await audit(db,userId,"service.request_status_changed","service_request",requestId,requestIdHeader,{from:r.status,to:status});
+    const recipientId=userId===r.provider_user_id?r.requester_user_id:r.provider_user_id;
+    await queueWorkflowEmail(db,recipientId,"professional.workflow_update",{status,nextAction:status==="accepted"?"Agree the delivery plan and start when ready":status==="in_progress"?"Track the delivery milestones":status==="cancelled"?"Review the cancellation details":"Open the service request for the latest details"},"service_request",requestId);
     return updated;
   });
 }
@@ -191,22 +204,6 @@ export async function submitServicePayment(requestId,userId,input,requestIdHeade
     }
     const row=(await db.query("insert into service_payment(request_id,payment_transaction_id,payer_user_id,provider_user_id,amount,currency,channel,evidence_file_id,submitted_by) values($1,$2,$3,$4,$5,$6,$7,$8,$9) returning *",[requestId,p.id,userId,r.provider_user_id,amount,currency,channel,input.evidenceFileId||null,userId])).rows[0];
     await audit(db,userId,"service.payment_submitted","service_payment",row.id,requestIdHeader,{requestId,channel});
-    return row;
-  });
-}
-
-export async function verifyServicePayment(paymentId,verifierId,input,requestIdHeader){
-  return withTransaction(async db=>{
-    const allowed=(await db.query("select 1 from app_user_role ur join app_role r on r.id=ur.role_id where ur.user_id=$1 and r.role_code in ('finance_officer','reviewer','system_admin') limit 1",[verifierId])).rows[0];
-    if(!allowed) throw error(403,"Finance or reviewer authorization is required to verify service payment.","FORBIDDEN");
-    const p=(await db.query("select * from service_payment where id=$1 for update",[paymentId])).rows[0];
-    if(!p) throw error(404,"Service payment not found.","NOT_FOUND");
-    if(!["approved","rejected","needs_correction"].includes(input.decision)) throw error(400,"Invalid payment verification decision.","VALIDATION_ERROR");
-    const next=input.decision==="approved"?"succeeded":input.decision==="rejected"?"failed":"pending";
-    await db.query("insert into payment_verification(payment_transaction_id,verifier_user_id,decision,evidence_checked,note) values($1,$2,$3,$4,$5)",[p.payment_transaction_id,verifierId,input.decision,JSON.stringify(input.evidenceChecked||[]),input.note||null]);
-    await db.query("update payment_transaction set status=$1,verified_by=$2,verified_at=now(),verification_note=$3,completed_at=case when $1 in ('succeeded','failed') then now() else completed_at end,updated_at=now() where id=$4",[next,verifierId,input.note||null,p.payment_transaction_id]);
-    const row=(await db.query("update service_payment set status=$1,verified_by=$2,verified_at=now(),verification_note=$3,updated_at=now() where id=$4 returning *",[next,verifierId,input.note||null,paymentId])).rows[0];
-    await audit(db,verifierId,"service.payment_verified","service_payment",paymentId,requestIdHeader,{decision:input.decision});
     return row;
   });
 }
@@ -249,6 +246,17 @@ export async function listServiceMilestones(requestId,userId){
   return (await db.query("select * from service_request_milestone where request_id=$1 order by due_at nulls last,created_at",[requestId])).rows;
 }
 
+export async function listServiceDeliveries(requestId,userId){
+ const db=getPool();
+ const participant=(await db.query("select provider_user_id,requester_user_id from service_request where id=$1",[requestId])).rows[0];
+ if(!participant) throw error(404,"Service request not found.","NOT_FOUND");
+ if(participant.provider_user_id!==userId&&participant.requester_user_id!==userId) throw error(403,"You are not a participant in this service request.","FORBIDDEN");
+ return (await db.query(`select d.*,m.title milestone_title,p.display_name submitter_name
+  from service_request_delivery d left join service_request_milestone m on m.id=d.milestone_id
+  join person p on p.user_id=d.submitted_by
+  where d.request_id=$1 order by d.created_at desc`,[requestId])).rows;
+}
+
 export async function submitServiceDelivery(requestId,userId,input,requestIdHeader){
   return withTransaction(async db=>{
     const r=(await db.query("select * from service_request where id=$1 for update",[requestId])).rows[0];
@@ -284,6 +292,38 @@ export async function reviewServiceDelivery(deliveryId,userId,input,requestIdHea
   });
 }
 
+export async function listServicePaymentsForReview(reviewerId){
+ const db=getPool();
+ const allowed=(await db.query("select 1 from app_user_role ur join app_role r on r.id=ur.role_id where ur.user_id=$1 and r.role_code in ('finance_officer','system_admin') limit 1",[reviewerId])).rows[0];
+ if(!allowed) throw error(403,"Finance reviewer role required.","FORBIDDEN");
+ return (await db.query(`select sp.id,sp.request_id,sp.payment_transaction_id,sp.payer_user_id,sp.provider_user_id,sp.amount,sp.currency,sp.channel,sp.status,sp.created_at,
+  pt.status transaction_status,pt.idempotency_key,pt.purpose_reference,
+  sr.status request_status,s.title service_title,pr.display_name requester_name,pv.display_name provider_name
+  from service_payment sp join payment_transaction pt on pt.id=sp.payment_transaction_id
+  join service_request sr on sr.id=sp.request_id join service_listing s on s.id=sr.service_listing_id
+  join person pr on pr.user_id=sp.payer_user_id join person pv on pv.user_id=sp.provider_user_id
+  where sp.status='pending' order by sp.created_at`)).rows;
+}
+export async function verifyServicePayment(servicePaymentId,verifierId,input,requestIdHeader){
+ return withTransaction(async db=>{
+  const allowed=(await db.query("select 1 from app_user_role ur join app_role r on r.id=ur.role_id where ur.user_id=$1 and r.role_code in ('finance_officer','system_admin') limit 1",[verifierId])).rows[0];
+  if(!allowed) throw error(403,"Finance reviewer role required.","FORBIDDEN");
+  const row=(await db.query(`select sp.*,pt.status transaction_status,pt.channel transaction_channel,pt.source,sp.payer_user_id,sp.provider_user_id
+   from service_payment sp join payment_transaction pt on pt.id=sp.payment_transaction_id where sp.id=$1 for update of sp,pt`,[servicePaymentId])).rows[0];
+  if(!row) throw error(404,"Service payment not found.","NOT_FOUND");
+  if(row.payer_user_id===verifierId||row.provider_user_id===verifierId) throw error(403,"A service participant cannot verify their own payment.","CONFLICT_OF_INTEREST");
+  if(row.status!=="pending"||row.transaction_status!=="pending") throw error(409,"Only a pending service payment can be verified.","INVALID_STATE");
+  if(!["manual","bank_transfer","cash","other"].includes(row.transaction_channel)||row.source==="provider_webhook") throw error(400,"This payment is not eligible for manual verification.","INVALID_PAYMENT_CHANNEL");
+  if(!["approved","rejected","needs_correction"].includes(input.decision)) throw error(400,"Invalid service payment decision.","VALIDATION_ERROR");
+  const next=input.decision==="approved"?"succeeded":input.decision==="rejected"?"failed":"pending";
+  await db.query("insert into payment_verification(payment_transaction_id,verifier_user_id,decision,evidence_checked,note) values($1,$2,$3,$4,$5)",[row.payment_transaction_id,verifierId,input.decision,JSON.stringify(input.evidenceChecked||[]),input.note||null]);
+  const updated=(await db.query("update service_payment set status=$1,verified_by=$2,verified_at=case when $1<>'pending' then now() else null end,verification_note=$3,updated_at=now() where id=$4 returning *",[next,verifierId,input.note||null,servicePaymentId])).rows[0];
+  await db.query("update payment_transaction set status=$1,verified_by=$2,verified_at=now(),verification_note=$3,completed_at=case when $1 in ('succeeded','failed') then now() else completed_at end,updated_at=now() where id=$4",[next,verifierId,input.note||null,row.payment_transaction_id]);
+  await audit(db,verifierId,"service.payment_verified","service_payment",servicePaymentId,requestIdHeader,{decision:input.decision,requestId:row.request_id});
+  return updated;
+ });
+}
+
 export async function submitServiceFeedback(requestId,userId,input,requestIdHeader){
   return withTransaction(async db=>{
     const r=(await db.query("select * from service_request where id=$1",[requestId])).rows[0];
@@ -305,9 +345,19 @@ export async function createMentorProfile(userId,input,requestId){
   return withTransaction(async db=>{
     if(!(await activeMember(db,userId))) throw error(403,"An active membership is required to mentor.","MEMBERSHIP_REQUIRED");
     if(!(await professionalVerified(db,userId))) throw error(403,"A verified professional claim is required to become a mentor.","PROFESSIONAL_VERIFICATION_REQUIRED");
-    if(!input.headline) throw error(400,"headline is required.","VALIDATION_ERROR");
-    const row=(await db.query("insert into mentor_profile(user_id,headline,bio,expertise,languages,mentoring_modes,max_active_mentees,visibility) values($1,$2,$3,$4,$5,$6,$7,$8) on conflict(user_id) do update set headline=excluded.headline,bio=excluded.bio,expertise=excluded.expertise,languages=excluded.languages,mentoring_modes=excluded.mentoring_modes,max_active_mentees=excluded.max_active_mentees,visibility=excluded.visibility,status='active',updated_at=now() returning *",[userId,input.headline,input.bio||null,JSON.stringify(normalizeArray(input.expertise)),JSON.stringify(normalizeArray(input.languages)),JSON.stringify(normalizeArray(input.mentoringModes||["remote"])),input.maxActiveMentees||3,input.visibility||"members"])).rows[0];
-    await audit(db,userId,"mentorship.profile_updated","mentor_profile",row.id,requestId);
+    const headline=String(input.headline||"").trim();
+    if(!headline) throw error(400,"headline is required.","VALIDATION_ERROR");
+    const maxActiveMentees=input.maxActiveMentees===undefined?3:Number(input.maxActiveMentees);
+    if(!Number.isInteger(maxActiveMentees)||maxActiveMentees<1||maxActiveMentees>50) throw error(400,"maxActiveMentees must be an integer from 1 to 50.","VALIDATION_ERROR");
+    const visibility=input.visibility||"members";
+    if(!["members","public"].includes(visibility)) throw error(400,"visibility must be members or public.","VALIDATION_ERROR");
+    const existing=(await db.query("select id,status from mentor_profile where user_id=$1 for update",[userId])).rows[0];
+    if(existing?.status==="closed") throw error(409,"Closed mentor profiles cannot be reopened.","INVALID_STATE");
+    const values=[headline,String(input.bio||"").trim()||null,JSON.stringify(normalizeArray(input.expertise)),JSON.stringify(normalizeArray(input.languages)),JSON.stringify(normalizeArray(input.mentoringModes||["remote"])),maxActiveMentees,visibility];
+    const row=existing
+      ? (await db.query("update mentor_profile set headline=$1,bio=$2,expertise=$3,languages=$4,mentoring_modes=$5,max_active_mentees=$6,visibility=$7,updated_at=now() where id=$8 returning *",[...values,existing.id])).rows[0]
+      : (await db.query("insert into mentor_profile(user_id,headline,bio,expertise,languages,mentoring_modes,max_active_mentees,visibility) values($1,$2,$3,$4,$5,$6,$7,$8) returning *",[userId,...values])).rows[0];
+    await audit(db,userId,"mentorship.profile_updated","mentor_profile",row.id,requestId,{status:row.status});
     return row;
   });
 }
@@ -343,9 +393,15 @@ export async function setMentorAvailability(profileId,userId,input,requestId){
     if(!p) throw error(404,"Mentor profile not found.","NOT_FOUND");
     if(p.user_id!==userId) throw error(403,"Only the mentor can manage availability.","FORBIDDEN");
     if(!Array.isArray(input.slots)) throw error(400,"slots must be an array.","VALIDATION_ERROR");
-    await db.query("delete from mentor_availability where mentor_profile_id=$1",[profileId]);
     for(const s of input.slots){
       if(!Number.isInteger(Number(s.dayOfWeek))||Number(s.dayOfWeek)<0||Number(s.dayOfWeek)>6) throw error(400,"dayOfWeek must be 0-6.","VALIDATION_ERROR");
+      const start=String(s.startTime||""),end=String(s.endTime||"");
+      const validTime=v=>/^([01]\d|2[0-3]):[0-5]\d(?::[0-5]\d)?$/.test(v);
+      if(!validTime(start)||!validTime(end)||start>=end) throw error(400,"Availability start and end times must be valid and end after start on the same day.","VALIDATION_ERROR");
+      if(s.timezone!==undefined&&(!String(s.timezone).trim()||String(s.timezone).length>80)) throw error(400,"timezone must be a valid non-empty timezone identifier.","VALIDATION_ERROR");
+    }
+    await db.query("delete from mentor_availability where mentor_profile_id=$1",[profileId]);
+    for(const s of input.slots){
       await db.query("insert into mentor_availability(mentor_profile_id,day_of_week,start_time,end_time,timezone) values($1,$2,$3,$4,$5)",[profileId,Number(s.dayOfWeek),s.startTime,s.endTime,s.timezone||"Africa/Addis_Ababa"]);
     }
     await audit(db,userId,"mentorship.availability_updated","mentor_profile",profileId,requestId,{slotCount:input.slots.length});
@@ -366,7 +422,11 @@ export async function addMentorTimeOff(profileId,userId,input,requestId){
 }
 
 export async function listMentors(viewerId,filters={}){
-  const db=getPool(); const args=[viewerId]; const where=["mp.status='active'","m.status='active'","mp.visibility in ('members','public')"];
+  const db=getPool();
+  // The public endpoint must not disclose member-only mentor profiles. $1 is
+  // always bound so the query is valid with or without optional filters.
+  const args=[viewerId||null];
+  const where=["mp.status='active'","m.status='active'","(mp.visibility='public' or ($1::uuid is not null and mp.visibility='members'))"];
   if(filters.q){ args.push("%"+String(filters.q).trim()+"%"); where.push("(mp.headline ilike $"+args.length+" or mp.bio ilike $"+args.length+")"); }
   if(filters.topic){ args.push("%"+String(filters.topic).trim().toLowerCase()+"%"); where.push("mp.expertise::text ilike $"+args.length); }
   const rows=(await db.query("select mp.id,mp.user_id,p.display_name,mp.headline,mp.bio,mp.expertise,mp.languages,mp.mentoring_modes,mp.max_active_mentees from mentor_profile mp join app_user u on u.id=mp.user_id join person p on p.user_id=u.id join membership_record m on m.user_id=u.id where "+where.join(" and ")+" order by p.display_name",args)).rows;
@@ -376,7 +436,7 @@ export async function listMentors(viewerId,filters={}){
 export async function createMentorshipRequest(menteeId,input,requestId){
   return withTransaction(async db=>{
     if(!(await activeMember(db,menteeId))) throw error(403,"An active membership is required for mentorship.","MEMBERSHIP_REQUIRED");
-    if(!input.goals) throw error(400,"goals are required.","VALIDATION_ERROR");
+    if(typeof input.goals!=="string"||!input.goals.trim()) throw error(400,"A non-empty mentorship goal is required.","VALIDATION_ERROR");
     if(input.preferredMentorUserId===menteeId) throw error(400,"You cannot mentor yourself.","VALIDATION_ERROR");
     const row=(await db.query("insert into mentorship_request(mentee_user_id,preferred_mentor_user_id,goals,topics,preferred_modes,preferred_languages,preferred_days,status) values($1,$2,$3,$4,$5,$6,$7,'requested') returning *",[menteeId,input.preferredMentorUserId||null,input.goals,JSON.stringify(normalizeArray(input.topics)),JSON.stringify(normalizeArray(input.preferredModes||["remote"])),JSON.stringify(normalizeArray(input.preferredLanguages)),JSON.stringify((input.preferredDays||[]).map(Number).filter(n=>n>=0&&n<=6))])).rows[0];
     await audit(db,menteeId,"mentorship.request_created","mentorship_request",row.id,requestId);
@@ -390,7 +450,7 @@ async function mentorCandidates(db,request){
   for(const m of mentors){
     const active=(await db.query("select count(*)::int count from mentorship where mentor_user_id=$1 and status in ('active','paused')",[m.user_id])).rows[0].count;
     if(active>=m.max_active_mentees) continue;
-    const topics=JSON.parse(m.expertise||"[]"), langs=JSON.parse(m.languages||"[]"), modes=JSON.parse(m.mentoring_modes||"[]");
+    const topics=normalizeArray(m.expertise), langs=normalizeArray(m.languages), modes=normalizeArray(m.mentoring_modes);
     const topicScore=overlap(topics,request.topics)*10;
     const languageScore=overlap(langs,request.preferred_languages)*5;
     const modeScore=overlap(modes,request.preferred_modes)*3;
@@ -403,6 +463,13 @@ async function mentorCandidates(db,request){
     results.push({mentorUserId:m.user_id,displayName:m.display_name,score:preferredBonus+topicScore+languageScore+modeScore+dayScore,reasons:[topicScore?"topic match":null,languageScore?"language match":null,modeScore?"mode match":null,dayScore?"availability match":null,preferredBonus?"preferred mentor":null].filter(Boolean)});
   }
   return results.sort((a,b)=>b.score-a.score);
+}
+
+export async function getMentorshipRequest(requestId,menteeId){
+  const db=getPool();
+  const row=(await db.query("select id,mentee_user_id,preferred_mentor_user_id,goals,topics,preferred_modes,preferred_languages,preferred_days,status,created_at,updated_at from mentorship_request where id=$1 and mentee_user_id=$2",[requestId,menteeId])).rows[0];
+  if(!row) throw error(404,"Mentorship request not found.","NOT_FOUND");
+  return row;
 }
 
 export async function findMentorMatches(requestId,menteeId){
@@ -425,6 +492,8 @@ export async function proposeMentorMatch(requestId,mentorUserId,actorUserId,requ
     const row=(await db.query("insert into mentorship_match(request_id,mentor_user_id,mentee_user_id,score,match_reasons,status) values($1,$2,$3,$4,$5,'proposed') on conflict(request_id) do update set mentor_user_id=excluded.mentor_user_id,score=excluded.score,match_reasons=excluded.match_reasons,status='proposed',proposed_at=now(),responded_at=null returning *",[requestId,mentorUserId,request.mentee_user_id,match.score,JSON.stringify(match.reasons)])).rows[0];
     await db.query("update mentorship_request set status='matched',matched_mentor_user_id=$1,matched_at=now(),updated_at=now() where id=$2",[mentorUserId,requestId]);
     await audit(db,actorUserId,"mentorship.match_proposed","mentorship_match",row.id,requestIdHeader,{mentorUserId,score:match.score});
+    await queueWorkflowEmail(db,mentorUserId,"mentor.mentorship_update",{status:"match proposed",nextAction:"Review and accept or decline the mentorship match"},"mentorship_match",row.id);
+    await queueWorkflowEmail(db,request.mentee_user_id,"professional.workflow_update",{status:"mentor match proposed",nextAction:"Wait for the proposed mentor to respond"},"mentorship_match",row.id);
     return row;
   });
 }
@@ -440,13 +509,14 @@ export async function respondToMatch(matchId,mentorUserId,status,requestIdHeader
     if(status==="accepted"){
       const existing=(await db.query("select id from mentorship where request_id=$1",[match.request_id])).rows[0];
       if(!existing){
-        await db.query("insert into mentorship(request_id,mentor_user_id,mentee_user_id,goals,status) select request_id,mentor_user_id,mentee_user_id,mr.goals,'active' from mentorship_match mm join mentorship_request mr on mr.id=mm.request_id where mm.id=$1",[matchId]);
+        await db.query("insert into mentorship(request_id,mentor_user_id,mentee_user_id,goals,status) select mm.request_id,mm.mentor_user_id,mm.mentee_user_id,mr.goals,'active' from mentorship_match mm join mentorship_request mr on mr.id=mm.request_id where mm.id=$1",[matchId]);
         await db.query("update mentorship_request set status='matched',matched_mentor_user_id=$1,updated_at=now() where id=$2",[mentorUserId,match.request_id]);
       }
     } else {
       await db.query("update mentorship_request set status='matching',matched_mentor_user_id=null,matched_at=null,updated_at=now() where id=$1",[match.request_id]);
     }
     await audit(db,mentorUserId,"mentorship.match_responded","mentorship_match",matchId,requestIdHeader,{status});
+    await queueWorkflowEmail(db,match.mentee_user_id,"professional.workflow_update",{status:"mentor "+status,nextAction:status==="accepted"?"Open your mentorship workspace to plan the first session":"Return to matching to review available next steps"},"mentorship_match",matchId);
     return updated;
   });
 }
@@ -552,4 +622,33 @@ export async function getMentorship(mentorshipId,userId){
   const feedback=(await db.query("select id,session_id,reviewer_user_id,target_role,rating,comments,created_at from mentorship_feedback where mentorship_id=$1 order by created_at desc",[mentorshipId])).rows;
   const goals=(await db.query("select * from mentorship_goal where mentorship_id=$1 order by target_date nulls last,created_at",[mentorshipId])).rows;
   return {...m,sessions,feedback,goals};
+}
+
+
+export async function listMyMentorshipRequests(userId){
+ const db=getPool();
+ return (await db.query("select id,mentee_user_id,preferred_mentor_user_id,goals,topics,preferred_modes,preferred_languages,preferred_days,status,created_at,updated_at from mentorship_request where mentee_user_id=$1 order by created_at desc",[userId])).rows;
+}
+
+
+export async function listMyMentorshipMatches(userId){
+ const db=getPool();
+ return (await db.query(`select mm.id,mm.request_id,mm.mentor_user_id,mm.mentee_user_id,mm.score,mm.match_reasons,mm.status,mm.proposed_at,mr.goals,p.display_name mentee_name
+ from mentorship_match mm join mentorship_request mr on mr.id=mm.request_id join person p on p.user_id=mr.mentee_user_id
+ where mm.mentor_user_id=$1 and mm.status='proposed' order by mm.proposed_at desc`,[userId])).rows;
+}
+export async function listMyMentorships(userId){
+ const db=getPool();
+ return (await db.query(`select m.*,pm.display_name mentor_name,pe.display_name mentee_name
+ from mentorship m join person pm on pm.user_id=m.mentor_user_id join person pe on pe.user_id=m.mentee_user_id
+ where m.mentor_user_id=$1 or m.mentee_user_id=$1 order by m.created_at desc`,[userId])).rows;
+}
+
+
+export async function getMyMentorProfile(userId){
+ const db=getPool();
+ const profile=(await db.query("select mp.*,p.display_name from mentor_profile mp join person p on p.user_id=mp.user_id where mp.user_id=$1",[userId])).rows[0];
+ if(!profile)return null;
+ profile.availability=(await db.query("select id,day_of_week,start_time,end_time,timezone,active from mentor_availability where mentor_profile_id=$1 order by day_of_week,start_time",[profile.id])).rows;
+ return profile;
 }

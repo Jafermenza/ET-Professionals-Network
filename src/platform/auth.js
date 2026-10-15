@@ -7,3 +7,6 @@ export function requireRole(identity,role){const roles=Array.isArray(identity?.r
 export function newSessionToken(){return crypto.randomBytes(48).toString("base64url")}
 export function sessionTokenPayload(user,roles,sessionId,now=Math.floor(Date.now()/1000)){return {sub:user.id,roles,email:user.email||null,sid:sessionId,iat:now,exp:now+Number(process.env.AUTH_SESSION_DAYS||7)*86400}}
 export function hashSessionToken(token){return crypto.createHash("sha256").update(token).digest("hex")}
+
+// Replace signed-token role claims with the roles currently read from the database.
+export function withCurrentRoles(identity,databaseRoles){return {...identity,roles:Array.isArray(databaseRoles)?databaseRoles:[]}}

@@ -2,6 +2,9 @@ import { randomUUID } from "node:crypto";
 import { withTransaction, getPool } from "../platform/db.js";
 import { signToken, newSessionToken, hashSessionToken, sessionTokenPayload } from "../platform/auth.js";
 import { loadConfig } from "../platform/config.js";
+import { nextTrackingReference } from "../platform/tracking-reference.js";
+import { consumeHumanChallenge } from "../platform/security-controls.js";
+import { createEmailVerification, deliverEmailVerification, assertEmailDeliveryConfigured } from "../platform/email-verification.js";
 import { hashPassword, verifyPassword, normalizeEmail, normalizePhone, normalizeName, validatePersonInput } from "./identity.js";
 
 function httpError(status,message,code="BUSINESS_RULE"){
@@ -17,8 +20,8 @@ function audit(db,actor,action,type,id,requestId,metadata={}){
 }
 async function notify(db,userId,eventCode,resourceType,resourceId,payload={}){
   await db.query("insert into notification_event(user_id,event_code,resource_type,resource_id,payload) values($1,$2,$3,$4,$5)",[userId,eventCode,resourceType||null,resourceId||null,payload]);
-  const r=await db.query("select email from app_user where id=$1",[userId]);
-  if(r.rows[0]?.email) await db.query("insert into notification_outbox(channel,recipient,template_code,payload) values('email',$1,$2,$3)",[r.rows[0].email,eventCode,payload]);
+  const r=await db.query("select u.email,coalesce(np.email_enabled,true) email_enabled from app_user u left join notification_preference np on np.user_id=u.id where u.id=$1",[userId]);
+  if(r.rows[0]?.email&&r.rows[0].email_enabled) await db.query("insert into notification_outbox(channel,recipient,template_code,payload) values('email',$1,$2,$3)",[r.rows[0].email,eventCode,payload]);
 }
 async function roles(db,userId){
   const r=await db.query("select r.role_code from app_user_role ur join app_role r on r.id=ur.role_id where ur.user_id=$1",[userId]);
@@ -34,6 +37,8 @@ export async function bootstrapAdmin(input){
     let user=existing.rows[0];
     if(user && user.status!=="active") await db.query("update app_user set status='active',updated_at=now() where id=$1",[user.id]);
     if(!user) user=(await db.query("insert into app_user(username,email,password_hash,status) values($1,$1,$2,'active') returning id,email,status",[email, hashPassword(password)])).rows[0];
+    // Bootstrap email is supplied by the trusted server operator, not public registration.
+    await db.query("update app_user set email_verified_at=coalesce(email_verified_at,now()),updated_at=now() where id=$1",[user.id]);
     const role=(await db.query("select id from app_role where role_code='system_admin'")).rows[0];
     if(!role) throw httpError(500,"System administrator role is unavailable.","BOOTSTRAP_ROLE_MISSING");
     await db.query("insert into app_user_role(user_id,role_id) values($1,$2) on conflict do nothing",[user.id,role.id]);
@@ -44,10 +49,16 @@ export async function bootstrapAdmin(input){
 }
 
 export async function register(input,requestId){
+  const config=loadConfig();
   const email=normalizeEmail(input.email);
   if(!email || !String(input.password||"")) throw httpError(400,"email and password are required.","VALIDATION_ERROR");
+  if(input.passwordConfirmation !== undefined && input.passwordConfirmation !== input.password) throw httpError(400,"Password confirmation does not match.","PASSWORD_CONFIRMATION_MISMATCH");
   const person=validatePersonInput(input);
-  return withTransaction(async db=>{
+  const humanCheckRequired=config.nodeEnv==="production" || process.env.HUMAN_CHALLENGE_REQUIRED==="true";
+  const emailVerificationRequired=config.nodeEnv==="production" || process.env.EMAIL_VERIFICATION_REQUIRED==="true";
+  if(emailVerificationRequired) assertEmailDeliveryConfigured();
+  const created=await withTransaction(async db=>{
+    if(humanCheckRequired) await consumeHumanChallenge(db,input.humanCheckToken);
     const identity=await db.query(`
       select u.id from app_user u where lower(u.email)=lower($1)
       union
@@ -56,17 +67,30 @@ export async function register(input,requestId){
       select p.user_id from person p where lower(regexp_replace(coalesce(p.display_name,''),'[^[:alnum:]]','','g'))=
         lower(regexp_replace($3,'[^[:alnum:]]','','g')) limit 3`,[email,person.phone,person.displayName]);
     if(identity.rows.length) throw httpError(409,"An existing account or identity matches these details. Sign in or contact membership support instead of creating a duplicate.","IDENTITY_CONFLICT");
-    const user=(await db.query("insert into app_user(username,email,password_hash,status) values($1,$2,$3,'active') returning id,email,username",[email,email,hashPassword(input.password)])).rows[0];
+    const registrationReference=await nextTrackingReference(db,"membership");
+    const user=(await db.query("insert into app_user(username,email,password_hash,status,registration_reference,email_verified_at) values($1,$2,$3,'active',$4,case when $5 then null else now() end) returning id,email,username,registration_reference,email_verified_at",[email,email,hashPassword(input.password),registrationReference,emailVerificationRequired])).rows[0];
     const p=(await db.query(`insert into person(user_id,first_name,middle_name,last_name,display_name,phone,date_of_birth,sex,nationality)
       values($1,$2,$3,$4,$5,$6,$7,$8,$9) returning id,user_id,first_name,middle_name,last_name,display_name,phone,date_of_birth,sex,nationality`,
       [user.id,person.firstName,person.middleName,person.lastName,person.displayName,person.phone,person.dateOfBirth,person.sex,person.nationality])).rows[0];
     await db.query("insert into professional_profile(person_id,completion_percent) values($1,20)",[p.id]);
     await db.query("insert into app_user_role(user_id,role_id) select $1,id from app_role where role_code='member' on conflict do nothing",[user.id]);
     await db.query("insert into notification_preference(user_id) values($1) on conflict do nothing",[user.id]);
-    await audit(db,user.id,"account.registered","account",user.id,requestId,{identityPolicy:"email_phone_exact_name"});
-    await notify(db,user.id,"account_registered","account",user.id,{displayName:p.display_name});
-    return {user:{id:user.id,email:user.email},person:p,token:await tokenFor(db,user,["member"])};
+    await audit(db,user.id,"account.registered","account",user.id,requestId,{identityPolicy:"email_phone_exact_name",registrationReference});
+    if(emailVerificationRequired) await db.query("insert into notification_event(user_id,event_code,resource_type,resource_id,payload) values($1,'account_registered','account',$2,$3)",[user.id,user.id,{displayName:p.display_name,registrationReference}]);
+    else await notify(db,user.id,"account_registered","account",user.id,{displayName:p.display_name,registrationReference});
+    const verification=emailVerificationRequired?await createEmailVerification(db,user.id,email,registrationReference,p.first_name):null;
+    const token=emailVerificationRequired?null:await tokenFor(db,user,["member"]);
+    return {user:{id:user.id,email:user.email},person:p,registrationReference,verification,token};
   });
+  if(!created.verification) return created;
+  const delivery=await deliverEmailVerification(created.verification);
+  return {
+    user:created.user,
+    registrationReference:created.registrationReference,
+    verificationRequired:true,
+    verificationSent:Boolean(delivery.sent),
+    ...(delivery.developmentVerificationUrl?{developmentVerificationUrl:delivery.developmentVerificationUrl}:{})
+  };
 }
 
 export async function login(email,password,requestId,requestMeta={}){
@@ -74,22 +98,26 @@ export async function login(email,password,requestId,requestMeta={}){
   const recent=await db.query("select count(*)::int count from auth_login_attempt where identity_key=$1 and attempted_at>now()-interval '15 minutes' and succeeded=false",[identityKey]);
   if(recent.rows[0].count>=8) throw httpError(429,"Too many unsuccessful sign-in attempts. Try again later.","AUTH_RATE_LIMIT");
   const e=normalizeEmail(email);
-  const r=await db.query("select id,email,username,password_hash,status from app_user where lower(email)=lower($1)",[e]);
+  const r=await db.query("select id,email,username,password_hash,status,email_verified_at,admin_passkey_enforced_at from app_user where lower(email)=lower($1)",[e]);
   const user=r.rows[0];
   if(!user || user.status!=="active" || !verifyPassword(password,user.password_hash)){
     await db.query("insert into auth_login_attempt(identity_key,ip_address,succeeded) values($1,$2,false)",[identityKey,requestMeta.ip||null]);
     throw httpError(401,"Invalid credentials.","UNAUTHENTICATED");
   }
+  if ((loadConfig().nodeEnv==="production" || process.env.EMAIL_VERIFICATION_REQUIRED==="true") && !user.email_verified_at) throw httpError(403,"Verify your email address before signing in. Request a new verification link if needed.","EMAIL_NOT_VERIFIED");
+  if(user.admin_passkey_enforced_at) throw httpError(401,"This administrator account requires a passkey. Use the passkey sign-in option.","PASSKEY_REQUIRED");
   await db.query("insert into auth_login_attempt(identity_key,ip_address,succeeded) values($1,$2,true)",[identityKey,requestMeta.ip||null]);
   const rs=await roles(db,user.id);
   await audit(db,user.id,"account.login","account",user.id,requestId);
-  return {token:await tokenFor(db,user,rs,requestMeta),user:{id:user.id,email:user.email,roles:rs}};
+  const passkeyEnrollmentRequired=(loadConfig().nodeEnv==="production" || process.env.REQUIRE_ADMIN_PASSKEYS==="true") && rs.some(role=>["system_admin","admin"].includes(role)) && !user.admin_passkey_enforced_at;
+  return {token:await tokenFor(db,user,rs,requestMeta),user:{id:user.id,email:user.email,roles:rs},passkeyEnrollmentRequired};
 }
 
 export async function getMe(userId){
   const db=getPool();
   const r=await db.query(`select u.id user_id,u.email,u.status,p.id person_id,p.first_name,p.middle_name,p.last_name,p.display_name,p.phone,p.date_of_birth,p.sex,p.nationality,
-    pr.id profile_id,pr.headline,pr.bio,pr.visibility,pr.completion_percent
+    pr.id profile_id,pr.headline,pr.bio,pr.visibility,pr.completion_percent,
+    coalesce((select jsonb_agg(r.role_code order by r.role_code) from app_user_role ur join app_role r on r.id=ur.role_id where ur.user_id=u.id),'[]'::jsonb) roles
     from app_user u left join person p on p.user_id=u.id left join professional_profile pr on pr.person_id=p.id where u.id=$1`,[userId]);
   if(!r.rows[0]) throw httpError(404,"Account not found.","NOT_FOUND");
   return r.rows[0];
@@ -109,6 +137,20 @@ export async function updateProfile(userId,input,requestId){
     await audit(db,userId,"profile.updated","person",p.id,requestId);
   });
   return getMe(userId);
+}
+
+export async function listMyApplications(userId){
+  const db=getPool();
+  return (await db.query(`select a.id,a.tracking_reference,a.application_type,a.status,a.submitted_at,a.reviewed_at,a.approved_at,a.created_at,a.updated_at,
+      a.data_snapshot,a.fee_snapshot,
+      (select jsonb_build_object('id',p.id,'status',p.status,'amount',p.amount,'currency',p.currency,'channel',p.channel,'created_at',p.created_at,'verified_at',p.verified_at)
+       from membership_application_payment ap join payment_transaction p on p.id=ap.payment_transaction_id
+       where ap.application_id=a.id order by p.created_at desc limit 1) as payment,
+      (select jsonb_build_object('id',c.id,'requested_fields',c.requested_fields,'reviewer_note',c.reviewer_note,'status',c.status,'applicant_response',c.applicant_response)
+       from membership_correction c where c.application_id=a.id order by c.created_at desc limit 1) as latest_correction,
+      coalesce((select jsonb_agg(jsonb_build_object('id',aa.id,'fileObjectId',f.id,'fileName',f.original_name,'attachmentType',aa.attachment_type,'createdAt',aa.created_at) order by aa.created_at desc)
+       from membership_application_attachment aa join file_object f on f.id=aa.file_object_id where aa.application_id=a.id),'[]'::jsonb) attachments
+    from membership_application a where a.user_id=$1 order by a.created_at desc`,[userId])).rows;
 }
 
 export async function listMembershipProducts(){
@@ -138,8 +180,9 @@ export async function createApplication(userId,input,requestId){
     const me=await getMe(userId);
     const snapshot={person:{firstName:me.first_name,middleName:me.middle_name,lastName:me.last_name,displayName:me.display_name,phone:me.phone,dateOfBirth:me.date_of_birth,sex:me.sex,nationality:me.nationality},profile:{headline:me.headline,bio:me.bio}};
     const fee={productCode:prod.product_code,productName:prod.name,amount:amountFromProduct(prod),currency:prod.currency,billingModel:prod.billing_model,durationDays:prod.duration_days};
-    const row=(await db.query(`insert into membership_application(user_id,application_type,previous_membership_id,membership_product_id,status,submitted_at,data_snapshot,fee_snapshot)
-      values($1,$2,$3,$4,'submitted',now(),$5,$6) returning *`,[userId,type,active.rows[0]?.id||null,prod.id,snapshot,fee])).rows[0];
+    const trackingReference=await nextTrackingReference(db,"membership");
+    const row=(await db.query(`insert into membership_application(user_id,tracking_reference,application_type,previous_membership_id,membership_product_id,status,submitted_at,data_snapshot,fee_snapshot)
+      values($1,$2,$3,$4,$5,'submitted',now(),$6,$7) returning *`,[userId,trackingReference,type,active.rows[0]?.id||null,prod.id,snapshot,fee])).rows[0];
     await audit(db,userId,"membership.application_submitted","membership_application",row.id,requestId,{applicationType:type,productCode:prod.product_code});
     await notify(db,userId,"membership_application_submitted","membership_application",row.id,{productCode:prod.product_code});
     return row;
@@ -267,9 +310,12 @@ export async function history(userId){
 
 export async function listApplicationsForReview(){
   const db=getPool();
-  const r=await db.query(`select a.id,a.user_id,a.application_type,a.status,a.submitted_at,a.created_at,a.data_snapshot,a.fee_snapshot,p.product_code,p.name
+  const r=await db.query(`select a.id,a.user_id,a.application_type,a.status,a.submitted_at,a.created_at,a.updated_at,a.data_snapshot,a.fee_snapshot,p.product_code,p.name,
+      (select jsonb_build_object('id',pt.id,'status',pt.status,'amount',pt.amount,'currency',pt.currency,'channel',pt.channel,'created_at',pt.created_at)
+       from membership_application_payment ap join payment_transaction pt on pt.id=ap.payment_transaction_id
+       where ap.application_id=a.id order by pt.created_at desc limit 1) payment
     from membership_application a join membership_product p on p.id=a.membership_product_id
-    where a.status in ('submitted','in_review','correction_required') order by a.created_at asc`);
+    where a.status in ('submitted','in_review','correction_required','payment_pending','paid') order by a.created_at asc`);
   return r.rows;
 }
 

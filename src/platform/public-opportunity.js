@@ -73,7 +73,11 @@ export async function updatePublicInquiryDetails(reference,token,input,requestId
 
 async function visibleInquiries(db,userId,filters={}){
  const admin=await hasRole(db,userId,["system_admin","admin","supporting_staff"]);
- const params=[userId]; const clauses=[];
+ if(!admin){
+   const scope=(await db.query("select exists(select 1 from organization_membership om where om.user_id=$1 and om.status='active' and om.role_code in ('owner','administrator','recruiter','project_manager','read_only')) or exists(select 1 from mentor_profile mp where mp.user_id=$1)",[userId])).rows[0];
+   if(!scope||!scope.exists) throw error(403,"An active organization role or mentor profile is required to inspect opportunity inquiries.","FORBIDDEN");
+ }
+ const params=admin?[]:[userId]; const clauses=[];
  if(admin){ clauses.push("true"); }
  else {
    clauses.push("(i.inquiry_type='job' and exists (select 1 from job j join organization_membership om on om.organization_id=j.organization_id where j.id=i.job_id and om.user_id=$1 and om.status='active' and om.role_code in ('owner','administrator','recruiter','project_manager','read_only')) or i.inquiry_type='mentorship' and (i.preferred_mentor_user_id=$1))");
@@ -90,7 +94,7 @@ export async function listInquiries(userId,filters={}){
 
 export async function decideInquiry(inquiryId,userId,input,requestId){
  return withTransaction(async db=>{
-  const r=(await db.query("select i.*,j.organization_id from public_opportunity_inquiry i left join job j on j.id=i.job_id where i.id=$1 for update",[inquiryId])).rows[0];
+  const r=(await db.query("select i.*,j.organization_id from public_opportunity_inquiry i left join job j on j.id=i.job_id where i.id=$1 for update of i",[inquiryId])).rows[0];
   if(!r) throw error(404,"Inquiry not found.","NOT_FOUND");
   const admin=await hasRole(db,userId,["system_admin","admin","supporting_staff"]);
   const allowed=r.inquiry_type==="job" ? await orgAuthorized(db,r.job_id,userId) : await mentorAuthorized(db,r.preferred_mentor_user_id,userId);

@@ -16,3 +16,22 @@ export function loadConfig(env = process.env) {
   if (config.nodeEnv === "production" && (!config.jwtSecret || config.jwtSecret.length < 32)) throw new Error("JWT_SECRET must be at least 32 characters in production.");
   return Object.freeze(config);
 }
+
+export function parseAllowedOrigins(value = "") {
+  return [...new Set(String(value || "")
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter(Boolean)
+    .map((entry) => entry.replace(/\/+$/, ""))
+  )];
+}
+
+export function resolveAllowedOrigin(origin, configured = "") {
+  const allowed = parseAllowedOrigins(configured);
+  if (!allowed.length) return null;
+  if (allowed.includes("*")) return "*";
+  const normalizedOrigin = String(origin || "").trim().replace(/\/+$/, "");
+  if (!normalizedOrigin) return null;
+  const target = normalizedOrigin.toLowerCase();
+  return allowed.some((entry) => entry.toLowerCase() === target) ? normalizedOrigin : null;
+}

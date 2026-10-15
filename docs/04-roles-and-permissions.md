@@ -89,6 +89,14 @@ Where practical, one person should not both initiate and finally approve high-ri
 
 Examples include payment reconciliation, membership exceptions, project financial approvals and conflicted verification decisions.
 
+Enforced identity-administration rules for the current implementation:
+- An administrator cannot grant, remove, or otherwise change their own roles.
+- Only a current `system_admin` may grant/remove privileged roles (`system_admin`, `super_admin`, `admin`, `reviewer`, `verification_reviewer`, `ethics_reviewer`, `appeal_reviewer`, `finance_officer`) or modify a privileged account.
+- Privileged-role decisions use the actor's current database roles; signed token role claims are not authoritative.
+- Role and account-status changes revoke existing sessions. A user must authenticate again after the change.
+- The last `system_admin` cannot be removed; concurrent last-admin removals are serialized.
+- Organization verification reviewers cannot decide a case for an organization they created, submitted, or actively belong to. Conflicts fail closed; a separate reviewer must decide.
+
 ## 7. Backend enforcement
 
 Hiding a button is not authorization.
@@ -106,4 +114,4 @@ Reviewers must not approve their own records or records where an explicit confli
 
 ## 9. Audit
 
-Role/permission changes record actor, affected user, old role, new role, scope, reason and timestamp.
+Role/permission changes record actor, affected user, old role, new role, scope, reason and timestamp. The current user-administration audit event records prior/current role sets, prior/current account status, platform scope, requested change, optional reason, actor, affected user, request ID and timestamp. Successful private evidence reads record the reader, file resource, request ID, content type and byte size; file contents and secrets are not copied into the audit record.

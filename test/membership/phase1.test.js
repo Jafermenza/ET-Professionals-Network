@@ -103,5 +103,20 @@ test("Phase 1 notification preferences are persisted",async()=>{
   assert.equal(loaded.sms_enabled,false);
 });
 
+test("Gate 5 me contract exposes the authenticated profile and current roles",async()=>{
+  const me=await membership.getMe(userId);
+  assert.equal(me.user_id,userId);
+  assert.equal(me.email,email);
+  assert.equal(me.status,"active");
+  assert.ok(Array.isArray(me.roles));
+  assert.ok(me.roles.includes("member"));
+  assert.ok(me.person_id);
+  assert.ok(me.profile_id);
+  assert.ok(me.display_name);
+  assert.equal(me.first_name,"Phase");
+  assert.equal(me.headline,"Updated Professional");
+  assert.equal(me.completion_percent >= 20,true);
+});
+
 
 test.after("close database pool",async()=>{ await closePool(); });

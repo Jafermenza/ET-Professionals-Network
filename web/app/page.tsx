@@ -1,100 +1,211 @@
 "use client";
-import {ArrowRight,BriefcaseBusiness,ChartNoAxesCombined,HeartHandshake,ShieldCheck,UsersRound,CheckCircle2,ClipboardCheck,LockKeyhole,Network} from "lucide-react";
-import {Card,Badge} from "../components/ui";
-import styles from "./landing-hero.module.css";
 
-const values=[
-  {title:"Trusted professional identity",text:"Build one professional record for membership, capability, experience and contribution.",icon:ShieldCheck},
-  {title:"Verified opportunities",text:"Discover jobs, services and mentorship with clear eligibility and privacy boundaries.",icon:BriefcaseBusiness},
-  {title:"Meaningful relationships",text:"Connect professionals, mentors, employers and partners around useful work.",icon:HeartHandshake},
-  {title:"Visible progress",text:"Track membership, organization and opportunity applications from submission to decision.",icon:ChartNoAxesCombined}
+import Link from "next/link";
+import { motion, useReducedMotion } from "framer-motion";
+import {
+  ArrowRight, UserCheck, BriefcaseBusiness, GraduationCap, Building2,
+  ShieldCheck, CheckCircle2, LogIn, FileText, Search,
+  HeartHandshake, Network, ClipboardCheck, LockKeyhole, UsersRound
+} from "lucide-react";
+import styles from "./landing-redesign.module.css";
+
+const journeys = [
+  { title: "Join as a professional", text: "Apply for membership, build your profile and discover ways to contribute.", href: "/apply", action: "Start application", icon: UserCheck },
+  { title: "Find a job", text: "Explore vacancies or begin with a short inquiry before the detailed application.", href: "/jobs", action: "Browse opportunities", icon: BriefcaseBusiness },
+  { title: "Find mentorship", text: "Share your goals and begin a mentorship request, even before completing a profile.", href: "/mentorship", action: "Request mentorship", icon: GraduationCap },
+  { title: "Register an organization", text: "Submit your organization for review, recruit talent and build professional partnerships.", href: "/organizations", action: "Get started", icon: Building2 }
+];
+
+const capabilities = [
+  { title: "Trusted professional identity", text: "Build one professional record for membership, capability, experience and contribution.", icon: ShieldCheck },
+  { title: "Verification with privacy", text: "Submit claims for review while private evidence stays behind authorized access controls.", icon: CheckCircle2 },
+  { title: "Jobs and recruitment", text: "Explore vacancies and support a structured candidate journey from application to decision.", icon: BriefcaseBusiness },
+  { title: "Services and mentorship", text: "Connect through professional services, mentorship requests and governed follow-up.", icon: HeartHandshake }
 ];
 
 function MpaMark() {
   return (
-    <svg className={styles.mpaMark} viewBox="0 0 100 100" aria-hidden="true">
-      <path d="M16 88V51C16 30 35 14 50 8V88H34V54C34 42 41 33 50 28" fill="none" stroke="var(--primary)" strokeWidth="8" strokeLinejoin="round" />
-      <path d="M50 8C68 15 84 29 84 49C84 66 73 74 58 74H50V57H59C68 57 69 48 63 41C59 36 54 33 50 31" fill="none" stroke="var(--gold)" strokeWidth="8" strokeLinejoin="round" />
-      <path d="M34 88H74" stroke="var(--primary)" strokeWidth="8" strokeLinecap="round" />
+    <svg viewBox="0 0 100 120" fill="none" className={styles.logoMark} aria-hidden="true">
+      <motion.path d="M15 110V60C15 35 50 15 50 15V45C32 52 30 70 30 110Z" fill="#0A3258" stroke="#0A3258" strokeWidth="2"
+        initial={{ pathLength: 0 }} animate={{ pathLength: 1 }} transition={{ duration: 1.1, ease: "easeInOut" }} />
+      <motion.path d="M85 35C85 35 50 15 50 15V45C68 52 78 57 78 70C78 78 73 85 65 85H32V70H65C78 70 78 57 68 52C50 45 50 15 50 15"
+        fill="#97C024" stroke="#97C024" strokeWidth="2" initial={{ pathLength: 0 }} animate={{ pathLength: 1 }}
+        transition={{ duration: 1.1, delay: 0.2, ease: "easeInOut" }} />
     </svg>
   );
 }
 
-function ArchArtwork() {
+function ArchBackdrop() {
   return (
     <div className={styles.archBackdrop} aria-hidden="true">
-      <svg viewBox="0 0 500 520" role="presentation" focusable="false">
+      <svg viewBox="0 0 1400 1200" fill="none" preserveAspectRatio="xMidYMid slice">
         <defs>
-          <linearGradient id="mpaArchGradient" x1="0" y1="1" x2=".8" y2="0">
-            <stop offset="0%" stopColor="var(--primary)" />
-            <stop offset="100%" stopColor="var(--gold)" />
+          <linearGradient id="mpaArchLineGradient" x1="0%" y1="100%" x2="0%" y2="0%">
+            <stop offset="0%" stopColor="#0A3258" stopOpacity=".08" />
+            <stop offset="55%" stopColor="#1B4D80" stopOpacity=".35" />
+            <stop offset="100%" stopColor="#97C024" stopOpacity=".7" />
           </linearGradient>
-          <pattern id="mpaDotGrid" width="24" height="24" patternUnits="userSpaceOnUse">
-            <circle cx="2" cy="2" r="1" fill="var(--primary)" opacity=".16" />
+          <pattern id="mpaGridDots" width="30" height="30" patternUnits="userSpaceOnUse">
+            <circle cx="2" cy="2" r="1" fill="#0A3258" opacity=".2" />
           </pattern>
         </defs>
-        <rect width="500" height="520" fill="url(#mpaDotGrid)" />
-        <path className={styles.archLine} d="M70 520V250C70 125 165 47 250 25C335 47 430 125 430 250V520" stroke="url(#mpaArchGradient)" strokeWidth="2.5" fill="none" />
-        <path d="M112 520V260C112 170 180 98 250 79C320 98 388 170 388 260V520" stroke="var(--primary)" strokeWidth="1" opacity=".2" fill="none" />
-        <g stroke="var(--gold)" strokeWidth="1.5" strokeDasharray="4 6" fill="none" opacity=".7">
-          <path d="M250 25V0M70 250H16M430 250H484M112 260H58V320M388 260H442V320" />
-        </g>
-        <g fill="var(--gold)">
-          <circle className={styles.nodePulse} cx="250" cy="25" r="4" />
-          <circle className={styles.nodePulseAlt} cx="70" cy="250" r="3.5" />
-          <circle className={styles.nodePulseAlt} cx="430" cy="250" r="3.5" />
-        </g>
+        <rect width="1400" height="1200" fill="url(#mpaGridDots)" />
+        <path d="M200 1200V500C200 250 500 100 700 100C900 100 1200 250 1200 500V1200"
+          stroke="url(#mpaArchLineGradient)" strokeWidth="2.5" strokeDasharray="6 8" />
+        <path d="M400 1200V600C400 380 550 220 700 220C850 220 1000 380 1000 600V1200"
+          stroke="#0A3258" strokeWidth="1.5" opacity=".18" />
       </svg>
     </div>
   );
 }
 
-export default function Home(){return <div className={`landing grid ${styles.landingBackdrop}`} style={{gap:34}}>
- <section className={`landing-hero ${styles.hero}`}>
-  <div className={styles.heroCopy}>
-   <div className={styles.brandEyebrow}><span className={styles.brandMarkSmall}><MpaMark/></span><span>ETHIOPIAN MUSLIM PROFESSIONALS ASSOCIATION <i/> IHSAN · EXCELLENCE</span></div>
-   <h1 className={`h1 ${styles.heroTitle}`}>Connect trusted talent with <span className={`hero-accent ${styles.heroAccent}`}>meaningful opportunity.</span></h1>
-   <p className={`hero-lead ${styles.heroLead}`}>One accountable professional ecosystem for membership, verification, jobs, mentorship and services — helping people and organizations turn connections into meaningful work.</p>
-   <div className={`landing-actions ${styles.heroActions}`}><a className="btn btn-primary btn-lg" href="/apply">Apply / Join MPA <ArrowRight size={17}/></a><a className="btn btn-ghost btn-lg" href="/jobs">Explore opportunities</a><a className={styles.loginLink} href="/login">Login <ArrowRight size={15}/></a></div>
-   <div className={styles.trustBar} aria-label="Platform principles"><span><CheckCircle2 size={17}/> Evidence-based verification</span><span><Network size={17}/> Professional connections</span><span><LockKeyhole size={17}/> Privacy-aware applications</span></div>
-  </div>
-  <div className={styles.heroVisual}>
-   <ArchArtwork/>
-   <div className={styles.visualLogo}><MpaMark/><div><strong>One trusted network.</strong><span>Professional identity to opportunity</span></div></div>
-   <Card>
-    <div className={styles.previewTop}><div><div className="eyebrow">THE MPA PLATFORM</div><h2 className={styles.previewTitle}>Your next step, made clear.</h2></div><span className={styles.previewIcon}><ClipboardCheck size={20}/></span></div>
-    <div className={styles.previewRows}><div><span className={styles.previewRowIcon}><UsersRound size={17}/></span><div><b>Membership & identity</b><small>Build your professional record</small></div><ArrowRight size={15}/></div><div><span className={styles.previewRowIcon}><ShieldCheck size={17}/></span><div><b>Verification & trust</b><small>Evidence-led professional claims</small></div><ArrowRight size={15}/></div><div><span className={styles.previewRowIcon}><BriefcaseBusiness size={17}/></span><div><b>Jobs & mentorship</b><small>Find relevant next steps</small></div><ArrowRight size={15}/></div></div>
-    <a className={styles.previewFooter} href="/track"><span><span className={styles.statusDot}/> Application tracking</span><span>View status <ArrowRight size={14}/></span></a>
-   </Card>
-  </div>
- </section>
+function Reveal({ children, delay = 0, className = "" }: { children: React.ReactNode; delay?: number; className?: string }) {
+  const reduceMotion = useReducedMotion();
+  return (
+    <motion.div className={className} initial={reduceMotion ? false : { opacity: 0, y: 18 }}
+      whileInView={reduceMotion ? undefined : { opacity: 1, y: 0 }} viewport={{ once: true, amount: 0.16 }}
+      transition={{ duration: 0.55, delay, ease: "easeOut" }}>
+      {children}
+    </motion.div>
+  );
+}
 
- <section className={styles.journeys}>
-  <div className="section-heading"><div><div className="eyebrow">A clear place to start</div><h2 className="h2">How can we help you today?</h2></div></div>
-  <div className="grid grid-4">
-   <Card><UsersRound size={22} color="var(--primary)"/><h3>Join as a professional</h3><p className="muted">Apply for membership, build your profile and discover ways to contribute.</p><a className={styles.textLink} href="/apply">Start application <ArrowRight size={15}/></a></Card>
-   <Card><BriefcaseBusiness size={22} color="var(--primary)"/><h3>Find a job</h3><p className="muted">Explore vacancies or begin with a short inquiry before the detailed application.</p><a className={styles.textLink} href="/jobs">Browse opportunities <ArrowRight size={15}/></a></Card>
-   <Card><HeartHandshake size={22} color="var(--primary)"/><h3>Find mentorship</h3><p className="muted">Share your goals and begin a mentorship request, even before completing a profile.</p><a className={styles.textLink} href="/apply/mentorship">Request mentorship <ArrowRight size={15}/></a></Card>
-   <Card><Network size={22} color="var(--primary)"/><h3>Register an organization</h3><p className="muted">Verify your organization, recruit talent and build professional partnerships.</p><a className={styles.textLink} href="/organizations">Get started <ArrowRight size={15}/></a></Card>
-  </div>
- </section>
+export default function Home() {
+  const reduceMotion = useReducedMotion();
+  return (
+    <div className={styles.page}>
+      <ArchBackdrop />
+      <div className={styles.ambientGlow} aria-hidden="true" />
 
- <section>
-  <div className="section-heading"><div><div className="eyebrow">Real value, not just a directory</div><h2 className="h2">What the platform helps you do</h2></div></div>
-  <div className="grid grid-4">{values.map(({title,text,icon:Icon})=><Card key={title}><Icon size={22} color="var(--primary)"/><h3>{title}</h3><p className="muted">{text}</p></Card>)}</div>
- </section>
+      <section className={styles.hero} aria-labelledby="landing-title">
+        <motion.div className={styles.logoIntro} initial={reduceMotion ? false : { scale: 0.82, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }} transition={{ duration: 0.75, ease: "easeOut" }}>
+          <MpaMark />
+        </motion.div>
+        <motion.div className={styles.networkTag} initial={reduceMotion ? false : { y: -8, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }} transition={{ duration: 0.5, delay: 0.12 }}>
+          <span className={styles.liveDot} />
+          MPA Professionals Network
+        </motion.div>
+        <motion.h1 id="landing-title" className={styles.heroTitle}
+          initial={reduceMotion ? false : { y: 18, opacity: 0 }} animate={{ y: 0, opacity: 1 }}
+          transition={{ duration: 0.6, delay: 0.18 }}>
+          Connecting trusted talent with{" "}
+          <span>meaningful opportunity.</span>
+        </motion.h1>
+        <motion.p className={styles.heroSubtitle} initial={reduceMotion ? false : { y: 18, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }} transition={{ duration: 0.6, delay: 0.27 }}>
+          Helping professionals and organizations turn connections into meaningful work.
+        </motion.p>
+        <motion.div className={styles.heroActions} initial={reduceMotion ? false : { y: 18, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }} transition={{ duration: 0.6, delay: 0.36 }}>
+          <Link href="/apply" className={styles.primaryCta}>Apply / Join MPA <ArrowRight size={17} /></Link>
+          <Link href="/jobs" className={styles.secondaryCta}>Explore opportunities</Link>
+          <Link href="/login" className={styles.loginCta}><LogIn size={16} /> Login</Link>
+        </motion.div>
+        <motion.div className={styles.trustSignals} initial={reduceMotion ? false : { opacity: 0 }}
+          animate={{ opacity: 1 }} transition={{ duration: 0.6, delay: 0.48 }}>
+          <span><ShieldCheck size={16} /> Evidence-led review</span>
+          <span><Network size={16} /> Professional connections</span>
+          <span><LockKeyhole size={16} /> Privacy-aware access</span>
+        </motion.div>
+      </section>
 
- <section className="landing-split">
-  <Card><Badge>For members</Badge><h2 className="h2">From membership to professional value</h2><p className="muted">Maintain your identity and membership, present verified capability without exposing private evidence, find relevant work, request mentorship, offer services and build a record of contribution.</p><div className="mini-flow"><span>Join</span><i>→</i><span>Build</span><i>→</i><span>Verify</span><i>→</i><span>Participate</span><i>→</i><span>Grow</span></div><a className="btn btn-primary" href="/apply">Start member application</a></Card>
-  <Card><Badge>For organizations & partners</Badge><h2 className="h2">From registration to measurable outcomes</h2><p className="muted">Register your organization, complete verification, recruit eligible professionals, publish opportunities, request expertise and inspect progress across your work on the platform.</p><div className="mini-flow"><span>Register</span><i>→</i><span>Verify</span><i>→</i><span>Engage</span><i>→</i><span>Deliver</span><i>→</i><span>Measure</span></div><a className="btn btn-primary" href="/organizations">Register organization</a></Card>
- </section>
+      <section className={styles.section} aria-labelledby="journeys-title">
+        <Reveal className={styles.sectionHeading}>
+          <p className={styles.eyebrow}>A clear place to start</p>
+          <h2 id="journeys-title">How can we help you today?</h2>
+          <span className={styles.headingRule} />
+        </Reveal>
+        <div className={styles.journeyGrid}>
+          {journeys.map(({ title, text, href, action, icon: Icon }, index) => (
+            <Reveal key={title} delay={index * 0.06} className={styles.cardReveal}>
+              <article className={styles.journeyCard}>
+                <div>
+                  <span className={styles.cardIcon}><Icon size={23} /></span>
+                  <h3>{title}</h3>
+                  <p>{text}</p>
+                </div>
+                <Link href={href} className={styles.cardLink}>{action} <ArrowRight size={16} /></Link>
+              </article>
+            </Reveal>
+          ))}
+        </div>
+      </section>
 
- <section className="landing-split">
-  <Card><Badge>Public jobs</Badge><h2 className="h2">Interested in a job? Start without the long form.</h2><p className="muted">Choose a public vacancy, tell us your intent and contact information, then continue to detailed information when you are ready.</p><div className="landing-actions"><a className="btn btn-primary" href="/jobs">Browse jobs</a><a className="btn btn-ghost" href="/apply/job">Start job inquiry</a></div></Card>
-  <Card><Badge>Public mentorship</Badge><h2 className="h2">Start with a goal, not a profile.</h2><p className="muted">Tell us what you want to learn and how to reach you. A reviewer can explain the matching path and, where authorized, consider a non-member request.</p><div className="landing-actions"><a className="btn btn-primary" href="/mentorship">Explore mentors</a><a className="btn btn-ghost" href="/apply/mentorship">Request mentorship</a></div></Card>
- </section>
+      <section className={styles.section} aria-labelledby="capabilities-title">
+        <div className={styles.capabilityPanel}>
+          <Reveal className={styles.sectionHeading}>
+            <p className={styles.eyebrow}>Real value, not just a directory</p>
+            <h2 id="capabilities-title">What the platform helps you do</h2>
+            <span className={styles.headingRule} />
+          </Reveal>
+          <div className={styles.capabilityGrid}>
+            {capabilities.map(({ title, text, icon: Icon }, index) => (
+              <Reveal key={title} delay={index * 0.06} className={styles.capabilityItem}>
+                <span className={styles.capabilityIcon}><Icon size={21} /></span>
+                <h3>{title}</h3>
+                <p>{text}</p>
+              </Reveal>
+            ))}
+          </div>
+        </div>
+      </section>
 
- <section className="landing-track"><div><div className="eyebrow">No black box</div><h2 className="h2">Always know what happens next.</h2><p className="muted">After you sign in, the tracker brings membership, organization and job applications together with status, last update and the next action. Governance decisions remain auditable rather than hidden.</p></div><div className="track-preview"><div><span className="timeline-dot"/><div><b>Submitted</b><small>Application received</small></div></div><div><span className="timeline-dot"/><div><b>Under review</b><small>Reviewer is checking your submission</small></div></div><div><span className="timeline-dot"/><div><b>Next action</b><small>We tell you if correction or payment is required</small></div></div><a className="btn btn-ghost" href="/track">Track an application <ArrowRight size={16}/></a></div></section>
+      <section className={styles.section}>
+        <div className={styles.audienceGrid}>
+          <Reveal>
+            <article className={styles.audienceCard}>
+              <span className={styles.audienceLabel}><UsersRound size={15} /> For members</span>
+              <h2>From membership to professional value</h2>
+              <p>Maintain your identity and membership, present verified capability without exposing private evidence, find relevant work, request mentorship, offer services and build a record of contribution.</p>
+              <div className={styles.flowSteps}><span>Join</span><i>→</i><span>Build</span><i>→</i><span>Verify</span><i>→</i><span>Participate</span></div>
+              <Link href="/apply" className={styles.inlineCta}>Start member application <ArrowRight size={16} /></Link>
+            </article>
+          </Reveal>
+          <Reveal delay={0.08}>
+            <article className={styles.audienceCard}>
+              <span className={styles.audienceLabel}><Building2 size={15} /> For organizations</span>
+              <h2>From registration to meaningful outcomes</h2>
+              <p>Submit organization details for review, recruit eligible professionals, publish opportunities, request expertise and follow progress through the platform’s governed workflows.</p>
+              <div className={styles.flowSteps}><span>Register</span><i>→</i><span>Verify</span><i>→</i><span>Engage</span><i>→</i><span>Deliver</span></div>
+              <Link href="/organizations" className={styles.inlineCta}>Register organization <ArrowRight size={16} /></Link>
+            </article>
+          </Reveal>
+        </div>
+      </section>
 
- <section className="landing-final"><div><div className="eyebrow">Begin with confidence</div><h2 className="h2">Your next useful action is one click away.</h2><p className="muted">Apply if you are new, register if you need an account, login if you already belong, or track a submitted application.</p></div><div className="landing-actions"><a className="btn btn-primary" href="/apply">Apply / Register</a><a className="btn btn-ghost" href="/login">Login</a><a className="btn btn-ghost" href="/track">Track progress</a></div></section>
- </div>}
+      <section className={styles.section}>
+        <Reveal className={styles.trackingPanel}>
+          <div className={styles.trackingCopy}>
+            <p className={styles.eyebrow}>No black box</p>
+            <h2>Always know what happens next.</h2>
+            <p>Track membership, organization and job applications with their current status, last update and next action. Private review notes and evidence remain available only to authorized users.</p>
+            <Link href="/track" className={styles.inlineCta}>Track progress of your application <ArrowRight size={16} /></Link>
+          </div>
+          <div className={styles.trackingPreview} aria-label="Illustration of an application timeline">
+            <div><span className={styles.timelineNode} /><span><b>Submitted</b><small>Application received</small></span><CheckCircle2 size={18} /></div>
+            <div><span className={styles.timelineNode} /><span><b>Under review</b><small>Reviewer is checking your submission</small></span><ClipboardCheck size={18} /></div>
+            <div><span className={styles.timelineNode} /><span><b>Next action</b><small>Correction or payment may be required</small></span><FileText size={18} /></div>
+          </div>
+        </Reveal>
+      </section>
+
+      <section className={styles.section + " " + styles.lastSection}>
+        <Reveal className={styles.finalCta}>
+          <div className={styles.finalArch} aria-hidden="true"><svg viewBox="0 0 800 600" fill="none"><path d="M400 600V100C400 50 500 10 600 10C700 10 800 50 800 100V600" stroke="#97C024" strokeWidth="4" /></svg></div>
+          <div className={styles.finalContent}>
+            <p className={styles.eyebrow}>Begin with confidence</p>
+            <h2>Begin with confidence</h2>
+            <p>Your next useful action is one click away. Apply if you are new, register if you need an account, login if you already belong, or track a submitted application.</p>
+            <div className={styles.finalActions}>
+              <Link href="/register" className={styles.finalPrimary}><FileText size={18} /> Apply / Register</Link>
+              <Link href="/login" className={styles.finalSecondary}><LogIn size={18} /> Login</Link>
+              <Link href="/track" className={styles.finalSecondary}><Search size={18} /> Track progress of your application</Link>
+            </div>
+          </div>
+        </Reveal>
+      </section>
+    </div>
+  );
+}
