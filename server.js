@@ -18,6 +18,7 @@ import * as userAdmin from "./src/platform/user-admin.js";
 import { resolveAllowedOrigin } from "./src/platform/config.js";
 import { clientAddress, enforcePersistentRateLimit, issueHumanChallenge, verifyHumanChallenge } from "./src/platform/security-controls.js";
 import { verifyEmailToken, resendEmailVerification } from "./src/platform/email-verification.js";
+import * as emailOperations from "./src/platform/email-operations.js";
 import { beginAdminPasskeyRegistration, finishAdminPasskeyRegistration, beginAdminPasskeyAuthentication, finishAdminPasskeyAuthentication, recoverAdminPasskey, listAdminPasskeys, revokeAdminPasskey } from "./src/platform/webauthn.js";
 
 const config=loadConfig();
@@ -193,7 +194,18 @@ const server=http.createServer(async (req,res)=>{
       return ok(res,await talent.getTalent(parts[3],viewer?.sub||null),requestId);
     }
 
+    if(req.method==="POST" && p==="api/v1/email/inbound-webhook") { return ok(res,await emailOperations.receiveInboundEmail(await body(req),String(req.headers["x-email-webhook-secret"]||"")),requestId,201); }
+
     const identity=await auth(req);
+    if(req.method==="GET" && p==="api/v1/admin/email/operations") { const identity=anyRole(await auth(req),["system_admin"]); return ok(res,await emailOperations.getEmailOperations(identity.sub),requestId); }
+    if(req.method==="GET" && p==="api/v1/admin/email/messages") { const identity=anyRole(await auth(req),["system_admin"]); return ok(res,await emailOperations.listEmailOutbox(identity.sub,{folder:query(req.url).get("folder")||"outbox",limit:query(req.url).get("limit")||100}),requestId); }
+    if(req.method==="GET" && p==="api/v1/admin/email/templates") { const identity=anyRole(await auth(req),["system_admin"]); return ok(res,await emailOperations.listEmailTemplates(identity.sub),requestId); }
+    if(req.method==="PUT" && parts.length===6 && p.startsWith("api/v1/admin/email/templates/")) { const identity=anyRole(await auth(req),["system_admin"]); return ok(res,await emailOperations.saveEmailTemplate(identity.sub,parts[5],await body(req),requestId),requestId); }
+    if(req.method==="POST" && p==="api/v1/admin/email/drafts") { const identity=anyRole(await auth(req),["system_admin"]); return ok(res,await emailOperations.saveEmailDraft(identity.sub,await body(req)),requestId,201); }
+    if(req.method==="POST" && parts.length===7 && p.startsWith("api/v1/admin/email/drafts/") && parts[6]==="queue") { const identity=anyRole(await auth(req),["system_admin"]); return ok(res,await emailOperations.queueEmailDraft(identity.sub,parts[5],requestId),requestId,202); }
+    if(req.method==="POST" && p==="api/v1/admin/email/dispatch") { const identity=anyRole(await auth(req),["system_admin"]); return ok(res,await emailOperations.dispatchEmailOutbox(identity.sub,{limit:(await body(req)).limit||20}),requestId); }
+    if(req.method==="POST" && parts.length===6 && p.startsWith("api/v1/admin/email/messages/") && parts[5]==="retry") { const identity=anyRole(await auth(req),["system_admin"]); return ok(res,await emailOperations.retryFailedEmail(identity.sub,parts[4]),requestId); }
+    if(req.method==="PATCH" && parts.length===6 && p.startsWith("api/v1/admin/email/inbox/")) { const identity=anyRole(await auth(req),["system_admin"]); return ok(res,await emailOperations.updateInbox(identity.sub,parts[4],(await body(req)).action),requestId); }
     if(req.method==="POST" && p==="api/v1/admin/experience/demo-cases") { return ok(res,await experience.createDemoCase(identity.sub,await body(req),requestId),requestId,201); }
     if(req.method==="PATCH" && parts.length===6 && p.startsWith("api/v1/admin/experience/demo-cases/")) { return ok(res,await experience.updateDemoCase(parts[5],identity.sub,await body(req),requestId),requestId); }
     if(req.method==="POST" && p==="api/v1/admin/experience/guides") { return ok(res,await experience.createGuide(identity.sub,await body(req),requestId),requestId,201); }
