@@ -12,12 +12,14 @@ const suffix=randomUUID().replace(/-/g,"").slice(0,12);
 const createdUsers=[];
 
 test("production email verification fails closed without an HTTPS delivery configuration",()=>{
-  const keys=["NODE_ENV","JWT_SECRET","EMAIL_DELIVERY_WEBHOOK_URL","EMAIL_DELIVERY_WEBHOOK_SECRET","PUBLIC_APP_URL"];
+  const keys=["NODE_ENV","JWT_SECRET","EMAIL_DELIVERY_WEBHOOK_URL","EMAIL_DELIVERY_WEBHOOK_SECRET","RESEND_API_KEY","EMAIL_FROM","PUBLIC_APP_URL"];
   const previous=Object.fromEntries(keys.map(key=>[key,process.env[key]]));
   process.env.NODE_ENV="production";
   process.env.JWT_SECRET="security-test-production-secret-with-more-than-32-characters";
   delete process.env.EMAIL_DELIVERY_WEBHOOK_URL;
   delete process.env.EMAIL_DELIVERY_WEBHOOK_SECRET;
+  delete process.env.RESEND_API_KEY;
+  delete process.env.EMAIL_FROM;
   delete process.env.PUBLIC_APP_URL;
   try{assert.throws(assertEmailDeliveryConfigured,error=>error.code==="EMAIL_DELIVERY_NOT_CONFIGURED");}
   finally{for(const key of keys){if(previous[key]===undefined)delete process.env[key];else process.env[key]=previous[key];}}
