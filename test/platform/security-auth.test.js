@@ -87,6 +87,6 @@ test("administrator recovery codes are single-use and create a restricted recove
 
 test.after(async()=>{
   const db=getPool();
-  for(const userId of createdUsers)await db.query("delete from app_user where id=$1",[userId]);
+  for(const userId of createdUsers){await db.query("delete from audit_log where actor_user_id=$1",[userId]);await db.query("delete from app_user where id=$1",[userId]);}
   await closePool();
 });
