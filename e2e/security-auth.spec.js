@@ -9,7 +9,7 @@ const suffix=randomUUID().replace(/-/g,"").slice(0,12);
 const createdUsers=[];
 async function createActor(roleCode){
  const email="security-e2e-"+roleCode+"-"+suffix+"@example.test";
- const registered=await membership.register({email,password:"Security-e2e-password-12345",firstName:"Security",lastName:roleCode+suffix,phone:"09"+String(Date.now()).slice(-8)},"security-e2e-register");
+ const registered=await membership.register({email,password:"Security-e2e-password-12345",firstName:"Security",lastName:roleCode+suffix,phone:"09"+randomUUID().replace(/\\D/g,"").slice(0,8)},"security-e2e-register");
  createdUsers.push(registered.user.id);
  await getPool().query("insert into app_user_role(user_id,role_id) select $1,id from app_role where role_code=$2 on conflict do nothing",[registered.user.id,roleCode]);
  return {email,userId:registered.user.id,token:registered.token};
@@ -36,7 +36,8 @@ test("revoked credentials are excluded from passkey login",async()=>{
   await db.query("insert into admin_passkey_credential(user_id,credential_id,public_key_jwk,revoked_at) values($1,$2,$3,now())",[admin.userId,"revoked-"+suffix,{kty:"EC",crv:"P-256",x:"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",y:"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"}]);
   const result=await api.post("/api/v1/auth/passkeys/options",{data:{email:admin.email}});
   expect(result.status()).toBe(401);
-  expect((await result.json()).error?.code||(await result.json()).data?.error?.code).toBeTruthy();
+  const payload=await result.json();
+  expect(payload.error?.code||payload.data?.error?.code).toBeTruthy();
  }finally{await api.dispose();}
 });
 
