@@ -169,8 +169,8 @@ export default function Organizations() {
   useEffect(() => {
     if (new URLSearchParams(window.location.search).get("register") === "1") setShowForm(true);
     try {
-      const saved=sessionStorage.getItem("mpa-organization-registration-draft");
-      if(saved){const draft=JSON.parse(saved);setForm(current=>({...current,legalName:draft.legalName||current.legalName,displayName:draft.displayName||current.displayName,organizationType:draft.organizationType||current.organizationType,email:draft.email||current.email,phone:draft.phone||current.phone,addressText:draft.addressText||current.addressText,website:draft.website||current.website,description:draft.description||current.description}));setNotice("Your saved organization details are ready. Review them, submit the profile, then upload required registration evidence for separate organization approval.");}
+      const saved=localStorage.getItem("mpa-organization-registration-draft");
+      if(saved){const draft=JSON.parse(saved);if(!draft.savedAt||Date.now()-Number(draft.savedAt)>24*60*60*1000){localStorage.removeItem("mpa-organization-registration-draft");setNotice("Your saved organization draft expired for privacy. Please enter the details again.");}else{setForm(current=>({...current,legalName:draft.legalName||current.legalName,displayName:draft.displayName||current.displayName,organizationType:draft.organizationType||current.organizationType,email:draft.email||current.email,phone:draft.phone||current.phone,addressText:draft.addressText||current.addressText,website:draft.website||current.website,description:draft.description||current.description}));setNotice("Your saved organization details are ready. Review them, submit the profile, then upload required registration evidence for separate organization approval.");}}
     } catch { setNotice("Saved organization details could not be restored. Please enter them again."); }
   }, []);
 
@@ -207,7 +207,7 @@ export default function Organizations() {
       ]);
       setForm(blank);
       setShowForm(false);
-      try { sessionStorage.removeItem("mpa-organization-registration-draft"); } catch {}
+      try { localStorage.removeItem("mpa-organization-registration-draft"); } catch {}
       setNotice("Organization registration recorded. Reference: "+(created.tracking_reference||"assigned by the platform")+". Status: "+(created.verification_status||"draft")+". Next action: upload required private evidence and submit for organization review. Representative email verification and organization approval are separate.");
     } catch (e) {
       setError(
