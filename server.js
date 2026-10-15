@@ -17,6 +17,7 @@ import * as publicOpportunity from "./src/platform/public-opportunity.js";
 import * as userAdmin from "./src/platform/user-admin.js";
 import { resolveAllowedOrigin } from "./src/platform/config.js";
 import { clientAddress, enforcePersistentRateLimit, issueHumanChallenge, verifyHumanChallenge } from "./src/platform/security-controls.js";
+import { verifyEmailToken, resendEmailVerification } from "./src/platform/email-verification.js";
 
 const config=loadConfig();
 const logger=createLogger({level:config.logLevel});
@@ -114,6 +115,16 @@ const server=http.createServer(async (req,res)=>{
       await enforcePersistentRateLimit(req,"human-challenge-verify",10,60000);
       const b=await body(req);
       return ok(res,await verifyHumanChallenge(b.id,b.answer),requestId);
+    }
+    if(req.method==="POST" && p==="api/v1/auth/email-verification/resend") {
+      await enforcePersistentRateLimit(req,"email-verification-resend",3,3600000,String((await body(req)).email||"").trim().toLowerCase());
+      const b=await body(req);
+      return ok(res,await resendEmailVerification(b.email,requestId),requestId,202);
+    }
+    if(req.method==="POST" && p==="api/v1/auth/email-verification/verify") {
+      await enforcePersistentRateLimit(req,"email-verification-verify",10,60000);
+      const b=await body(req);
+      return ok(res,await verifyEmailToken(b.token,requestId),requestId);
     }
     if(req.method==="POST" && p==="api/v1/auth/register") { await enforcePersistentRateLimit(req,"register",5,60000); return ok(res,await membership.register(await body(req),requestId),requestId,201); }
     if(req.method==="GET" && p==="api/v1/membership/products") return ok(res,await membership.listMembershipProducts(),requestId);
