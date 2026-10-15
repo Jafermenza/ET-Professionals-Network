@@ -84,8 +84,8 @@ export async function queueEmailDraft(actorId,draftId,requestId){
   return {queued:true,outboxId:queued.id};
  });
 }
-export async function dispatchEmailOutbox(actorId,{limit=20,onlyId=null}={}){
- const db=getPool();await requireAdmin(db,actorId);
+export async function dispatchEmailOutbox(actorId,{limit=20,onlyId=null,system=false}={}){
+ const db=getPool();if(!system)await requireAdmin(db,actorId);
  if(!providerConfig().ready)fail(503,"Email provider is not configured. Set server-side email credentials first.","EMAIL_DELIVERY_NOT_CONFIGURED");
  const batch=Math.min(Math.max(Number(limit)||20,1),50);
  const claimed=await withTransaction(async tx=>{
@@ -134,4 +134,10 @@ export async function receiveInboundEmail(input,providedSecret){
  const providerMessageId=clean(input.messageId||input.id,300)||randomUUID(),sender=clean(input.from||input.sender,320);
  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(sender))fail(400,"Inbound sender address is invalid.","VALIDATION_ERROR");
  return (await getPool().query("insert into email_inbox_message(provider_message_id,sender,recipients,subject,text_body,html_body,metadata) values($1,$2,$3,$4,$5,$6,$7) on conflict(provider_message_id) do nothing returning id,received_at",[providerMessageId,sender,Array.isArray(input.to)?input.to.map(v=>clean(v,320)).slice(0,20):[],clean(input.subject,500),String(input.text||"").slice(0,50000),String(input.html||"").slice(0,100000),{provider:"configured-inbound-webhook"}])).rows[0]||{duplicate:true};
+}
+
+// Server worker entry point: only queued platform messages are processed; no caller identity is accepted from HTTP.
+export async function dispatchPendingSystemEmail(){
+ if(!providerConfig().ready)return {processed:0,results:[],skipped:"provider_not_configured"};
+ return dispatchEmailOutbox(null,{limit:20,system:true});
 }
