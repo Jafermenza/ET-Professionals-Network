@@ -6,7 +6,7 @@ test("registration mode switch presents organization representative and legal-en
  await page.goto("/register");
  await expect(page.getByLabel("First name")).toBeVisible();
  await expect(page.getByLabel("Display name")).toBeVisible();
- await page.getByRole("button",{name:/Organization/}).click();
+ await page.locator("button.choice").filter({hasText:"Organization"}).first().click();
  await expect(page.getByLabel("Representative work email")).toBeVisible();
  await expect(page.getByLabel("Legal or registered organization name")).toBeVisible();
  await expect(page.getByLabel("Public/display name")).toBeVisible();
@@ -15,7 +15,7 @@ test("registration mode switch presents organization representative and legal-en
  await expect(page.getByLabel("Organization phone")).toBeVisible();
  await expect(page.getByText(/organization approval is a separate review decision/i)).toBeVisible();
  await expect(page.getByLabel("Display name")).toHaveCount(0);
- await page.getByRole("button",{name:/Professional/}).click();
+ await page.locator("button.choice").filter({hasText:"Professional"}).first().click();
  await expect(page.getByLabel("Display name")).toBeVisible();
  await expect(page.getByLabel("Legal or registered organization name")).toHaveCount(0);
 });
