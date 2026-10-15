@@ -34,7 +34,7 @@ Alternative: configure `EMAIL_DELIVERY_WEBHOOK_URL` and `EMAIL_DELIVERY_WEBHOOK_
 - Transient failures retry with exponential backoff. After eight failed attempts the message enters `failed`; an authorized administrator can manually retry it.
 - A provider accepting a message means accepted for delivery, not proof it reached the inbox. Bounce, complaint and delivery events need provider webhook integration to update final delivery status.
 - Email verification links are one-time, expire after 24 hours, and use the editable `account.email_verification` template. Verification cannot be disabled by toggling that template.
-- Organization registration and review-decision notifications are queued for the linked owner account. Existing membership events use the same durable outbox. For additional event-specific content, create a template whose code exactly matches the event code emitted by that workflow.
+- Organization registration and review-decision notifications are queued for the linked owner account and review staff. Job application submissions notify applicants and organization recruitment roles; candidate status changes notify applicants. Service requests and mentorship matches notify the involved requester/provider/mentor. Existing membership events use the same durable outbox. Email-enabled preferences are respected for workflow messages; verification email remains mandatory. For additional event-specific content, create a template whose code exactly matches the event code emitted by that workflow.
 - The inbound inbox requires a configured inbound provider and secret. The UI is present even if inbound delivery is not configured; the connection panel shows its status.
 
 ## Migration and acceptance
