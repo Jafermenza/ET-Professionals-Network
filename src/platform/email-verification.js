@@ -21,9 +21,9 @@ export function assertEmailDeliveryConfigured() {
   if (!endpoint || !secret || !clean(process.env.PUBLIC_APP_URL)) {
     throw Object.assign(new Error("Email verification delivery is not configured. Registration is temporarily unavailable."), { statusCode: 503, code: "EMAIL_DELIVERY_NOT_CONFIGURED" });
   }
-  let parsed;
-  try { parsed = new URL(endpoint); } catch { throw Object.assign(new Error("Email delivery endpoint is invalid."), { statusCode: 503, code: "EMAIL_DELIVERY_NOT_CONFIGURED" }); }
-  if (parsed.protocol !== "https:") throw Object.assign(new Error("Production email delivery must use HTTPS."), { statusCode: 503, code: "EMAIL_DELIVERY_NOT_CONFIGURED" });
+  let parsed, publicUrl;
+  try { parsed = new URL(endpoint); publicUrl = new URL(clean(process.env.PUBLIC_APP_URL)); } catch { throw Object.assign(new Error("Email delivery endpoint and public app URL must be valid URLs."), { statusCode: 503, code: "EMAIL_DELIVERY_NOT_CONFIGURED" }); }
+  if (parsed.protocol !== "https:" || publicUrl.protocol !== "https:" || publicUrl.username || publicUrl.password) throw Object.assign(new Error("Production email delivery and the public app URL must use HTTPS."), { statusCode: 503, code: "EMAIL_DELIVERY_NOT_CONFIGURED" });
 }
 
 export async function createEmailVerification(db, userId, email, registrationReference) {
