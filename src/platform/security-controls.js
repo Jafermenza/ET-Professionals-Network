@@ -73,7 +73,7 @@ export async function verifyHumanChallenge(id, answer) {
       await db.query("update security_human_challenge set failed_attempts=least(failed_attempts+1,5) where id=$1", [id]);
       return { ok: false, code: "CHALLENGE_INCORRECT" };
     }
-    await db.query("update security_human_challenge set token_hash=$1,verified_at=now() where id=$2", [sha256(rawToken), id]);
+    await db.query("update security_human_challenge set token_hash=$1,verified_at=now(),expires_at=now()+interval '5 minutes' where id=$2", [sha256(rawToken), id]);
     return { ok: true };
   });
   if (!result.ok) {
