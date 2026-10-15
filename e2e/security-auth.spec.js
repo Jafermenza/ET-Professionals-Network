@@ -85,8 +85,10 @@ test("administrator passkey enrollment, authentication, revocation and recovery 
   await page.goto("/admin/security");
   await page.getByRole("button",{name:"Add passkey"}).click();
   await expect(page.getByRole("heading",{name:"Save your recovery codes now"})).toBeVisible({timeout:15000});
-  const recoveryCode=(await page.locator("code").allTextContents())[0];
+  const recoveryCodes=await page.locator("code").allTextContents();
+  const recoveryCode=recoveryCodes[0],uiRecoveryCode=recoveryCodes[1];
   expect(recoveryCode).toMatch(/^[A-F0-9]{16}$/);
+  expect(uiRecoveryCode).toMatch(/^[A-F0-9]{16}$/);
   const db=getPool();
   await db.query("update admin_passkey_credential set revoked_at=now() where user_id=$1 and revoked_at is null",[admin.userId]);
   const recovery=await recoverAdminPasskey(admin.email,recoveryCode,{ip:"198.51.100.40",userAgent:"playwright-security"},"security-e2e-recovery");
@@ -98,7 +100,7 @@ test("administrator passkey enrollment, authentication, revocation and recovery 
   await page.goto("/login");
   await page.getByLabel("Email").fill(admin.email);
   await page.getByRole("button",{name:"Use a passkey recovery code"}).click();
-  await page.getByLabel("One-time recovery code").fill(recoveryCode);
+  await page.getByLabel("One-time recovery code").fill(uiRecoveryCode);
   await page.getByRole("button",{name:"Recover passkey access"}).click();
   await expect(page).toHaveURL(/\/admin\/security\?recovery=1$/,{timeout:15000});
   await page.getByRole("button",{name:"Register replacement passkey"}).click();
