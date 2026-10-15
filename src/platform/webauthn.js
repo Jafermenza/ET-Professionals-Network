@@ -134,17 +134,22 @@ export async function beginAdminPasskeyRegistration(identity) {
 
 export async function finishAdminPasskeyRegistration(identity,payload,requestId) {
   const config=relyingParty(),db=getPool(),user=await adminUser(db,identity.sub);
-  const response=payload?.response;
-  if(!payload?.id||payload.id!==payload.rawId||!response?.clientDataJSON||!response?.attestationObject)fail(400,"Passkey registration response is incomplete.","PASSKEY_RESPONSE_INVALID");
+  const row=(await db.query(`
+    update admin_passkey_challenge set consumed_at=now()
+    where id=(select id from admin_passkey_challenge
+      where user_id=$1 and purpose='register' and consumed_at is null and expires_at>now()
+        and metadata->>'sessionId'=$2
+      order by created_at desc limit 1)
+    returning id,challenge,metadata
+  `,[user.id,identity.sid])).rows[0];
+  if(!row)fail(400,"Passkey registration challenge expired, was already used, or belongs to another session. Start again.","PASSKEY_CHALLENGE_INVALID");
   try {
+    const response=payload?.response;
+    if(!payload?.id||payload.id!==payload.rawId||!response?.clientDataJSON||!response?.attestationObject)fail(400,"Passkey registration response is incomplete.","PASSKEY_RESPONSE_INVALID");
+    clientData(response.clientDataJSON,"webauthn.create",row.challenge,config.origin);
+    const credential=parseAttestation(response.attestationObject,config.rpId,fromB64url(payload.rawId));
     return await withTransaction(async tx=>{
-      const row=(await tx.query("select * from admin_passkey_challenge where user_id=$1 and purpose='register' and consumed_at is null and expires_at>now() order by created_at desc limit 1 for update",[user.id])).rows[0];
-      if(!row)fail(400,"Passkey registration challenge expired. Start again.","PASSKEY_CHALLENGE_INVALID");
-      if(row.metadata?.sessionId!==identity.sid)fail(403,"Passkey registration must be completed in the same authenticated session that started it.","PASSKEY_SESSION_MISMATCH");
-      clientData(response.clientDataJSON,"webauthn.create",row.challenge,config.origin);
-      const credential=parseAttestation(response.attestationObject,config.rpId,fromB64url(payload.rawId));
       await tx.query("insert into admin_passkey_credential(user_id,credential_id,public_key_jwk,sign_count,transports,display_name) values($1,$2,$3,$4,$5,$6)",[user.id,credential.credentialId,credential.publicKeyJwk,credential.signCount,Array.isArray(response.transports)?response.transports:[],String(payload.displayName||"Administrator passkey").slice(0,80)]);
-      await tx.query("update admin_passkey_challenge set consumed_at=now() where id=$1",[row.id]);
       await tx.query("update app_user set admin_passkey_enforced_at=coalesce(admin_passkey_enforced_at,now()),updated_at=now() where id=$1",[user.id]);
       await tx.query("insert into audit_log(actor_user_id,action,resource_type,resource_id,request_id,outcome,metadata) values($1,'admin.passkey.registered','admin_passkey_credential',$2,$3,'success',$4)",[user.id,credential.credentialId,requestId||null,{algorithm:"ES256",userVerification:true}]);
       await tx.query("update admin_passkey_recovery_code set consumed_at=coalesce(consumed_at,now()) where user_id=$1 and consumed_at is null",[user.id]);
@@ -176,13 +181,20 @@ export async function finishAdminPasskeyAuthentication(emailInput,payload,reques
   const config=relyingParty(),email=String(emailInput||"").trim().toLowerCase(),db=getPool();
   const user=(await db.query("select id,email,username,status,admin_passkey_enforced_at from app_user where lower(email)=lower($1)",[email])).rows[0];
   if(!user||user.status!=="active"||!user.admin_passkey_enforced_at)fail(401,"Passkey authentication failed.","UNAUTHENTICATED");
+  const challenge=(await db.query(`
+    update admin_passkey_challenge set consumed_at=now()
+    where id=(select id from admin_passkey_challenge
+      where user_id=$1 and purpose='authenticate' and consumed_at is null and expires_at>now()
+      order by created_at desc limit 1)
+    returning id,challenge
+  `,[user.id])).rows[0];
+  if(!challenge)fail(401,"Passkey authentication challenge is invalid, expired, or already used.","UNAUTHENTICATED");
   const response=payload?.response;
   if(!payload?.id||payload.id!==payload.rawId||!response?.clientDataJSON||!response?.authenticatorData||!response?.signature)fail(400,"Passkey response is incomplete.","PASSKEY_RESPONSE_INVALID");
   try {
     return await withTransaction(async tx=>{
-      const challenge=(await tx.query("select * from admin_passkey_challenge where user_id=$1 and purpose='authenticate' and consumed_at is null and expires_at>now() order by created_at desc limit 1 for update",[user.id])).rows[0];
       const credential=(await tx.query("select * from admin_passkey_credential where user_id=$1 and credential_id=$2 and revoked_at is null for update",[user.id,payload.rawId])).rows[0];
-      if(!challenge||!credential)fail(401,"Passkey authentication failed.","UNAUTHENTICATED");
+      if(!credential)fail(401,"Passkey authentication failed.","UNAUTHENTICATED");
       const clientBytes=clientData(response.clientDataJSON,"webauthn.get",challenge.challenge,config.origin);
       const authData=fromB64url(response.authenticatorData);
       const parsed=assertAuthenticatorData(authData,config.rpId,false);
@@ -193,7 +205,6 @@ export async function finishAdminPasskeyAuthentication(emailInput,payload,reques
       if(previous>0 && (parsed.signCount===0 || parsed.signCount<=previous))fail(401,"Passkey counter indicates a replayed or cloned credential.","PASSKEY_COUNTER_INVALID");
       const update=await tx.query("update admin_passkey_credential set sign_count=$1,last_used_at=now() where id=$2 and revoked_at is null and (sign_count=0 or $1=0 or sign_count<$1) returning id",[parsed.signCount,credential.id]);
       if(!update.rows[0])fail(401,"Passkey counter changed during authentication. Try again.","PASSKEY_COUNTER_INVALID");
-      await tx.query("update admin_passkey_challenge set consumed_at=now() where id=$1",[challenge.id]);
       await tx.query("insert into audit_log(actor_user_id,action,resource_type,resource_id,request_id,outcome,metadata) values($1,'admin.passkey.authenticated','admin_passkey_credential',$2,$3,'success',$4)",[user.id,credential.id,requestId||null,{userVerification:true}]);
       return sessionToken(tx,user,"passkey",requestMeta);
     });
