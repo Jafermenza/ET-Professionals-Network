@@ -117,8 +117,8 @@ const server=http.createServer(async (req,res)=>{
       return ok(res,await verifyHumanChallenge(b.id,b.answer),requestId);
     }
     if(req.method==="POST" && p==="api/v1/auth/email-verification/resend") {
-      await enforcePersistentRateLimit(req,"email-verification-resend",3,3600000,String((await body(req)).email||"").trim().toLowerCase());
       const b=await body(req);
+      await enforcePersistentRateLimit(req,"email-verification-resend",3,3600000,String(b.email||"").trim().toLowerCase());
       return ok(res,await resendEmailVerification(b.email,requestId),requestId,202);
     }
     if(req.method==="POST" && p==="api/v1/auth/email-verification/verify") {
