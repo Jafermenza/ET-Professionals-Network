@@ -49,6 +49,13 @@ export async function createEmailVerification(db, userId, email, registrationRef
 
 export async function deliverEmailVerification(message) {
   const config = loadConfig();
+  const templateResult = await getPool().query("select subject_template,text_template,html_template from email_notification_template where template_code='account.email_verification'").catch(()=>({rows:[]}));
+  const template = templateResult.rows[0];
+  const vars = {firstName: message.firstName || "", verificationUrl: message.verificationUrl, registrationReference: message.registrationReference || ""};
+  const render = (source, html=false) => String(source || "").replace(/\\{\\{\\s*([a-zA-Z0-9_]+)\\s*\\}\\}/g, (_,key) => { const value=String(vars[key] ?? ""); return html ? value.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;") : value; });
+  const emailSubject = template ? render(template.subject_template) : "Verify your MPA Professionals Network email";
+  const emailText = template ? render(template.text_template) : "Verify your email to activate your MPA Professionals Network account. This link expires in 24 hours. Registration reference: " + message.registrationReference + ". Link: " + message.verificationUrl;
+  const emailHtml = template ? render(template.html_template, true) : "<p>Verify your email to activate your MPA Professionals Network account.</p><p>Registration reference: <strong>" + message.registrationReference + "</strong></p><p><a href=\"" + message.verificationUrl + "\">Verify email address</a></p><p>This link expires in 24 hours.</p>";
   const resendKey = clean(process.env.RESEND_API_KEY);
   const emailFrom = clean(process.env.EMAIL_FROM);
   const endpoint = clean(process.env.EMAIL_DELIVERY_WEBHOOK_URL);
@@ -59,7 +66,7 @@ export async function deliverEmailVerification(message) {
       const response = await fetch("https://api.resend.com/emails", {
         method: "POST",
         headers: { "content-type": "application/json", authorization: "Bearer " + resendKey },
-        body: JSON.stringify({ from: emailFrom, to: [message.email], subject: "Verify your MPA Professionals Network email", text: "Verify your email to activate your MPA Professionals Network account. This link expires in 24 hours. Registration reference: " + message.registrationReference + ". Link: " + message.verificationUrl, html: "<p>Verify your email to activate your MPA Professionals Network account.</p><p>Registration reference: <strong>" + message.registrationReference + "</strong></p><p><a href=\"" + message.verificationUrl + "\">Verify email address</a></p><p>This link expires in 24 hours.</p>" }),
+        body: JSON.stringify({ from: emailFrom, to: [message.email], subject: emailSubject, text: emailText, html: emailHtml }),
         signal: AbortSignal.timeout(8000)
       });
       sent = response.ok;
@@ -75,12 +82,12 @@ export async function deliverEmailVerification(message) {
   const payload = {
     to: message.email,
     template: "mpa-email-verification",
-    subject: "Verify your MPA Professionals Network email",
+    subject: emailSubject,
     registrationReference: message.registrationReference,
     verificationUrl: message.verificationUrl,
     expiresInHours: 24,
-    text: "Verify your email to activate your MPA Professionals Network account. This link expires in 24 hours. Registration reference: " + message.registrationReference + ".",
-    html: "<p>Verify your email to activate your MPA Professionals Network account.</p><p>Registration reference: <strong>" + message.registrationReference + "</strong></p><p><a href=\"" + message.verificationUrl + "\">Verify email address</a></p><p>This link expires in 24 hours.</p>"
+    text: emailText,
+    html: emailHtml
   };
   const serialized = JSON.stringify(payload);
   const signature = createHmac("sha256", secret).update(serialized).digest("hex");
