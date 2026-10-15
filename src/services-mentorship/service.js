@@ -1,4 +1,5 @@
 import { getPool, withTransaction } from "../platform/db.js";
+import { queueWorkflowEmail } from "../platform/email-operations.js";
 
 function error(status,message,code="BUSINESS_RULE"){ const e=new Error(message); e.statusCode=status; e.code=code; return e; }
 const ACTIVE_MEMBER_SQL="exists (select 1 from membership_record m where m.user_id=$1 and m.status='active')";
@@ -136,6 +137,8 @@ export async function requestService(listingId,requesterId,input,requestId){
     const row=(await db.query("insert into service_request(service_listing_id,requester_user_id,provider_user_id,status,message,scope,agreed_price,agreed_currency,completion_due_at,requested_start_at,requested_end_at) values($1,$2,$3,'requested',$4,$5,$6,$7,$8,$9,$10) returning *",[listingId,requesterId,listing.provider_user_id,input.message||null,input.scope||null,proposedPrice,input.currency?String(input.currency).toUpperCase():listing.currency,input.completionDueAt||null,input.requestedStartAt||null,input.requestedEndAt||null])).rows[0];
     await db.query("insert into service_request_event(request_id,actor_user_id,to_status,note) values($1,$2,'requested',$3)",[row.id,requesterId,input.message||null]);
     await audit(db,requesterId,"service.request_created","service_request",row.id,requestId,{listingId});
+    await queueWorkflowEmail(db,row.provider_user_id,"professional.workflow_update",{status:"new service request",nextAction:"Review the service request and accept, decline or ask for clarification"},"service_request",row.id);
+    await queueWorkflowEmail(db,requesterId,"professional.workflow_update",{status:"requested",nextAction:"Track the provider response in your service requests"},"service_request",row.id);
     return row;
   });
 }
@@ -486,6 +489,8 @@ export async function proposeMentorMatch(requestId,mentorUserId,actorUserId,requ
     const row=(await db.query("insert into mentorship_match(request_id,mentor_user_id,mentee_user_id,score,match_reasons,status) values($1,$2,$3,$4,$5,'proposed') on conflict(request_id) do update set mentor_user_id=excluded.mentor_user_id,score=excluded.score,match_reasons=excluded.match_reasons,status='proposed',proposed_at=now(),responded_at=null returning *",[requestId,mentorUserId,request.mentee_user_id,match.score,JSON.stringify(match.reasons)])).rows[0];
     await db.query("update mentorship_request set status='matched',matched_mentor_user_id=$1,matched_at=now(),updated_at=now() where id=$2",[mentorUserId,requestId]);
     await audit(db,actorUserId,"mentorship.match_proposed","mentorship_match",row.id,requestIdHeader,{mentorUserId,score:match.score});
+    await queueWorkflowEmail(db,mentorUserId,"mentor.mentorship_update",{status:"match proposed",nextAction:"Review and accept or decline the mentorship match"},"mentorship_match",row.id);
+    await queueWorkflowEmail(db,request.mentee_user_id,"professional.workflow_update",{status:"mentor match proposed",nextAction:"Wait for the proposed mentor to respond"},"mentorship_match",row.id);
     return row;
   });
 }
@@ -508,6 +513,7 @@ export async function respondToMatch(matchId,mentorUserId,status,requestIdHeader
       await db.query("update mentorship_request set status='matching',matched_mentor_user_id=null,matched_at=null,updated_at=now() where id=$1",[match.request_id]);
     }
     await audit(db,mentorUserId,"mentorship.match_responded","mentorship_match",matchId,requestIdHeader,{status});
+    await queueWorkflowEmail(db,match.mentee_user_id,"professional.workflow_update",{status:"mentor "+status,nextAction:status==="accepted"?"Open your mentorship workspace to plan the first session":"Return to matching to review available next steps"},"mentorship_match",matchId);
     return updated;
   });
 }
