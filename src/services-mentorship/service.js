@@ -168,11 +168,14 @@ export async function changeServiceRequestStatus(requestId,userId,status,note,re
       const updated=(await db.query("update service_request set provider_completed_at=now(),provider_note=coalesce($1,provider_note),updated_at=now() where id=$2 returning *",[note||null,requestId])).rows[0];
       await db.query("insert into service_request_event(request_id,actor_user_id,from_status,to_status,note) values($1,$2,$3,$4,$5)",[requestId,userId,r.status,r.status,note||"Provider submitted completion; requester acceptance is still required."]);
       await audit(db,userId,"service.request_completion_submitted","service_request",requestId,requestIdHeader,{status:r.status});
+      await queueWorkflowEmail(db,r.requester_user_id,"professional.workflow_update",{status:"provider submitted completion",nextAction:"Review the delivered work and accept completion or raise a dispute"},"service_request",requestId);
       return updated;
     }
     const updated=(await db.query("update service_request set status=$1,provider_note=case when $2::uuid=provider_user_id then $3 else provider_note end,requester_note=case when $2::uuid=requester_user_id then $3 else requester_note end,accepted_at=case when $1='accepted' then now() else accepted_at end,started_at=case when $1='in_progress' then now() else started_at end,cancelled_at=case when $1='cancelled' then now() else cancelled_at end,updated_at=now() where id=$4 returning *",[status,userId,note||null,requestId])).rows[0];
     await db.query("insert into service_request_event(request_id,actor_user_id,from_status,to_status,note) values($1,$2,$3,$4,$5)",[requestId,userId,r.status,status,note||null]);
     await audit(db,userId,"service.request_status_changed","service_request",requestId,requestIdHeader,{from:r.status,to:status});
+    const recipientId=userId===r.provider_user_id?r.requester_user_id:r.provider_user_id;
+    await queueWorkflowEmail(db,recipientId,"professional.workflow_update",{status,nextAction:status==="accepted"?"Agree the delivery plan and start when ready":status==="in_progress"?"Track the delivery milestones":status==="cancelled"?"Review the cancellation details":"Open the service request for the latest details"},"service_request",requestId);
     return updated;
   });
 }
