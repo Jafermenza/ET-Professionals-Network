@@ -83,6 +83,9 @@ test("administrator passkey enrollment, authentication, revocation and recovery 
   await page.getByLabel("Email").fill(admin.email);
   await page.getByRole("button",{name:"Sign in with administrator passkey"}).click();
   await expect(page).toHaveURL(/\/dashboard$/,{timeout:15000});
+  expect(assertionPayload).toBeTruthy();
+  const replayApi=await playwrightRequest.newContext({baseURL:API_BASE});
+  try{const replayedAssertion=await replayApi.post("/api/v1/auth/passkeys/verify",{data:assertionPayload});expect(replayedAssertion.status()).toBe(401);}finally{await replayApi.dispose();}
   await page.goto("/admin/security");
   await page.getByRole("button",{name:"Add passkey"}).click();
   await expect(page.getByRole("heading",{name:"Save your recovery codes now"})).toBeVisible({timeout:15000});
