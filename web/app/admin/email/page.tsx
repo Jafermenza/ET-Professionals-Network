@@ -1,7 +1,7 @@
 "use client";
 import {useCallback,useEffect,useState} from "react";
 import {useRouter} from "next/navigation";
-import {AlertCircle,Archive,CheckCircle2,ChevronRight,Inbox,Mail,MailCheck,MailPlus,RefreshCw,Send,Settings,ShieldCheck,Template,Trash2} from "lucide-react";
+import {AlertCircle,Archive,CheckCircle2,ChevronRight,Inbox,Mail,MailCheck,MailPlus,RefreshCw,Send,Settings,ShieldCheck,LayoutTemplate} from "lucide-react";
 import {Card,Badge} from "../../../components/ui";
 import {api} from "../../../lib/api";
 import {useUiStore} from "../../../lib/store";
@@ -10,7 +10,7 @@ type Folder="inbox"|"sent"|"drafts"|"outbox"|"failed"|"templates"|"settings";
 type Message={id:string;recipient?:string;sender?:string;subject:string;text_body?:string;html_body?:string;status?:string;attempts?:number;last_error?:string|null;delivery_error_code?:string|null;created_at?:string;updated_at?:string;sent_at?:string|null;received_at?:string;read_at?:string|null;template_code?:string;next_attempt_at?:string|null};
 type TemplateRow={template_code:string;display_name:string;audience:string;subject_template:string;text_template:string;html_template:string;enabled:boolean;updated_at:string};
 type Operations={connection:{provider:string;ready:boolean;environment:string;sender:string|null;apiKeyConfigured:boolean;fromConfigured:boolean;webhookConfigured:boolean;inboundConfigured:boolean};counts:Record<string,number>;drafts:number;unread:number};
-const folders:{id:Folder;label:string;icon:any}[]=[{id:"inbox",label:"Inbox",icon:Inbox},{id:"sent",label:"Sent",icon:MailCheck},{id:"drafts",label:"Drafts",icon:MailPlus},{id:"outbox",label:"Outbox / queued",icon:Send},{id:"failed",label:"Failed",icon:AlertCircle},{id:"templates",label:"Templates",icon:Template},{id:"settings",label:"Connections & settings",icon:Settings}];
+const folders:{id:Folder;label:string;icon:any}[]=[{id:"inbox",label:"Inbox",icon:Inbox},{id:"sent",label:"Sent",icon:MailCheck},{id:"drafts",label:"Drafts",icon:MailPlus},{id:"outbox",label:"Outbox / queued",icon:Send},{id:"failed",label:"Failed",icon:AlertCircle},{id:"templates",label:"Templates",icon:LayoutTemplate},{id:"settings",label:"Connections & settings",icon:Settings}];
 export default function AdminEmailCenter(){
  const router=useRouter(),token=useUiStore(s=>s.token),hydrated=useUiStore(s=>s.hydrated);
  const [folder,setFolder]=useState<Folder>("outbox"),[operations,setOperations]=useState<Operations|null>(null),[messages,setMessages]=useState<Message[]>([]),[templates,setTemplates]=useState<TemplateRow[]>([]);
