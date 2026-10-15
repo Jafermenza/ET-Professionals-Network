@@ -27,6 +27,14 @@ function providerConfig(){
  const provider=resendConfigured?"resend":webhookConfigured?"signed-webhook":"not-configured";
  return {provider,ready:Boolean(publicValid&&(resendConfigured||(webhookConfigured&&webhookValid))),publicUrl,fromConfigured:Boolean(from),apiKeyConfigured:Boolean(apiKey),webhookConfigured, inboundConfigured:Boolean(clean(process.env.EMAIL_INBOUND_WEBHOOK_SECRET)),environment,sender:from?from:null};
 }
+export async function queueWorkflowEmail(db,userId,templateCode,variables={},resourceType="workflow",resourceId=null){
+ const user=(await db.query("select u.email,coalesce(np.email_enabled,true) email_enabled,p.first_name from app_user u left join notification_preference np on np.user_id=u.id left join person p on p.user_id=u.id where u.id=$1",[userId])).rows[0];
+ if(!user?.email||!user.email_enabled)return false;
+ const vars={firstName:user.first_name||"",...variables};
+ await db.query("insert into notification_event(user_id,event_code,resource_type,resource_id,payload) values($1,$2,$3,$4,$5)",[userId,templateCode,resourceType,resourceId,vars]);
+ await db.query("insert into notification_outbox(channel,recipient,template_code,payload,status,updated_at) values('email',$1,$2,$3,'pending',now())",[user.email,templateCode,{...vars,variables:vars}]);
+ return true;
+}
 export async function getEmailOperations(actorId){
  const db=getPool();await requireAdmin(db,actorId);
  const cfg=providerConfig();
