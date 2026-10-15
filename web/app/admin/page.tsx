@@ -3,6 +3,7 @@ import {
   Edit3,
   FlaskConical,
   HelpCircle,
+  Mail,
   PauseCircle,
   PlayCircle,
   Save,
