@@ -147,3 +147,12 @@ export async function dispatchPendingSystemEmail(){
  if(!providerConfig().ready)return {processed:0,results:[],skipped:"provider_not_configured"};
  return dispatchEmailOutbox(null,{limit:20,system:true});
 }
+
+export async function sendTestEmail(actorId,requestId){
+ const db=getPool();await requireAdmin(db,actorId);
+ const user=(await db.query("select email from app_user where id=$1",[actorId])).rows[0];
+ if(!user?.email)fail(400,"The administrator account has no email address configured.","EMAIL_ADDRESS_MISSING");
+ const sent=await sendMessage({recipient:user.email,subject:"MPA Network email connection test",textBody:"This is a test message from the MPA Professionals Network email operations center. The configured provider accepted this message.",htmlBody:"<p>This is a test message from the MPA Professionals Network email operations center.</p><p>The configured provider accepted this message.</p>",templateCode:"admin.email_connection_test",payload:{}});
+ await db.query("insert into audit_log(actor_user_id,action,resource_type,resource_id,request_id,outcome,metadata) values($1,'email.connection.test_sent','email_provider',$2,$3,'success',$4)",[actorId,sent.providerMessageId||null,requestId,{provider:providerConfig().provider}]);
+ return {sent:true,recipient:user.email,provider:providerConfig().provider,providerMessageId:sent.providerMessageId};
+}
