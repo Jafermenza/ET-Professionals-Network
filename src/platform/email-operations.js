@@ -150,8 +150,8 @@ export async function retryVerificationEmail(actorId,id,requestId){
  const row=(await db.query("select u.email from email_verification_token t join app_user u on u.id=t.user_id where t.id=$1 and t.delivery_status='failed' and t.consumed_at is null",[id])).rows[0];
  if(!row)fail(409,"Only unconsumed verification messages with a recorded delivery failure can be retried.","INVALID_STATE");
  const result=await resendEmailVerification(row.email,requestId);
- await db.query("insert into audit_log(actor_user_id,action,resource_type,resource_id,request_id,outcome,metadata) values($1,'email.verification.retry_requested','email_verification_token',$2,$3,'success',$4)",[actorId,id,requestId,{verificationSent:Boolean(result.sent)}]);
- return {requested:true,verificationSent:Boolean(result.sent)};
+ await db.query("insert into audit_log(actor_user_id,action,resource_type,resource_id,request_id,outcome,metadata) values($1,'email.verification.retry_requested','email_verification_token',$2,$3,'success',$4)",[actorId,id,requestId,{attemptRequested:Boolean(result.accepted)}]);
+ return {requested:Boolean(result.accepted)};
 }
 export async function retryFailedEmail(actorId,id){
  const db=getPool();await requireAdmin(db,actorId);
