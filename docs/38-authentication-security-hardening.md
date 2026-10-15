@@ -13,15 +13,22 @@ Status: implementation on `reconciliation/holistic-gates`; deployment acceptance
 
 ### Email delivery configuration
 
-Production registration fails closed until these server-only variables are configured:
+Production registration fails closed until `PUBLIC_APP_URL` and one delivery method are configured.
 
+**Simplest option: Resend**
 - `PUBLIC_APP_URL`: exact public HTTPS origin of the web application, e.g. `https://network.example.org`.
+- `RESEND_API_KEY`: server-only Resend API key.
+- `EMAIL_FROM`: sender address on a domain verified with Resend, e.g. `MPA Network <verify@network.example.org>`.
+
+The application calls Resend's HTTPS email API directly; no extra mailer server or npm dependency is required. Verify the sending domain and its DNS records in Resend before production use. Never expose `RESEND_API_KEY` to browser code.
+
+**Alternative: signed delivery webhook**
 - `EMAIL_DELIVERY_WEBHOOK_URL`: HTTPS endpoint controlled by the deployment that delivers the message through its chosen email provider.
 - `EMAIL_DELIVERY_WEBHOOK_SECRET`: long random secret shared only with that endpoint.
 
-The application POSTs a JSON payload containing `to`, `template`, `subject`, `text`, `html`, `verificationUrl`, `registrationReference`, and `expiresInHours`. It sends the configured secret as a Bearer credential and an HMAC-SHA256 signature of the exact serialized body in `x-mpa-payload-signature`. The receiver must verify the signature using constant-time comparison, validate the recipient and template, send the message, and return a 2xx response only when it has accepted the message for delivery. Do not expose this endpoint or secret to browser code. The repository does not provision a mail-provider account or claim delivery until this webhook is configured and tested.
+The application POSTs a JSON payload containing `to`, `template`, `subject`, `text`, `html`, `verificationUrl`, `registrationReference`, and `expiresInHours`. It sends the configured secret as a Bearer credential and an HMAC-SHA256 signature of the exact serialized body in `x-mpa-payload-signature`. The receiver must verify the signature using constant-time comparison, validate the recipient and template, send the message, and return a 2xx response only when it has accepted the message for delivery. Do not expose this endpoint or secret to browser code.
 
-For local development, set `EMAIL_VERIFICATION_REQUIRED=true` to exercise the email gate. Without a webhook, the development-only response provides a verification URL for local testing. Production does not return verification tokens or links to the browser.
+For local development, set `EMAIL_VERIFICATION_REQUIRED=true` to exercise the email gate. Without a delivery provider, the development-only response provides a verification URL for local testing. Production does not return verification tokens or links to the browser.
 
 ## First-party human challenge and request throttling
 
