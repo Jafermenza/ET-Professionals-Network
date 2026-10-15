@@ -6,10 +6,22 @@ import * as membership from "../../src/membership/service.js";
 import { hashSessionToken } from "../../src/platform/auth.js";
 import { issueHumanChallenge, verifyHumanChallenge, consumeHumanChallenge, enforcePersistentRateLimit, hashSecurityToken } from "../../src/platform/security-controls.js";
 import { recoverAdminPasskey, beginAdminPasskeyAuthentication, finishAdminPasskeyAuthentication } from "../../src/platform/webauthn.js";
-import { createEmailVerification, verifyEmailToken } from "../../src/platform/email-verification.js";
+import { createEmailVerification, verifyEmailToken, assertEmailDeliveryConfigured } from "../../src/platform/email-verification.js";
 
 const suffix=randomUUID().replace(/-/g,"").slice(0,12);
 const createdUsers=[];
+
+test("production email verification fails closed without an HTTPS delivery configuration",()=>{
+  const keys=["NODE_ENV","JWT_SECRET","EMAIL_DELIVERY_WEBHOOK_URL","EMAIL_DELIVERY_WEBHOOK_SECRET","PUBLIC_APP_URL"];
+  const previous=Object.fromEntries(keys.map(key=>[key,process.env[key]]));
+  process.env.NODE_ENV="production";
+  process.env.JWT_SECRET="security-test-production-secret-with-more-than-32-characters";
+  delete process.env.EMAIL_DELIVERY_WEBHOOK_URL;
+  delete process.env.EMAIL_DELIVERY_WEBHOOK_SECRET;
+  delete process.env.PUBLIC_APP_URL;
+  try{assert.throws(assertEmailDeliveryConfigured,error=>error.code==="EMAIL_DELIVERY_NOT_CONFIGURED");}
+  finally{for(const key of keys){if(previous[key]===undefined)delete process.env[key];else process.env[key]=previous[key];}}
+});
 
 test("first-party human challenge rejects wrong answers and verified tokens are single-use",async()=>{
   const challenge=await issueHumanChallenge();
