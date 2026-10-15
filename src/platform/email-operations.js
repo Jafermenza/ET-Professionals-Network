@@ -1,5 +1,6 @@
 import { getPool, withTransaction } from "./db.js";
 import { createHmac, timingSafeEqual, randomUUID } from "node:crypto";
+import { resendEmailVerification } from "./email-verification.js";
 
 function fail(status,message,code="BUSINESS_RULE"){throw Object.assign(new Error(message),{statusCode:status,code});}
 async function requireAdmin(db,actorId){
@@ -48,6 +49,7 @@ export async function listEmailOutbox(actorId,{folder="outbox",limit=100}={}){
  const n=Math.min(Math.max(Number(limit)||100,1),200);
  if(folder==="drafts")return (await db.query("select id,recipient,subject,text_body,html_body,status,created_at,updated_at from email_outbox_draft where status='draft' order by updated_at desc limit $1",[n])).rows;
  if(folder==="inbox")return (await db.query("select id,provider_message_id,sender,recipients,subject,text_body,received_at,read_at,archived_at from email_inbox_message where archived_at is null order by received_at desc limit $1",[n])).rows;
+ if(folder==="verification-failed")return (await db.query("select t.id,u.email recipient,'Email verification delivery failed' subject,coalesce(t.delivery_error_code,'Delivery failed') last_error,t.delivery_attempted_at created_at,'failed' status from email_verification_token t join app_user u on u.id=t.user_id where t.delivery_status='failed' and t.consumed_at is null order by t.delivery_attempted_at desc nulls last limit $1",[n])).rows;
  const status=folder==="sent"?"sent":folder==="failed"?"failed":folder==="queued"?"pending":null;
  return (await db.query(`select id,recipient,template_code,coalesce(subject,'') subject,coalesce(text_body,payload->>'text','') text_body,status,attempts,next_attempt_at,provider_message_id,last_error,delivery_error_code,created_at,updated_at,sent_at
  from notification_outbox where channel='email' and ($1::text is null or status=$1) order by created_at desc limit $2`,[status,n])).rows;
@@ -141,6 +143,15 @@ export async function dispatchEmailOutbox(actorId,{limit=20,onlyId=null,system=f
   }
  }
  return {processed:results.length,results};
+}
+export async function retryVerificationEmail(actorId,id,requestId){
+ const db=getPool();await requireAdmin(db,actorId);
+ if(!providerConfig().ready)fail(503,"Configure the email provider before retrying verification messages.","EMAIL_DELIVERY_NOT_CONFIGURED");
+ const row=(await db.query("select u.email from email_verification_token t join app_user u on u.id=t.user_id where t.id=$1 and t.delivery_status='failed' and t.consumed_at is null",[id])).rows[0];
+ if(!row)fail(409,"Only unconsumed verification messages with a recorded delivery failure can be retried.","INVALID_STATE");
+ const result=await resendEmailVerification(row.email,requestId);
+ await db.query("insert into audit_log(actor_user_id,action,resource_type,resource_id,request_id,outcome,metadata) values($1,'email.verification.retry_requested','email_verification_token',$2,$3,'success',$4)",[actorId,id,requestId,{verificationSent:Boolean(result.sent)}]);
+ return {requested:true,verificationSent:Boolean(result.sent)};
 }
 export async function retryFailedEmail(actorId,id){
  const db=getPool();await requireAdmin(db,actorId);
