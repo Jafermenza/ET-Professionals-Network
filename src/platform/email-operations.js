@@ -123,6 +123,7 @@ export async function dispatchEmailOutbox(actorId,{limit=20,onlyId=null,system=f
 }
 export async function retryFailedEmail(actorId,id){
  const db=getPool();await requireAdmin(db,actorId);
+ if(!providerConfig().ready)fail(503,"Configure the email provider before retrying failed messages.","EMAIL_DELIVERY_NOT_CONFIGURED");
  const row=(await db.query("update notification_outbox set status='pending',attempts=0,next_attempt_at=now(),last_error=null,delivery_error_code=null,updated_at=now() where id=$1 and channel='email' and status='failed' returning id",[id])).rows[0];
  if(!row)fail(409,"Only failed email messages can be retried.","INVALID_STATE");
  return dispatchEmailOutbox(actorId,{limit:1,onlyId:id});
