@@ -3,6 +3,7 @@ import {randomUUID} from "node:crypto";
 import {getPool,closePool} from "../src/platform/db.js";
 import * as membership from "../src/membership/service.js";
 import {hashSecurityToken} from "../src/platform/security-controls.js";
+import {recoverAdminPasskey} from "../src/platform/webauthn.js";
 
 const API_BASE=process.env.API_BASE_URL||"http://127.0.0.1:3000";
 const suffix=randomUUID().replace(/-/g,"").slice(0,12);
@@ -60,6 +61,64 @@ test("password sessions cannot bypass passkey enforcement; recovery sessions sta
   expect(replay.status()).toBe(401);
  }finally{await api.dispose();}
 });
+
+test("administrator passkey enrollment, authentication, revocation and recovery work end to end",async({browser})=>{
+ const admin=await createActor("system_admin");
+ const context=await browser.newContext({baseURL:"http://localhost:3001"});
+ const page=await context.newPage();
+ const cdp=await context.newCDPSession(page);
+ await cdp.send("WebAuthn.enable");
+ await cdp.send("WebAuthn.addVirtualAuthenticator",{options:{protocol:"ctap2",transport:"internal",hasResidentKey:true,hasUserVerification:true,isUserVerified:true,automaticPresenceSimulation:true}});
+ try{
+  await page.goto("/login");
+  await page.getByLabel("Email").fill(admin.email);
+  await page.getByLabel("Password").fill("Security-e2e-password-12345");
+  await page.getByRole("button",{name:/Login with password/}).click();
+  await expect(page).toHaveURL(/\/dashboard$/);
+  await page.goto("/admin/security");
+  await page.getByRole("button",{name:"Add passkey"}).click();
+  await expect(page.getByRole("heading",{name:"Save your recovery codes now"})).toBeVisible({timeout:15000});
+  await page.goto("/login");
+  await page.getByLabel("Email").fill(admin.email);
+  await page.getByRole("button",{name:"Sign in with administrator passkey"}).click();
+  await expect(page).toHaveURL(/\/dashboard$/,{timeout:15000});
+  await page.goto("/admin/security");
+  await page.getByRole("button",{name:"Add passkey"}).click();
+  await expect(page.getByRole("heading",{name:"Save your recovery codes now"})).toBeVisible({timeout:15000});
+  const recoveryCode=(await page.locator("code").allTextContents())[0];
+  expect(recoveryCode).toMatch(/^[A-F0-9]{16}$/);
+  const db=getPool();
+  await db.query("update admin_passkey_credential set revoked_at=now() where user_id=$1 and revoked_at is null",[admin.userId]);
+  const recovery=await recoverAdminPasskey(admin.email,recoveryCode,{ip:"198.51.100.40",userAgent:"playwright-security"},"security-e2e-recovery");
+  const api=await playwrightRequest.newContext({baseURL:API_BASE});
+  try{
+   const bypass=await api.get("/api/v1/me",{headers:{authorization:"Bearer "+recovery.token}});
+   expect(bypass.status()).toBe(401);
+  }finally{await api.dispose();}
+  await page.goto("/login");
+  await page.getByLabel("Email").fill(admin.email);
+  await page.getByRole("button",{name:"Use a passkey recovery code"}).click();
+  await page.getByLabel("One-time recovery code").fill(recoveryCode);
+  await page.getByRole("button",{name:"Recover passkey access"}).click();
+  await expect(page).toHaveURL(/\/admin\/security\?recovery=1$/,{timeout:15000});
+  await page.getByRole("button",{name:"Register replacement passkey"}).click();
+  await expect(page.getByRole("heading",{name:"Save your recovery codes now"})).toBeVisible({timeout:15000});
+  await page.goto("/login");
+  await page.getByLabel("Email").fill(admin.email);
+  await page.getByRole("button",{name:"Sign in with administrator passkey"}).click();
+  await expect(page).toHaveURL(/\/dashboard$/,{timeout:15000});
+  const replay=await apiRecoveryReplay(admin.email,recoveryCode);
+  expect(replay).toBe(false);
+ }finally{
+  await cdp.send("WebAuthn.disable").catch(()=>{});
+  await context.close();
+ }
+});
+async function apiRecoveryReplay(email,code){
+ const api=await playwrightRequest.newContext({baseURL:API_BASE});
+ try{const response=await api.post("/api/v1/auth/passkeys/recovery",{data:{email,code}});return response.status()===200;}
+ finally{await api.dispose();}
+}
 
 test.afterAll(async()=>{
  const db=getPool();
