@@ -70,7 +70,7 @@ export default function Login(){
  }
  async function resendVerification(){
    setBusy(true);setError("");
-   try{await api("/api/v1/auth/email-verification/resend",{method:"POST",body:JSON.stringify({email})});setError("If this address needs verification, a new link has been requested. Check your inbox and spam folder.");}
+   try{const result=await api<{developmentVerificationUrl?:string}>("/api/v1/auth/email-verification/resend",{method:"POST",body:JSON.stringify({email})});setError(result.developmentVerificationUrl?"Development verification link: "+result.developmentVerificationUrl:"If this address needs verification, a new link has been requested. Check your inbox and spam folder.");}
    catch(err){setError(err instanceof Error?err.message:"Could not request a verification link.");}
    finally{setBusy(false);}
  }
