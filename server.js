@@ -169,9 +169,9 @@ const server=http.createServer(async (req,res)=>{
       const identity=anyRole(await auth(req),["system_admin","admin"]);
       return ok(res,await listAdminPasskeys(identity.sub),requestId);
     }
-    if(req.method==="DELETE" && parts.length===4 && p.startsWith("api/v1/admin/passkeys/")) {
+    if(req.method==="DELETE" && parts.length===5 && p.startsWith("api/v1/admin/passkeys/")) {
       const identity=anyRole(await auth(req),["system_admin","admin"]);
-      return ok(res,await revokeAdminPasskey(identity.sub,parts[3],requestId),requestId);
+      return ok(res,await revokeAdminPasskey(identity.sub,parts[4],requestId),requestId);
     }
     if(req.method==="POST" && p==="api/v1/auth/logout") { const identity=await auth(req); return ok(res,await userAdmin.logout(identity.sub,identity.sid,requestId),requestId); }
     if(req.method==="GET" && p==="api/v1/admin/users") { const identity=await auth(req); return ok(res,await userAdmin.listUsers(identity,{q:query(req.url).get("q"),status:query(req.url).get("status")}),requestId); }
