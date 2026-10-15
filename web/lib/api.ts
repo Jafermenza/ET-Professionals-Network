@@ -17,6 +17,7 @@ const FRIENDLY_ERRORS: Record<string,string> = {
   UNAUTHENTICATED: "Your session has expired or you need to sign in. Please log in and try again.",
   EMAIL_NOT_VERIFIED: "Verify your email before signing in. You can request a new verification link below.",
   PASSKEY_REQUIRED: "This administrator account requires a passkey. Choose “Sign in with administrator passkey” or use a one-time recovery code.",
+  PASSKEY_ENROLLMENT_REQUIRED: "Register an administrator passkey before continuing. Sign in with your password once to complete setup.",
   PASSKEY_NOT_CONFIGURED: "Administrator passkeys are not configured for this deployment. Contact the platform operator.",
   CHALLENGE_REQUIRED: "Complete the human check before registering.",
   CHALLENGE_INVALID: "The human-check token is invalid, expired, or already used. Complete a new check.",
