@@ -39,7 +39,7 @@ export default function AdminSecurity(){
    if(typeof window!=="undefined"){const query=new URLSearchParams(window.location.search);if(query.get("recovery")==="1")setRecoveryMode(true);if(query.get("enroll")==="1")setEnrollmentMode(true);}
  },[]);
  useEffect(()=>{if(hydrated&&!token)router.replace("/login?next=/admin/security");},[hydrated,token,router]);
- useEffect(()=>{if(token&&!recoveryMode&&!enrollmentMode)void load();},[token,recoveryMode,enrollmentMode]);
+ useEffect(()=>{const query=typeof window!=="undefined"?new URLSearchParams(window.location.search):null;const restrictedSetup=query?.get("recovery")==="1"||query?.get("enroll")==="1";if(token&&!recoveryMode&&!enrollmentMode&&!restrictedSetup)void load();},[token,recoveryMode,enrollmentMode]);
  async function registerPasskey(){
    setBusy(true);setError("");setMessage("");setRecoveryCodes([]);
    try{
