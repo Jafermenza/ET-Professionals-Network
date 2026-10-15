@@ -37,14 +37,14 @@ export function assertEmailDeliveryConfigured() {
   }
 }
 
-export async function createEmailVerification(db, userId, email, registrationReference) {
+export async function createEmailVerification(db, userId, email, registrationReference, firstName = "") {
   assertEmailDeliveryConfigured();
   const token = randomBytes(32).toString("base64url");
   await db.query(
     "insert into email_verification_token(user_id,token_hash,expires_at) values($1,$2,now()+interval '24 hours')",
     [userId, sha256(token)]
   );
-  return { token, verificationUrl: emailUrl(token), registrationReference, email };
+  return { token, verificationUrl: emailUrl(token), registrationReference, email, firstName };
 }
 
 export async function deliverEmailVerification(message) {
