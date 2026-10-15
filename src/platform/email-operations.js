@@ -89,6 +89,7 @@ export async function dispatchEmailOutbox(actorId,{limit=20,onlyId=null,system=f
  if(!providerConfig().ready)fail(503,"Email provider is not configured. Set server-side email credentials first.","EMAIL_DELIVERY_NOT_CONFIGURED");
  const batch=Math.min(Math.max(Number(limit)||20,1),50);
  const claimed=await withTransaction(async tx=>{
+  await tx.query("update notification_outbox set status='pending',next_attempt_at=now(),locked_at=null,updated_at=now() where channel='email' and status='processing' and locked_at<now()-interval '5 minutes'");
   const rows=(await tx.query(`select id,recipient,template_code,payload,subject,text_body,html_body,attempts
    from notification_outbox where channel='email' and (status='pending' or (status='failed' and next_attempt_at is not null and next_attempt_at<=now()))
    and ($1::uuid is null or id=$1::uuid) and coalesce(next_attempt_at,created_at)<=now()
@@ -101,7 +102,12 @@ export async function dispatchEmailOutbox(actorId,{limit=20,onlyId=null,system=f
   try{
    let subject=row.subject||"",textBody=row.text_body||row.payload?.text||"",htmlBody=row.html_body||row.payload?.html||"";
    const template=(await db.query("select subject_template,text_template,html_template,enabled from email_notification_template where template_code=$1",[row.template_code])).rows[0];
+   if(template&&!template.enabled){await db.query("update notification_outbox set status='cancelled',last_error='Notification template disabled by administrator',locked_at=null,updated_at=now() where id=$1",[row.id]);results.push({id:row.id,status:"cancelled"});continue;}
    if(template?.enabled){const vars={...(row.payload||{}),...(row.payload?.variables||{})};subject=render(template.subject_template,vars);textBody=render(template.text_template,vars);htmlBody=render(template.html_template,vars);}
+   const humanEvent=String(row.template_code||"account update").replace(/[._-]+/g," ").replace(/\b\w/g,ch=>ch.toUpperCase());
+   if(!subject)subject=humanEvent+" · MPA Professionals Network";
+   if(!textBody)textBody="There is a new update to your MPA Professionals Network account.\n\n"+(row.payload?.status?"Status: "+row.payload.status+"\n":"")+(row.payload?.nextAction?"Next action: "+row.payload.nextAction+"\n":"")+(row.payload?.registrationReference?"Reference: "+row.payload.registrationReference+"\n":"")+"Sign in to the platform to review the latest details. If you need help, contact platform support.";
+   if(!htmlBody)htmlBody="<p>There is a new update to your MPA Professionals Network account.</p>"+(row.payload?.status?"<p>Status: "+String(row.payload.status).replace(/[&<>]/g,"")+" </p>":"")+(row.payload?.nextAction?"<p>Next action: "+String(row.payload.nextAction).replace(/[&<>]/g,"")+"</p>":"")+(row.payload?.registrationReference?"<p>Reference: <strong>"+String(row.payload.registrationReference).replace(/[&<>]/g,"")+"</strong></p>":"")+"<p>Sign in to the platform to review the latest details.</p>";
    if(!subject)subject="Notification from MPA Professionals Network";
    const sent=await sendMessage({recipient:row.recipient,subject,textBody,htmlBody,templateCode:row.template_code,payload:row.payload});
    await db.query("update notification_outbox set status='sent',sent_at=now(),provider_message_id=$1,last_error=null,delivery_error_code=null,next_attempt_at=null,locked_at=null,updated_at=now() where id=$2",[sent.providerMessageId,row.id]);
