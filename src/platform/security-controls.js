@@ -50,6 +50,7 @@ export async function issueHumanChallenge() {
     "insert into security_human_challenge(purpose,question,answer_hash,expires_at) values('registration',$1,$2,now()+interval '5 minutes') returning id,question,expires_at",
     [question, sha256("registration:" + question + ":" + answer)]
   )).rows[0];
+  if (randomInt(0, 100) === 0) await getPool().query("delete from security_human_challenge where id in (select id from security_human_challenge where expires_at < now() or consumed_at is not null order by expires_at limit 500)");
   return { id: row.id, question: row.question, expiresAt: row.expires_at };
 }
 
