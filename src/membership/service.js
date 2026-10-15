@@ -76,8 +76,9 @@ export async function register(input,requestId){
     await db.query("insert into app_user_role(user_id,role_id) select $1,id from app_role where role_code='member' on conflict do nothing",[user.id]);
     await db.query("insert into notification_preference(user_id) values($1) on conflict do nothing",[user.id]);
     await audit(db,user.id,"account.registered","account",user.id,requestId,{identityPolicy:"email_phone_exact_name",registrationReference});
-    await notify(db,user.id,"account_registered","account",user.id,{displayName:p.display_name,registrationReference});
-    const verification=emailVerificationRequired?await createEmailVerification(db,user.id,email,registrationReference):null;
+    if(emailVerificationRequired) await db.query("insert into notification_event(user_id,event_code,resource_type,resource_id,payload) values($1,'account_registered','account',$2,$3)",[user.id,user.id,{displayName:p.display_name,registrationReference}]);
+    else await notify(db,user.id,"account_registered","account",user.id,{displayName:p.display_name,registrationReference});
+    const verification=emailVerificationRequired?await createEmailVerification(db,user.id,email,registrationReference,p.firstName):null;
     const token=emailVerificationRequired?null:await tokenFor(db,user,["member"]);
     return {user:{id:user.id,email:user.email},person:p,registrationReference,verification,token};
   });
