@@ -214,7 +214,7 @@ export async function recoverAdminPasskey(emailInput,codeInput,requestMeta={},re
     const recovery=(await tx.query("select id from admin_passkey_recovery_code where user_id=$1 and code_hash=$2 and consumed_at is null for update",[user.id,hashText(code)])).rows[0];
     if(!recovery)fail(401,"Recovery could not be completed.","RECOVERY_INVALID");
     await tx.query("update admin_passkey_recovery_code set consumed_at=now() where id=$1",[recovery.id]);
-    await tx.query("insert into audit_log(actor_user_id,action,resource_type,resource_id,request_id,outcome,metadata) values($1,'admin.passkey.recovery_started','account',$1,$2,'success',$3)",[user.id,requestId||null,{method:"single_use_recovery_code"}]);
+    await tx.query("insert into audit_log(actor_user_id,action,resource_type,resource_id,request_id,outcome,metadata) values($1,'admin.passkey.recovery_started','account',$2,$3,'success',$4)",[user.id,user.id,requestId||null,{method:"single_use_recovery_code"}]);
     return sessionToken(tx,user,"recovery",requestMeta);
   });
 }
