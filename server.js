@@ -16,6 +16,7 @@ import * as applicationTracking from "./src/platform/application-tracking.js";
 import * as publicOpportunity from "./src/platform/public-opportunity.js";
 import * as userAdmin from "./src/platform/user-admin.js";
 import { resolveAllowedOrigin } from "./src/platform/config.js";
+import { clientAddress, enforcePersistentRateLimit, issueHumanChallenge, verifyHumanChallenge } from "./src/platform/security-controls.js";
 
 const config=loadConfig();
 const logger=createLogger({level:config.logLevel});
@@ -40,7 +41,7 @@ async function body(req){
   if(!raw) return {};
   try { return JSON.parse(raw); } catch { throw Object.assign(new Error("Request body must be valid JSON."),{statusCode:400,code:"INVALID_JSON"}); }
 }
-function clientIp(req){ return String(req.headers["x-forwarded-for"]||req.socket.remoteAddress||"").split(",")[0].trim() || null; }
+function clientIp(req){ return clientAddress(req); }
 async function auth(req){
   if(!config.jwtSecret) throw Object.assign(new Error("Authentication secret is not configured."),{statusCode:503,code:"AUTH_NOT_CONFIGURED"});
   const header=req.headers.authorization||"";
@@ -71,8 +72,7 @@ function anyRole(identity,allowed){
   return identity;
 }
 function ok(res,data,requestId,status=200){ return json(res,status,{data},requestId); }
-const rateBuckets=new Map();
-function publicRateLimit(req,key,limit=30,windowMs=60000){ const now=Date.now(), k=key+":"+clientIp(req); const b=rateBuckets.get(k)||{start:now,count:0}; if(now-b.start>=windowMs){b.start=now;b.count=0} b.count++; rateBuckets.set(k,b); if(b.count>limit) throw Object.assign(new Error("Too many requests. Please try again later."),{statusCode:429,code:"RATE_LIMITED"}); }
+
 async function bootstrapAdmin(){ if(!config.bootstrapAdminEmail||!config.bootstrapAdminPassword) return; const m=await import("./src/membership/service.js"); return m.bootstrapAdmin({email:config.bootstrapAdminEmail,password:config.bootstrapAdminPassword,name:config.bootstrapAdminName}); }
 
 const server=http.createServer(async (req,res)=>{
@@ -91,7 +91,7 @@ const server=http.createServer(async (req,res)=>{
     if(req.method==="GET" && req.url==="/readyz") return ok(res,{status:"ready",databaseConfigured:Boolean(config.databaseUrl)},requestId);
     const parts=pathParts(req.url);
     const p=parts.join("/");
-    if(req.method==="POST" && p==="api/v1/public/opportunity-inquiries") { publicRateLimit(req,"public-inquiry",10,60000); return ok(res,await publicOpportunity.createPublicInquiry(await body(req),requestId,optionalIdentity(req)),requestId,201); }
+    if(req.method==="POST" && p==="api/v1/public/opportunity-inquiries") { await enforcePersistentRateLimit(req,"public-inquiry",10,60000); return ok(res,await publicOpportunity.createPublicInquiry(await body(req),requestId,optionalIdentity(req)),requestId,201); }
     if(req.method==="GET" && parts.length===6 && p.startsWith("api/v1/public/opportunity-inquiries/") && parts[5]==="details") { const q=query(req.url); return ok(res,await publicOpportunity.getPublicInquiry(parts[4],q.get("token")||""),requestId); }
     if(req.method==="PATCH" && parts.length===6 && p.startsWith("api/v1/public/opportunity-inquiries/") && parts[5]==="details") { const b=await body(req); return ok(res,await publicOpportunity.updatePublicInquiryDetails(parts[4],b.token||"",b,requestId),requestId); }
     if(req.method==="POST" && parts.length===6 && p.startsWith("api/v1/public/opportunity-inquiries/") && parts[5]==="link") { const identity=await auth(req); const b=await body(req); return ok(res,await publicOpportunity.linkInquiryToAccount(parts[4],b.token||"",identity.sub,requestId),requestId); }
@@ -106,10 +106,19 @@ const server=http.createServer(async (req,res)=>{
     if(req.method==="PUT" && parts.length===6 && p.startsWith("api/v1/files/uploads/") && parts[5]==="content") { const identity=await auth(req); if(!String(req.headers["content-type"]||"").startsWith("application/octet-stream")) throw Object.assign(new Error("Upload content must use application/octet-stream."),{statusCode:415,code:"UNSUPPORTED_MEDIA_TYPE"}); const result=await receivePrivateUpload(identity.sub,parts[4],String(req.headers["x-upload-token"]||""),await rawBody(req)); return ok(res,result,requestId,201); }
     if(req.method==="POST" && parts.length===6 && p.startsWith("api/v1/files/uploads/") && parts[5]==="confirm") { const identity=await auth(req); return ok(res,await confirmPrivateUpload(identity.sub,parts[4]),requestId,201); }
     if(req.method==="GET" && parts.length===4 && p.startsWith("api/v1/files/")) { const identity=await auth(req); const result=await readAuthorizedPrivateFile(identity.sub,parts[3],identity.roles||[],requestId); res.writeHead(200,{"content-type":result.file.content_type,"content-length":String(result.bytes.length),"content-disposition":"attachment; filename*=UTF-8''"+encodeURIComponent(result.file.original_name),"cache-control":"private, no-store","x-content-type-options":"nosniff","x-request-id":requestId}); return res.end(result.bytes); }
-    if(req.method==="POST" && p==="api/v1/auth/register") { publicRateLimit(req,"register",5,60000); return ok(res,await membership.register(await body(req),requestId),requestId,201); }
+    if(req.method==="POST" && p==="api/v1/security/human-challenge") {
+      await enforcePersistentRateLimit(req,"human-challenge",15,60000);
+      return ok(res,await issueHumanChallenge(),requestId,201);
+    }
+    if(req.method==="POST" && p==="api/v1/security/human-challenge/verify") {
+      await enforcePersistentRateLimit(req,"human-challenge-verify",10,60000);
+      const b=await body(req);
+      return ok(res,await verifyHumanChallenge(b.id,b.answer),requestId);
+    }
+    if(req.method==="POST" && p==="api/v1/auth/register") { await enforcePersistentRateLimit(req,"register",5,60000); return ok(res,await membership.register(await body(req),requestId),requestId,201); }
     if(req.method==="GET" && p==="api/v1/membership/products") return ok(res,await membership.listMembershipProducts(),requestId);
     if(req.method==="POST" && p==="api/v1/auth/login") {
-      const b=await body(req); publicRateLimit(req,"login:"+String(b.email||"").trim().toLowerCase(),20,60000); return ok(res,await membership.login(b.email,b.password,requestId,{ip:clientIp(req),userAgent:req.headers["user-agent"]||null}),requestId);
+      const b=await body(req); await enforcePersistentRateLimit(req,"login",20,60000,String(b.email||"").trim().toLowerCase()); return ok(res,await membership.login(b.email,b.password,requestId,{ip:clientIp(req),userAgent:req.headers["user-agent"]||null}),requestId);
     }
 
     if(req.method==="POST" && p==="api/v1/auth/logout") { const identity=await auth(req); return ok(res,await userAdmin.logout(identity.sub,identity.sid,requestId),requestId); }
