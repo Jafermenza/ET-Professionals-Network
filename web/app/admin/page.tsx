@@ -126,6 +126,7 @@ type Inquiry = {
           account roles shown below.
         </p>
         <div className="row" style={{ flexWrap: "wrap", marginTop: 10 }}>
+          <a className="btn btn-ghost" href="/admin/security"><ShieldCheck size={16} /> Administrator passkeys</a>
           {roles.map((role) => (
             <Badge key={role} tone="slate">
               {role}
