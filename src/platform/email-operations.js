@@ -12,8 +12,20 @@ function render(template,vars){
 }
 function providerConfig(){
  const apiKey=clean(process.env.RESEND_API_KEY,500),from=clean(process.env.EMAIL_FROM,320);
- let publicUrl="";try{publicUrl=new URL(clean(process.env.PUBLIC_APP_URL)).origin;}catch{}
- return {provider:apiKey&&from?"resend":clean(process.env.EMAIL_DELIVERY_WEBHOOK_URL)&&clean(process.env.EMAIL_DELIVERY_WEBHOOK_SECRET)?"signed-webhook":"not-configured",ready:Boolean(publicUrl&&((apiKey&&from)||(clean(process.env.EMAIL_DELIVERY_WEBHOOK_URL)&&clean(process.env.EMAIL_DELIVERY_WEBHOOK_SECRET)))),publicUrl,fromConfigured:Boolean(from),apiKeyConfigured:Boolean(apiKey),webhookConfigured:Boolean(clean(process.env.EMAIL_DELIVERY_WEBHOOK_URL)&&clean(process.env.EMAIL_DELIVERY_WEBHOOK_SECRET)),inboundConfigured:Boolean(clean(process.env.EMAIL_INBOUND_WEBHOOK_SECRET))};
+ const endpoint=clean(process.env.EMAIL_DELIVERY_WEBHOOK_URL),secret=clean(process.env.EMAIL_DELIVERY_WEBHOOK_SECRET);
+ const environment=process.env.NODE_ENV||"development";
+ let publicUrl="",publicValid=false;
+ try{
+  const parsed=new URL(clean(process.env.PUBLIC_APP_URL));
+  publicUrl=parsed.origin;
+  publicValid=parsed.username===""&&parsed.password===""&&parsed.pathname==="/"&&!parsed.search&&!parsed.hash&&(environment!=="production"||parsed.protocol==="https:");
+ }catch{}
+ const resendConfigured=Boolean(apiKey&&from.includes("@"));
+ const webhookConfigured=Boolean(endpoint&&secret);
+ let webhookValid=false;
+ try{webhookValid=new URL(endpoint).protocol==="https:";}catch{}
+ const provider=resendConfigured?"resend":webhookConfigured?"signed-webhook":"not-configured";
+ return {provider,ready:Boolean(publicValid&&(resendConfigured||(webhookConfigured&&webhookValid))),publicUrl,fromConfigured:Boolean(from),apiKeyConfigured:Boolean(apiKey),webhookConfigured, inboundConfigured:Boolean(clean(process.env.EMAIL_INBOUND_WEBHOOK_SECRET)),environment,sender:from?from:null};
 }
 export async function getEmailOperations(actorId){
  const db=getPool();await requireAdmin(db,actorId);
