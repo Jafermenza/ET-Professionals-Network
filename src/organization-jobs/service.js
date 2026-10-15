@@ -6,6 +6,12 @@ const ORG_WRITE_ROLES=["owner","administrator","recruiter"];
 const CANDIDATE_ROLES=["owner","administrator","recruiter"];
 
 async function audit(db,actor,action,type,id,requestId,metadata={}){ await db.query("insert into audit_log(actor_user_id,action,resource_type,resource_id,request_id,outcome,metadata) values($1,$2,$3,$4,$5,'success',$6)",[actor,action,type,id,requestId,metadata]); }
+async function queueOrganizationEmail(db,userId,templateCode,payload){
+ const user=(await db.query("select email from app_user where id=$1",[userId])).rows[0];
+ if(!user?.email)return;
+ await db.query("insert into notification_event(user_id,event_code,resource_type,resource_id,payload) values($1,$2,'organization',$3,$4)",[userId,templateCode,payload.organizationId,payload]);
+ await db.query("insert into notification_outbox(channel,recipient,template_code,payload,status,updated_at) values('email',$1,$2,$3,'pending',now())",[user.email,templateCode,{...payload,variables:payload}]);
+}
 
 async function orgRole(db,orgId,userId,roles=ORG_WRITE_ROLES){
  const r=(await db.query("select role_code from organization_membership where organization_id=$1 and user_id=$2 and status='active'",[orgId,userId])).rows[0];
@@ -35,6 +41,7 @@ export async function registerOrganization(userId,input,requestId){
   await db.query("insert into organization_membership(organization_id,user_id,role_code,status,joined_at) values($1,$2,'owner','active',now())",[org.id,userId]);
   await db.query("insert into organization_verification_case(organization_id,status,submitted_by,submitted_at) values($1,'draft',$2,null)",[org.id,userId]);
   await audit(db,userId,"organization.created","organization",org.id,requestId,{});
+  await queueOrganizationEmail(db,userId,"organization.registration_received",{organizationId:org.id,organizationName:org.display_name,registrationReference:org.tracking_reference,status:"draft",nextAction:"Upload required private evidence and submit for organization review"});
   return org;
  });
 }
@@ -112,6 +119,9 @@ export async function reviewOrganization(orgId,reviewerId,input,requestId){
   await db.query("update organization_verification_case set status=$1,reviewed_by=$2,decision_reason=$3,reviewed_at=now() where id=$4",[status,reviewerId,input.reason||null,c.id]);
   await db.query("update organization set verification_status=$1,verified_at=case when $1='verified' then now() else verified_at end,verified_by=case when $1='verified' then $2 else verified_by end,public_visible=case when $1='verified' then true else false end,updated_at=now() where id=$3",[status,reviewerId,orgId]);
   await audit(db,reviewerId,"organization.verification_decided","organization",orgId,requestId,{decision:status});
+  const owner=(await db.query("select user_id from organization_membership where organization_id=$1 and role_code='owner' and status='active' order by joined_at asc limit 1",[orgId])).rows[0];
+  const updatedOrg=(await db.query("select display_name,tracking_reference,updated_at from organization where id=$1",[orgId])).rows[0];
+  if(owner)await queueOrganizationEmail(db,owner.user_id,"organization.review_update",{organizationId:orgId,organizationName:updatedOrg.display_name,registrationReference:updatedOrg.tracking_reference,status,nextAction:status==="correction_required"?"Review the reviewer feedback and provide the requested corrections":status==="verified"?"No action required; organization verification is complete":"Contact support if you believe this decision is incorrect",lastUpdated:updatedOrg.updated_at?.toISOString?.()||String(updatedOrg.updated_at||"")});
   return {organizationId:orgId,status};
  });
 }
