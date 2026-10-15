@@ -24,12 +24,17 @@ type Inquiry = {
 };
 type Organization = {
   id: string;
+  tracking_reference?: string;
   legal_name: string;
   display_name: string;
   organization_type?: string;
   verification_status?: string;
   role_code?: string;
   created_at?: string;
+  updated_at?: string;
+  email?: string;
+  phone?: string;
+  address_text?: string;
 };
 type OrgReviewCase = {
   organization_id: string;
@@ -162,8 +167,11 @@ export default function Organizations() {
     void load();
   }, [load]);
   useEffect(() => {
-    if (new URLSearchParams(window.location.search).get("register") === "1")
-      setShowForm(true);
+    if (new URLSearchParams(window.location.search).get("register") === "1") setShowForm(true);
+    try {
+      const saved=sessionStorage.getItem("mpa-organization-registration-draft");
+      if(saved){const draft=JSON.parse(saved);setForm(current=>({...current,legalName:draft.legalName||current.legalName,displayName:draft.displayName||current.displayName,organizationType:draft.organizationType||current.organizationType,email:draft.email||current.email,phone:draft.phone||current.phone,addressText:draft.addressText||current.addressText,website:draft.website||current.website,description:draft.description||current.description}));setNotice("Your saved organization details are ready. Review them, submit the profile, then upload required registration evidence for separate organization approval.");}
+    } catch { setNotice("Saved organization details could not be restored. Please enter them again."); }
   }, []);
 
   async function register(e: FormEvent) {
@@ -199,11 +207,8 @@ export default function Organizations() {
       ]);
       setForm(blank);
       setShowForm(false);
-      setNotice(
-        "Organization registration recorded. Reference ID: " +
-          created.id +
-          ". Verification is not yet approved; publishing remains subject to the verification workflow.",
-      );
+      try { sessionStorage.removeItem("mpa-organization-registration-draft"); } catch {}
+      setNotice("Organization registration recorded. Reference: "+(created.tracking_reference||"assigned by the platform")+". Status: "+(created.verification_status||"draft")+". Next action: upload required private evidence and submit for organization review. Representative email verification and organization approval are separate.");
     } catch (e) {
       setError(
         e instanceof ApiError
@@ -539,13 +544,9 @@ export default function Organizations() {
                 </label>
                 <label>
                   Organization type
-                  <input
-                    value={form.organizationType}
-                    onChange={(e) =>
-                      setForm({ ...form, organizationType: e.target.value })
-                    }
-                    placeholder="e.g. company, association, NGO"
-                  />
+                  <select required value={form.organizationType} onChange={(e) => setForm({ ...form, organizationType: e.target.value })}>
+                    <option value="">Choose organization type</option><option value="company">Company / business</option><option value="nonprofit">Non-profit / association</option><option value="educational">Educational institution</option><option value="public">Public institution</option><option value="other">Other</option>
+                  </select>
                 </label>
                 <label>
                   Description
@@ -559,8 +560,9 @@ export default function Organizations() {
                 </label>
                 <div className="form-grid">
                   <label>
-                    Email
+                    Organization work email
                     <input
+                      required
                       type="email"
                       value={form.email}
                       onChange={(e) =>
@@ -569,8 +571,9 @@ export default function Organizations() {
                     />
                   </label>
                   <label>
-                    Phone
+                    Organization contact phone
                     <input
+                      required
                       value={form.phone}
                       onChange={(e) =>
                         setForm({ ...form, phone: e.target.value })
@@ -590,8 +593,9 @@ export default function Organizations() {
                   />
                 </label>
                 <label>
-                  Address
+                  Registered location / address
                   <input
+                    required
                     value={form.addressText}
                     onChange={(e) =>
                       setForm({ ...form, addressText: e.target.value })
@@ -659,10 +663,7 @@ export default function Organizations() {
                       )}
                     </Badge>
                   </div>
-                  <p className="muted">
-                    Verification evidence is private and must satisfy the active
-                    server-side requirements.
-                  </p>
+                  <div className="track-card-grid"><div><span>Application reference</span><b>{org.tracking_reference||"Reference pending"}</b></div><div><span>Last updated</span><b>{org.updated_at?new Date(org.updated_at).toLocaleString():"Not available"}</b></div><div><span>Next required action</span><b>{org.verification_status==="verified"?"No action required":org.verification_status==="pending"?"Await organization review":"Upload required evidence and submit for review"}</b></div></div><p className="muted">The representative account is linked to this organization as its owner. Organization approval remains separate from email verification. Evidence is private and checked against active server-side requirements.</p>
                   <button
                     className="btn btn-ghost"
                     type="button"
