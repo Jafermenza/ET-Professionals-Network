@@ -18,27 +18,30 @@ export async function enforcePersistentRateLimit(req, action, limit = 10, window
   if (!Number.isInteger(limit) || limit < 1 || !Number.isFinite(windowMs) || windowMs < 1000) {
     throw new TypeError("Invalid rate-limit policy.");
   }
-  const rawKey = [action, clientAddress(req), String(identity).toLowerCase()].join(":");
-  const key = sha256(rawKey);
+  const address = clientAddress(req);
+  const keys = [sha256([action, address].join(":"))];
+  if (identity) keys.push(sha256([action, address, String(identity).toLowerCase()].join(":")));
   const db = getPool();
-  const result = await db.query(`
-    insert into security_rate_limit(bucket_key,window_started_at,request_count,expires_at)
-    values($1,now(),1,now()+($2::bigint * interval '1 millisecond')+interval '10 minutes')
-    on conflict(bucket_key) do update set
-      window_started_at=case
-        when security_rate_limit.window_started_at+($2::bigint * interval '1 millisecond') <= now() then now()
-        else security_rate_limit.window_started_at end,
-      request_count=case
-        when security_rate_limit.window_started_at+($2::bigint * interval '1 millisecond') <= now() then 1
-        else security_rate_limit.request_count+1 end,
-      expires_at=now()+($2::bigint * interval '1 millisecond')+interval '10 minutes'
-    returning request_count
-  `, [key, windowMs]);
+  for (const key of keys) {
+    const result = await db.query(`
+      insert into security_rate_limit(bucket_key,window_started_at,request_count,expires_at)
+      values($1,now(),1,now()+($2::bigint * interval '1 millisecond')+interval '10 minutes')
+      on conflict(bucket_key) do update set
+        window_started_at=case
+          when security_rate_limit.window_started_at+($2::bigint * interval '1 millisecond') <= now() then now()
+          else security_rate_limit.window_started_at end,
+        request_count=case
+          when security_rate_limit.window_started_at+($2::bigint * interval '1 millisecond') <= now() then 1
+          else security_rate_limit.request_count+1 end,
+        expires_at=now()+($2::bigint * interval '1 millisecond')+interval '10 minutes'
+      returning request_count
+    `, [key, windowMs]);
+    if (Number(result.rows[0].request_count) > limit) {
+      throw Object.assign(new Error("Too many requests. Please try again later."), { statusCode: 429, code: "RATE_LIMITED" });
+    }
+  }
   // Opportunistic bounded cleanup avoids a process-local map and keeps storage bounded.
   if (randomInt(0, 100) === 0) await db.query("delete from security_rate_limit where bucket_key in (select bucket_key from security_rate_limit where expires_at < now() order by expires_at limit 500)");
-  if (Number(result.rows[0].request_count) > limit) {
-    throw Object.assign(new Error("Too many requests. Please try again later."), { statusCode: 429, code: "RATE_LIMITED" });
-  }
 }
 
 export async function issueHumanChallenge() {
