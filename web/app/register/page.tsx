@@ -42,7 +42,7 @@ export default function Register(){
      if(form.password!==passwordConfirmation)throw new Error("Password confirmation does not match.");
      if(kind==="organization"){
        if(!organization.legalName.trim()||!organization.displayName.trim()||!organization.addressText.trim()||!organization.email.trim()||!organization.phone.trim())throw new Error("Complete the organization legal name, public name, location, work email and contact phone.");
-       sessionStorage.setItem("mpa-organization-registration-draft",JSON.stringify({...organization,representativeFirstName:form.firstName,representativeLastName:form.lastName,representativeEmail:form.email,representativePhone:form.phone}));
+       localStorage.setItem("mpa-organization-registration-draft",JSON.stringify({...organization,representativeFirstName:form.firstName,representativeLastName:form.lastName,representativeEmail:form.email,representativePhone:form.phone,savedAt:Date.now()}));
      }
      if(!challenge)throw new Error("Load a new human check before registering.");
      const proof=await api<ChallengeToken>("/api/v1/security/human-challenge/verify",{method:"POST",body:JSON.stringify({id:challenge.id,answer:challengeAnswer})});
