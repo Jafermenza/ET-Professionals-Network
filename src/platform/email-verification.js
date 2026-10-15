@@ -16,14 +16,25 @@ const emailUrl = (token) => {
 export function assertEmailDeliveryConfigured() {
   const config = loadConfig();
   if (config.nodeEnv !== "production") return;
+  const publicAppUrl = clean(process.env.PUBLIC_APP_URL);
+  const resendKey = clean(process.env.RESEND_API_KEY);
+  const emailFrom = clean(process.env.EMAIL_FROM);
   const endpoint = clean(process.env.EMAIL_DELIVERY_WEBHOOK_URL);
   const secret = clean(process.env.EMAIL_DELIVERY_WEBHOOK_SECRET);
-  if (!endpoint || !secret || !clean(process.env.PUBLIC_APP_URL)) {
-    throw Object.assign(new Error("Email verification delivery is not configured. Registration is temporarily unavailable."), { statusCode: 503, code: "EMAIL_DELIVERY_NOT_CONFIGURED" });
+  const resendConfigured = Boolean(resendKey && emailFrom);
+  const webhookConfigured = Boolean(endpoint && secret);
+  if (!publicAppUrl || (!resendConfigured && !webhookConfigured)) {
+    throw Object.assign(new Error("Configure PUBLIC_APP_URL and either Resend (RESEND_API_KEY + EMAIL_FROM) or the signed email-delivery webhook before enabling production registration."), { statusCode: 503, code: "EMAIL_DELIVERY_NOT_CONFIGURED" });
   }
-  let parsed, publicUrl;
-  try { parsed = new URL(endpoint); publicUrl = new URL(clean(process.env.PUBLIC_APP_URL)); } catch { throw Object.assign(new Error("Email delivery endpoint and public app URL must be valid URLs."), { statusCode: 503, code: "EMAIL_DELIVERY_NOT_CONFIGURED" }); }
-  if (parsed.protocol !== "https:" || publicUrl.protocol !== "https:" || publicUrl.username || publicUrl.password) throw Object.assign(new Error("Production email delivery and the public app URL must use HTTPS."), { statusCode: 503, code: "EMAIL_DELIVERY_NOT_CONFIGURED" });
+  let publicUrl;
+  try { publicUrl = new URL(publicAppUrl); } catch { throw Object.assign(new Error("PUBLIC_APP_URL must be a valid HTTPS URL."), { statusCode: 503, code: "EMAIL_DELIVERY_NOT_CONFIGURED" }); }
+  if (publicUrl.protocol !== "https:" || publicUrl.username || publicUrl.password) throw Object.assign(new Error("The production public app URL must use HTTPS."), { statusCode: 503, code: "EMAIL_DELIVERY_NOT_CONFIGURED" });
+  if (resendConfigured && (!emailFrom.includes("@") || emailFrom.length > 320)) throw Object.assign(new Error("EMAIL_FROM must be a verified sender address."), { statusCode: 503, code: "EMAIL_DELIVERY_NOT_CONFIGURED" });
+  if (webhookConfigured) {
+    let parsed;
+    try { parsed = new URL(endpoint); } catch { throw Object.assign(new Error("Email delivery webhook URL is invalid."), { statusCode: 503, code: "EMAIL_DELIVERY_NOT_CONFIGURED" }); }
+    if (parsed.protocol !== "https:") throw Object.assign(new Error("Production email delivery webhooks must use HTTPS."), { statusCode: 503, code: "EMAIL_DELIVERY_NOT_CONFIGURED" });
+  }
 }
 
 export async function createEmailVerification(db, userId, email, registrationReference) {
@@ -38,8 +49,25 @@ export async function createEmailVerification(db, userId, email, registrationRef
 
 export async function deliverEmailVerification(message) {
   const config = loadConfig();
+  const resendKey = clean(process.env.RESEND_API_KEY);
+  const emailFrom = clean(process.env.EMAIL_FROM);
   const endpoint = clean(process.env.EMAIL_DELIVERY_WEBHOOK_URL);
   const secret = clean(process.env.EMAIL_DELIVERY_WEBHOOK_SECRET);
+  if (resendKey && emailFrom) {
+    let sent = false, errorCode = null;
+    try {
+      const response = await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: "Bearer " + resendKey },
+        body: JSON.stringify({ from: emailFrom, to: [message.email], subject: "Verify your MPA Professionals Network email", text: "Verify your email to activate your MPA Professionals Network account. This link expires in 24 hours. Registration reference: " + message.registrationReference + ". Link: " + message.verificationUrl, html: "<p>Verify your email to activate your MPA Professionals Network account.</p><p>Registration reference: <strong>" + message.registrationReference + "</strong></p><p><a href=\"" + message.verificationUrl + "\">Verify email address</a></p><p>This link expires in 24 hours.</p>" }),
+        signal: AbortSignal.timeout(8000)
+      });
+      sent = response.ok;
+      if (!sent) errorCode = "RESEND_HTTP_" + response.status;
+    } catch { errorCode = "RESEND_UNREACHABLE"; }
+    await getPool().query("update email_verification_token set delivery_attempted_at=now(),delivery_status=$1,delivery_error_code=$2 where token_hash=$3 and consumed_at is null",[sent?"sent":"failed",errorCode,sha256(message.token)]);
+    return { sent };
+  }
   if (!endpoint || !secret) {
     if (config.nodeEnv === "production") throw Object.assign(new Error("Email verification delivery is not configured."), { statusCode: 503, code: "EMAIL_DELIVERY_NOT_CONFIGURED" });
     return { sent: false, developmentVerificationUrl: message.verificationUrl };
@@ -66,13 +94,8 @@ export async function deliverEmailVerification(message) {
     });
     sent = response.ok;
     if (!sent) errorCode = "DELIVERY_HTTP_" + response.status;
-  } catch {
-    errorCode = "DELIVERY_UNREACHABLE";
-  }
-  await getPool().query(
-    "update email_verification_token set delivery_attempted_at=now(),delivery_status=$1,delivery_error_code=$2 where token_hash=$3 and consumed_at is null",
-    [sent ? "sent" : "failed", errorCode, sha256(message.token)]
-  );
+  } catch { errorCode = "DELIVERY_UNREACHABLE"; }
+  await getPool().query("update email_verification_token set delivery_attempted_at=now(),delivery_status=$1,delivery_error_code=$2 where token_hash=$3 and consumed_at is null",[sent?"sent":"failed",errorCode,sha256(message.token)]);
   return { sent };
 }
 
