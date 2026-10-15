@@ -3,6 +3,8 @@ import { withTransaction, getPool } from "../platform/db.js";
 import { signToken, newSessionToken, hashSessionToken, sessionTokenPayload } from "../platform/auth.js";
 import { loadConfig } from "../platform/config.js";
 import { nextTrackingReference } from "../platform/tracking-reference.js";
+import { consumeHumanChallenge } from "../platform/security-controls.js";
+import { createEmailVerification, deliverEmailVerification, assertEmailDeliveryConfigured } from "../platform/email-verification.js";
 import { hashPassword, verifyPassword, normalizeEmail, normalizePhone, normalizeName, validatePersonInput } from "./identity.js";
 
 function httpError(status,message,code="BUSINESS_RULE"){
@@ -45,10 +47,16 @@ export async function bootstrapAdmin(input){
 }
 
 export async function register(input,requestId){
+  const config=loadConfig();
   const email=normalizeEmail(input.email);
   if(!email || !String(input.password||"")) throw httpError(400,"email and password are required.","VALIDATION_ERROR");
+  if(input.passwordConfirmation !== undefined && input.passwordConfirmation !== input.password) throw httpError(400,"Password confirmation does not match.","PASSWORD_CONFIRMATION_MISMATCH");
   const person=validatePersonInput(input);
-  return withTransaction(async db=>{
+  const humanCheckRequired=config.nodeEnv==="production" || process.env.HUMAN_CHALLENGE_REQUIRED==="true";
+  const emailVerificationRequired=config.nodeEnv==="production" || process.env.EMAIL_VERIFICATION_REQUIRED==="true";
+  if(emailVerificationRequired) assertEmailDeliveryConfigured();
+  const created=await withTransaction(async db=>{
+    if(humanCheckRequired) await consumeHumanChallenge(db,input.humanCheckToken);
     const identity=await db.query(`
       select u.id from app_user u where lower(u.email)=lower($1)
       union
@@ -57,17 +65,29 @@ export async function register(input,requestId){
       select p.user_id from person p where lower(regexp_replace(coalesce(p.display_name,''),'[^[:alnum:]]','','g'))=
         lower(regexp_replace($3,'[^[:alnum:]]','','g')) limit 3`,[email,person.phone,person.displayName]);
     if(identity.rows.length) throw httpError(409,"An existing account or identity matches these details. Sign in or contact membership support instead of creating a duplicate.","IDENTITY_CONFLICT");
-    const user=(await db.query("insert into app_user(username,email,password_hash,status) values($1,$2,$3,'active') returning id,email,username",[email,email,hashPassword(input.password)])).rows[0];
+    const registrationReference=await nextTrackingReference(db,"membership");
+    const user=(await db.query("insert into app_user(username,email,password_hash,status,registration_reference,email_verified_at) values($1,$2,$3,'active',$4,case when $5 then null else now() end) returning id,email,username,registration_reference,email_verified_at",[email,email,hashPassword(input.password),registrationReference,emailVerificationRequired])).rows[0];
     const p=(await db.query(`insert into person(user_id,first_name,middle_name,last_name,display_name,phone,date_of_birth,sex,nationality)
       values($1,$2,$3,$4,$5,$6,$7,$8,$9) returning id,user_id,first_name,middle_name,last_name,display_name,phone,date_of_birth,sex,nationality`,
       [user.id,person.firstName,person.middleName,person.lastName,person.displayName,person.phone,person.dateOfBirth,person.sex,person.nationality])).rows[0];
     await db.query("insert into professional_profile(person_id,completion_percent) values($1,20)",[p.id]);
     await db.query("insert into app_user_role(user_id,role_id) select $1,id from app_role where role_code='member' on conflict do nothing",[user.id]);
     await db.query("insert into notification_preference(user_id) values($1) on conflict do nothing",[user.id]);
-    await audit(db,user.id,"account.registered","account",user.id,requestId,{identityPolicy:"email_phone_exact_name"});
-    await notify(db,user.id,"account_registered","account",user.id,{displayName:p.display_name});
-    return {user:{id:user.id,email:user.email},person:p,token:await tokenFor(db,user,["member"])};
+    await audit(db,user.id,"account.registered","account",user.id,requestId,{identityPolicy:"email_phone_exact_name",registrationReference});
+    await notify(db,user.id,"account_registered","account",user.id,{displayName:p.display_name,registrationReference});
+    const verification=emailVerificationRequired?await createEmailVerification(db,user.id,email,registrationReference):null;
+    const token=emailVerificationRequired?null:await tokenFor(db,user,["member"]);
+    return {user:{id:user.id,email:user.email},person:p,registrationReference,verification,token};
   });
+  if(!created.verification) return created;
+  const delivery=await deliverEmailVerification(created.verification);
+  return {
+    user:created.user,
+    registrationReference:created.registrationReference,
+    verificationRequired:true,
+    verificationSent:Boolean(delivery.sent),
+    ...(delivery.developmentVerificationUrl?{developmentVerificationUrl:delivery.developmentVerificationUrl}:{})
+  };
 }
 
 export async function login(email,password,requestId,requestMeta={}){
@@ -75,12 +95,13 @@ export async function login(email,password,requestId,requestMeta={}){
   const recent=await db.query("select count(*)::int count from auth_login_attempt where identity_key=$1 and attempted_at>now()-interval '15 minutes' and succeeded=false",[identityKey]);
   if(recent.rows[0].count>=8) throw httpError(429,"Too many unsuccessful sign-in attempts. Try again later.","AUTH_RATE_LIMIT");
   const e=normalizeEmail(email);
-  const r=await db.query("select id,email,username,password_hash,status from app_user where lower(email)=lower($1)",[e]);
+  const r=await db.query("select id,email,username,password_hash,status,email_verified_at from app_user where lower(email)=lower($1)",[e]);
   const user=r.rows[0];
   if(!user || user.status!=="active" || !verifyPassword(password,user.password_hash)){
     await db.query("insert into auth_login_attempt(identity_key,ip_address,succeeded) values($1,$2,false)",[identityKey,requestMeta.ip||null]);
     throw httpError(401,"Invalid credentials.","UNAUTHENTICATED");
   }
+  if ((loadConfig().nodeEnv==="production" || process.env.EMAIL_VERIFICATION_REQUIRED==="true") && !user.email_verified_at) throw httpError(403,"Verify your email address before signing in. Request a new verification link if needed.","EMAIL_NOT_VERIFIED");
   await db.query("insert into auth_login_attempt(identity_key,ip_address,succeeded) values($1,$2,true)",[identityKey,requestMeta.ip||null]);
   const rs=await roles(db,user.id);
   await audit(db,user.id,"account.login","account",user.id,requestId);
