@@ -128,6 +128,7 @@ type Inquiry = {
         </p>
         <div className="row" style={{ flexWrap: "wrap", marginTop: 10 }}>
           <a className="btn btn-ghost" href="/admin/security"><ShieldCheck size={16} /> Administrator passkeys</a>
+          <a className="btn btn-ghost" href="/admin/email"><Mail size={16} /> Email operations</a>
           {roles.map((role) => (
             <Badge key={role} tone="slate">
               {role}
