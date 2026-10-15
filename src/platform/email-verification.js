@@ -89,8 +89,8 @@ export async function verifyEmailToken(rawToken, requestId) {
     await db.query("update email_verification_token set consumed_at=now() where user_id=$1 and consumed_at is null", [row.user_id]);
     await db.query("update app_user set email_verified_at=coalesce(email_verified_at,now()),updated_at=now() where id=$1", [row.user_id]);
     await db.query(
-      "insert into audit_log(actor_user_id,action,resource_type,resource_id,request_id,outcome,metadata) values($1,'account.email_verified','account',$1,$2,'success',$3)",
-      [row.user_id, requestId || null, { method: "single_use_email_link" }]
+      "insert into audit_log(actor_user_id,action,resource_type,resource_id,request_id,outcome,metadata) values($1,'account.email_verified','account',$2,$3,'success',$4)",
+      [row.user_id, row.user_id, requestId || null, { method: "single_use_email_link" }]
     );
     return { verified: true };
   });
@@ -108,7 +108,7 @@ export async function resendEmailVerification(emailInput, requestId) {
   await withTransaction(async tx => {
     await tx.query("update email_verification_token set consumed_at=now() where user_id=$1 and consumed_at is null", [user.id]);
     await tx.query("insert into email_verification_token(user_id,token_hash,expires_at) values($1,$2,now()+interval '24 hours')", [user.id, sha256(token)]);
-    await tx.query("insert into audit_log(actor_user_id,action,resource_type,resource_id,request_id,outcome,metadata) values($1,'account.email_verification_resent','account',$1,$2,'success',$3)", [user.id, requestId || null, { method: "email_link" }]);
+    await tx.query("insert into audit_log(actor_user_id,action,resource_type,resource_id,request_id,outcome,metadata) values($1,'account.email_verification_resent','account',$2,$3,'success',$4)", [user.id, user.id, requestId || null, { method: "email_link" }]);
   });
   const message = { token, verificationUrl: emailUrl(token), registrationReference: user.registration_reference || "MPA account", email: user.email };
   const delivery = await deliverEmailVerification(message);
