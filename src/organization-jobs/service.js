@@ -7,8 +7,8 @@ const CANDIDATE_ROLES=["owner","administrator","recruiter"];
 
 async function audit(db,actor,action,type,id,requestId,metadata={}){ await db.query("insert into audit_log(actor_user_id,action,resource_type,resource_id,request_id,outcome,metadata) values($1,$2,$3,$4,$5,'success',$6)",[actor,action,type,id,requestId,metadata]); }
 async function queueOrganizationEmail(db,userId,templateCode,payload){
- const user=(await db.query("select email from app_user where id=$1",[userId])).rows[0];
- if(!user?.email)return;
+ const user=(await db.query("select u.email,coalesce(np.email_enabled,true) email_enabled from app_user u left join notification_preference np on np.user_id=u.id where u.id=$1",[userId])).rows[0];
+ if(!user?.email||!user.email_enabled)return;
  await db.query("insert into notification_event(user_id,event_code,resource_type,resource_id,payload) values($1,$2,'organization',$3,$4)",[userId,templateCode,payload.organizationId,payload]);
  await db.query("insert into notification_outbox(channel,recipient,template_code,payload,status,updated_at) values('email',$1,$2,$3,'pending',now())",[user.email,templateCode,{...payload,variables:payload}]);
 }
