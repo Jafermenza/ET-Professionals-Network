@@ -127,7 +127,7 @@ export async function beginAdminPasskeyRegistration(identity) {
   if(!session || (Date.now()-new Date(session.created_at).getTime()>10*60*1000 && session.auth_method!=="recovery"))fail(401,"Sign in again before registering a passkey.","RECENT_AUTH_REQUIRED");
   if(session.auth_method==="recovery" && !user.admin_passkey_enforced_at)fail(403,"Recovery session is invalid.","FORBIDDEN");
   const challenge=b64url(crypto.randomBytes(32));
-  await db.query("insert into admin_passkey_challenge(user_id,purpose,challenge,expires_at,metadata) values($1,'register',$2,now()+interval '5 minutes',$3)",[user.id,challenge,{authMethod:session.auth_method}]);
+  await db.query("insert into admin_passkey_challenge(user_id,purpose,challenge,expires_at,metadata) values($1,'register',$2,now()+interval '5 minutes',$3)",[user.id,challenge,{authMethod:session.auth_method,sessionId:identity.sid}]);
   const existing=await db.query("select credential_id,transports from admin_passkey_credential where user_id=$1 and revoked_at is null",[user.id]);
   return {publicKey:{challenge,rp:{id:config.rpId,name:config.rpName},user:{id:b64url(Buffer.from(user.id)),name:user.email,displayName:user.username||user.email},pubKeyCredParams:[{type:"public-key",alg:-7}],timeout:60000,attestation:"none",authenticatorSelection:{residentKey:"preferred",userVerification:"required"},excludeCredentials:existing.rows.map(x=>({type:"public-key",id:x.credential_id,transports:x.transports}))}};
 }
@@ -140,6 +140,7 @@ export async function finishAdminPasskeyRegistration(identity,payload,requestId)
     return await withTransaction(async tx=>{
       const row=(await tx.query("select * from admin_passkey_challenge where user_id=$1 and purpose='register' and consumed_at is null and expires_at>now() order by created_at desc limit 1 for update",[user.id])).rows[0];
       if(!row)fail(400,"Passkey registration challenge expired. Start again.","PASSKEY_CHALLENGE_INVALID");
+      if(row.metadata?.sessionId!==identity.sid)fail(403,"Passkey registration must be completed in the same authenticated session that started it.","PASSKEY_SESSION_MISMATCH");
       clientData(response.clientDataJSON,"webauthn.create",row.challenge,config.origin);
       const credential=parseAttestation(response.attestationObject,config.rpId,fromB64url(payload.rawId));
       await tx.query("insert into admin_passkey_credential(user_id,credential_id,public_key_jwk,sign_count,transports,display_name) values($1,$2,$3,$4,$5,$6)",[user.id,credential.credentialId,credential.publicKeyJwk,credential.signCount,Array.isArray(response.transports)?response.transports:[],String(payload.displayName||"Administrator passkey").slice(0,80)]);
