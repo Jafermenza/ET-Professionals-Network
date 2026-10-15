@@ -28,7 +28,7 @@ export function assertEmailDeliveryConfigured() {
   }
   let publicUrl;
   try { publicUrl = new URL(publicAppUrl); } catch { throw Object.assign(new Error("PUBLIC_APP_URL must be a valid HTTPS URL."), { statusCode: 503, code: "EMAIL_DELIVERY_NOT_CONFIGURED" }); }
-  if (publicUrl.protocol !== "https:" || publicUrl.username || publicUrl.password) throw Object.assign(new Error("The production public app URL must use HTTPS."), { statusCode: 503, code: "EMAIL_DELIVERY_NOT_CONFIGURED" });
+  if (publicUrl.protocol !== "https:" || publicUrl.username || publicUrl.password || publicUrl.pathname !== "/" || publicUrl.search || publicUrl.hash) throw Object.assign(new Error("PUBLIC_APP_URL must be an HTTPS origin without credentials, path, query, or fragment."), { statusCode: 503, code: "EMAIL_DELIVERY_NOT_CONFIGURED" });
   if (resendConfigured && (!emailFrom.includes("@") || emailFrom.length > 320)) throw Object.assign(new Error("EMAIL_FROM must be a verified sender address."), { statusCode: 503, code: "EMAIL_DELIVERY_NOT_CONFIGURED" });
   if (webhookConfigured) {
     let parsed;
