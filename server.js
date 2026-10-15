@@ -18,6 +18,7 @@ import * as userAdmin from "./src/platform/user-admin.js";
 import { resolveAllowedOrigin } from "./src/platform/config.js";
 import { clientAddress, enforcePersistentRateLimit, issueHumanChallenge, verifyHumanChallenge } from "./src/platform/security-controls.js";
 import { verifyEmailToken, resendEmailVerification } from "./src/platform/email-verification.js";
+import { beginAdminPasskeyRegistration, finishAdminPasskeyRegistration, beginAdminPasskeyAuthentication, finishAdminPasskeyAuthentication, recoverAdminPasskey, listAdminPasskeys, revokeAdminPasskey } from "./src/platform/webauthn.js";
 
 const config=loadConfig();
 const logger=createLogger({level:config.logLevel});
@@ -51,7 +52,7 @@ async function auth(req){
     const identity=verifyToken(header.slice(7),config.jwtSecret);
     if(!identity.sid) throw Object.assign(new Error("Session-bound authentication required."),{statusCode:401});
     const db=getPool();
-    const r=await db.query(`select s.user_id,u.status,
+    const r=await db.query(`select s.user_id,u.status,s.auth_method,u.admin_passkey_enforced_at,
       coalesce(json_agg(distinct role.role_code) filter(where role.role_code is not null),'[]'::json) as roles
       from auth_session s join app_user u on u.id=s.user_id
       left join app_user_role ur on ur.user_id=u.id left join app_role role on role.id=ur.role_id
@@ -60,9 +61,14 @@ async function auth(req){
     if(!r.rows[0]||r.rows[0].status!=="active"||r.rows[0].user_id!==identity.sub) throw Object.assign(new Error("Session expired or revoked."),{statusCode:401});
     // Authorization must use current database roles, never stale role claims from a signed token.
     identity.roles=withCurrentRoles(identity,Array.isArray(r.rows[0].roles)?r.rows[0].roles:JSON.parse(r.rows[0].roles||"[]")).roles;
+    if(r.rows[0].admin_passkey_enforced_at && r.rows[0].auth_method!=="passkey") {
+      const route=pathParts(req.url).join("/");
+      const recoveryAllowed=r.rows[0].auth_method==="recovery" && ["api/v1/admin/passkeys/registration/options","api/v1/admin/passkeys/registration/verify"].includes(route);
+      if(!recoveryAllowed) throw Object.assign(new Error("Administrator passkey authentication is required."),{statusCode:401,code:"PASSKEY_REQUIRED"});
+    }
     await db.query("update auth_session set last_seen_at=now() where id=$1",[identity.sid]);
     return identity;
-  } catch(e){ throw Object.assign(new Error(e.message),{statusCode:e.statusCode===403?403:401,code:"UNAUTHENTICATED"}); }
+  } catch(e){ throw Object.assign(new Error(e.message),{statusCode:e.statusCode===403?403:e.statusCode===429?429:401,code:e.code||"UNAUTHENTICATED"}); }
 }
 function optionalIdentity(req){
   if(!req.headers.authorization?.startsWith("Bearer ")) return null;
@@ -132,6 +138,34 @@ const server=http.createServer(async (req,res)=>{
       const b=await body(req); await enforcePersistentRateLimit(req,"login",20,60000,String(b.email||"").trim().toLowerCase()); return ok(res,await membership.login(b.email,b.password,requestId,{ip:clientIp(req),userAgent:req.headers["user-agent"]||null}),requestId);
     }
 
+    if(req.method==="POST" && p==="api/v1/auth/passkeys/options") {
+      const b=await body(req); await enforcePersistentRateLimit(req,"passkey-options",10,60000,String(b.email||"").trim().toLowerCase());
+      return ok(res,await beginAdminPasskeyAuthentication(b.email),requestId);
+    }
+    if(req.method==="POST" && p==="api/v1/auth/passkeys/verify") {
+      const b=await body(req); await enforcePersistentRateLimit(req,"passkey-verify",10,60000,String(b.email||"").trim().toLowerCase());
+      return ok(res,await finishAdminPasskeyAuthentication(b.email,b.credential,{ip:clientIp(req),userAgent:req.headers["user-agent"]||null},requestId),requestId);
+    }
+    if(req.method==="POST" && p==="api/v1/auth/passkeys/recovery") {
+      const b=await body(req); await enforcePersistentRateLimit(req,"passkey-recovery",5,3600000,String(b.email||"").trim().toLowerCase());
+      return ok(res,await recoverAdminPasskey(b.email,b.code,{ip:clientIp(req),userAgent:req.headers["user-agent"]||null},requestId),requestId);
+    }
+    if(req.method==="POST" && p==="api/v1/admin/passkeys/registration/options") {
+      const identity=anyRole(await auth(req),["system_admin","admin"]);
+      return ok(res,await beginAdminPasskeyRegistration(identity),requestId);
+    }
+    if(req.method==="POST" && p==="api/v1/admin/passkeys/registration/verify") {
+      const identity=anyRole(await auth(req),["system_admin","admin"]);
+      return ok(res,await finishAdminPasskeyRegistration(identity,await body(req),requestId),requestId,201);
+    }
+    if(req.method==="GET" && p==="api/v1/admin/passkeys") {
+      const identity=anyRole(await auth(req),["system_admin","admin"]);
+      return ok(res,await listAdminPasskeys(identity.sub),requestId);
+    }
+    if(req.method==="DELETE" && parts.length===4 && p.startsWith("api/v1/admin/passkeys/")) {
+      const identity=anyRole(await auth(req),["system_admin","admin"]);
+      return ok(res,await revokeAdminPasskey(identity.sub,parts[3],requestId),requestId);
+    }
     if(req.method==="POST" && p==="api/v1/auth/logout") { const identity=await auth(req); return ok(res,await userAdmin.logout(identity.sub,identity.sid,requestId),requestId); }
     if(req.method==="GET" && p==="api/v1/admin/users") { const identity=await auth(req); return ok(res,await userAdmin.listUsers(identity,{q:query(req.url).get("q"),status:query(req.url).get("status")}),requestId); }
     if(req.method==="GET" && p==="api/v1/admin/roles") { const identity=await auth(req); return ok(res,await userAdmin.listRoles(identity.sub),requestId); }
