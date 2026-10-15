@@ -9,8 +9,9 @@ const API_BASE=process.env.API_BASE_URL||"http://127.0.0.1:3000";
 const suffix=randomUUID().replace(/-/g,"").slice(0,12);
 const createdUsers=[];
 async function createActor(roleCode){
- const email="security-e2e-"+roleCode+"-"+suffix+"@example.test";
- const registered=await membership.register({email,password:"Security-e2e-password-12345",firstName:"Security",lastName:roleCode+suffix,phone:"09"+randomUUID().replace(/\\D/g,"").slice(0,8)},"security-e2e-register");
+ const actorSuffix=randomUUID().replace(/-/g,"").slice(0,8);
+ const email="security-e2e-"+roleCode+"-"+suffix+"-"+actorSuffix+"@example.test";
+ const registered=await membership.register({email,password:"Security-e2e-password-12345",firstName:"Security",lastName:roleCode+actorSuffix,phone:"09"+String(Math.floor(Math.random()*100000000)).padStart(8,"0")},"security-e2e-register");
  createdUsers.push(registered.user.id);
  await getPool().query("insert into app_user_role(user_id,role_id) select $1,id from app_role where role_code=$2 on conflict do nothing",[registered.user.id,roleCode]);
  return {email,userId:registered.user.id,token:registered.token};
