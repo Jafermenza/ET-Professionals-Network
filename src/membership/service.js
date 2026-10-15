@@ -108,7 +108,8 @@ export async function login(email,password,requestId,requestMeta={}){
   await db.query("insert into auth_login_attempt(identity_key,ip_address,succeeded) values($1,$2,true)",[identityKey,requestMeta.ip||null]);
   const rs=await roles(db,user.id);
   await audit(db,user.id,"account.login","account",user.id,requestId);
-  return {token:await tokenFor(db,user,rs,requestMeta),user:{id:user.id,email:user.email,roles:rs}};
+  const passkeyEnrollmentRequired=(loadConfig().nodeEnv==="production" || process.env.REQUIRE_ADMIN_PASSKEYS==="true") && rs.some(role=>["system_admin","admin"].includes(role)) && !user.admin_passkey_enforced_at;
+  return {token:await tokenFor(db,user,rs,requestMeta),user:{id:user.id,email:user.email,roles:rs},passkeyEnrollmentRequired};
 }
 
 export async function getMe(userId){
