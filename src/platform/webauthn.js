@@ -21,6 +21,7 @@ function relyingParty() {
   let parsed;
   try { parsed = new URL(configuredOrigin); } catch { fail(503,"WEBAUTHN_ORIGIN is invalid.","PASSKEY_NOT_CONFIGURED"); }
   if (production && parsed.protocol !== "https:") fail(503,"Production passkeys require an HTTPS origin.","PASSKEY_NOT_CONFIGURED");
+  if (parsed.pathname !== "/" || parsed.search || parsed.hash) fail(503,"WEBAUTHN_ORIGIN must be an origin without a path, query, or fragment.","PASSKEY_NOT_CONFIGURED");
   const rpId = configuredRpId || parsed.hostname;
   if (parsed.hostname !== rpId && !parsed.hostname.endsWith("." + rpId)) fail(503,"WEBAUTHN_RP_ID does not match WEBAUTHN_ORIGIN.","PASSKEY_NOT_CONFIGURED");
   return { origin: parsed.origin, rpId, rpName: "MPA Professionals Network" };
