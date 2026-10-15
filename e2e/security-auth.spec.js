@@ -94,6 +94,16 @@ test("administrator passkey enrollment, authentication, revocation and recovery 
   expect(recoveryCode).toMatch(/^[A-F0-9]{16}$/);
   expect(uiRecoveryCode).toMatch(/^[A-F0-9]{16}$/);
   const db=getPool();
+  const activeCredentials=(await db.query("select id from admin_passkey_credential where user_id=$1 and revoked_at is null order by created_at desc",[admin.userId])).rows;
+  expect(activeCredentials.length).toBe(2);
+  const adminSessionToken=await page.evaluate(()=>window.sessionStorage.getItem("mpa-session-token"));
+  const revokeApi=await playwrightRequest.newContext({baseURL:API_BASE});
+  try{
+   const revoked=await revokeApi.delete("/api/v1/admin/passkeys/"+activeCredentials[0].id,{headers:{authorization:"Bearer "+adminSessionToken}});
+   expect(revoked.status()).toBe(200);
+   const lastPasskey=await revokeApi.delete("/api/v1/admin/passkeys/"+activeCredentials[1].id,{headers:{authorization:"Bearer "+adminSessionToken}});
+   expect(lastPasskey.status()).toBe(409);
+  }finally{await revokeApi.dispose();}
   await db.query("update admin_passkey_credential set revoked_at=now() where user_id=$1 and revoked_at is null",[admin.userId]);
   const recovery=await recoverAdminPasskey(admin.email,recoveryCode,{ip:"198.51.100.40",userAgent:"playwright-security"},"security-e2e-recovery");
   const api=await playwrightRequest.newContext({baseURL:API_BASE});
