@@ -146,6 +146,7 @@ export async function finishAdminPasskeyRegistration(identity,payload,requestId)
       await tx.query("update admin_passkey_challenge set consumed_at=now() where id=$1",[row.id]);
       await tx.query("update app_user set admin_passkey_enforced_at=coalesce(admin_passkey_enforced_at,now()),updated_at=now() where id=$1",[user.id]);
       await tx.query("insert into audit_log(actor_user_id,action,resource_type,resource_id,request_id,outcome,metadata) values($1,'admin.passkey.registered','admin_passkey_credential',$2,$3,'success',$4)",[user.id,credential.credentialId,requestId||null,{algorithm:"ES256",userVerification:true}]);
+      await tx.query("update admin_passkey_recovery_code set consumed_at=coalesce(consumed_at,now()) where user_id=$1 and consumed_at is null",[user.id]);
       const recoveryCodes=Array.from({length:8},()=>crypto.randomBytes(8).toString("hex").toUpperCase());
       for(const code of recoveryCodes)await tx.query("insert into admin_passkey_recovery_code(user_id,code_hash) values($1,$2)",[user.id,hashText(code)]);
       return {registered:true,recoveryCodes,warning:"Save these recovery codes now. Each code can be used once to create a restricted session for registering a replacement passkey. They will not be shown again."};
@@ -188,7 +189,7 @@ export async function finishAdminPasskeyAuthentication(emailInput,payload,reques
       const publicKey=crypto.createPublicKey({key:credential.public_key_jwk,format:"jwk"});
       if(!crypto.verify("sha256",signed,publicKey,fromB64url(response.signature)))fail(401,"Passkey signature is invalid.","UNAUTHENTICATED");
       const previous=Number(credential.sign_count||0);
-      if(previous>0 && parsed.signCount>0 && parsed.signCount<=previous)fail(401,"Passkey counter indicates a replayed or cloned credential.","PASSKEY_COUNTER_INVALID");
+      if(previous>0 && (parsed.signCount===0 || parsed.signCount<=previous))fail(401,"Passkey counter indicates a replayed or cloned credential.","PASSKEY_COUNTER_INVALID");
       const update=await tx.query("update admin_passkey_credential set sign_count=$1,last_used_at=now() where id=$2 and revoked_at is null and (sign_count=0 or $1=0 or sign_count<$1) returning id",[parsed.signCount,credential.id]);
       if(!update.rows[0])fail(401,"Passkey counter changed during authentication. Try again.","PASSKEY_COUNTER_INVALID");
       await tx.query("update admin_passkey_challenge set consumed_at=now() where id=$1",[challenge.id]);
