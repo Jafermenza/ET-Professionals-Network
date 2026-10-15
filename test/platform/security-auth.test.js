@@ -33,10 +33,10 @@ test("persistent rate limits are shared by independent request objects",async()=
 
 test("email verification is one-time and blocks unverified login",async()=>{
   const email="security-email-"+suffix+"@example.test";
-  const registered=await membership.register({email,password:"Security-email-password-12345",firstName:"Security",lastName:"Email"+suffix,phone:"09"+randomUUID().replace(/\\D/g,"").slice(0,8)},"security-email-register");
+  const registered=await membership.register({email,password:"Security-email-password-12345",firstName:"Security",lastName:"Email"+suffix,phone:"09"+randomUUID().replace(/\D/g,"").slice(0,8)},"security-email-register");
   const userId=registered.user.id;createdUsers.push(userId);
   const db=getPool();
-  assert.match(registered.registrationReference,/^MPA-MEM-\\d{2}-\\d{6,}$/);
+  assert.match(registered.registrationReference,/^MPA-MEM-\d{2}-\d{6,}$/);
   await db.query("update app_user set email_verified_at=null where id=$1",[userId]);
   const verification=await withTransaction(tx=>createEmailVerification(tx,userId,email,registered.registrationReference));
   const previous=process.env.EMAIL_VERIFICATION_REQUIRED;
