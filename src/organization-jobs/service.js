@@ -1,5 +1,6 @@
 import { getPool, withTransaction } from "../platform/db.js";
 import { nextTrackingReference } from "../platform/tracking-reference.js";
+import { queueWorkflowEmail } from "../platform/email-operations.js";
 
 function error(status,message,code="BUSINESS_RULE"){ const e=new Error(message); e.statusCode=status; e.code=code; return e; }
 const ORG_WRITE_ROLES=["owner","administrator","recruiter"];
@@ -361,6 +362,10 @@ export async function submitApplication(applicationId,userId,input={},requestId)
   const updated=(await db.query("update job_application set status='submitted',cover_letter=coalesce($1,cover_letter),profile_snapshot=$2,eligibility_snapshot=$3,submitted_at=now(),updated_at=now() where id=$4 returning *",[input.coverLetter??null,snapshot,eligibility,applicationId])).rows[0];
   await db.query("insert into job_application_event(application_id,actor_user_id,from_status,to_status,note) values($1,$2,'draft','submitted',$3)",[applicationId,userId,input.note||null]);
   await audit(db,userId,"job.application_submitted","job_application",applicationId,requestId,{jobId:a.job_id});
+  const jobContext=(await db.query("select j.title,j.organization_id,o.display_name organization_name from job j join organization o on o.id=j.organization_id where j.id=$1",[a.job_id])).rows[0];
+  await queueWorkflowEmail(db,userId,"professional.workflow_update",{status:"submitted",jobTitle:jobContext?.title||"job application",nextAction:"Monitor the application timeline for employer updates",registrationReference:updated.tracking_reference||""},"job_application",applicationId);
+  const employerUsers=(await db.query("select user_id from organization_membership where organization_id=$1 and status='active' and role_code in ('owner','administrator','recruiter')",[jobContext?.organization_id])).rows;
+  for(const employer of employerUsers)await queueWorkflowEmail(db,employer.user_id,"employer.candidate_update",{jobTitle:jobContext?.title||"job",status:"New candidate application",nextAction:"Review the candidate in the recruitment workspace"},"job_application",applicationId);
   return updated;
  });
 }
@@ -379,6 +384,10 @@ export async function applyToJob(jobId,userId,input,requestId){
   await saveScreeningAnswers(db,app.id,jobId,input.answers||[]);
   await db.query("insert into job_application_event(application_id,actor_user_id,from_status,to_status,note) values($1,$2,null,'submitted',$3)",[app.id,userId,input.note||null]);
   await audit(db,userId,"job.application_submitted","job_application",app.id,requestId,{jobId});
+  const jobContext=(await db.query("select j.title,j.organization_id,o.display_name organization_name from job j join organization o on o.id=j.organization_id where j.id=$1",[jobId])).rows[0];
+  await queueWorkflowEmail(db,userId,"professional.workflow_update",{status:"submitted",jobTitle:jobContext?.title||"job application",nextAction:"Monitor the application timeline for employer updates",registrationReference:app.tracking_reference||""},"job_application",app.id);
+  const employerUsers=(await db.query("select user_id from organization_membership where organization_id=$1 and status='active' and role_code in ('owner','administrator','recruiter')",[jobContext?.organization_id])).rows;
+  for(const employer of employerUsers)await queueWorkflowEmail(db,employer.user_id,"employer.candidate_update",{jobTitle:jobContext?.title||"job",status:"New candidate application",nextAction:"Review the candidate in the recruitment workspace"},"job_application",app.id);
   return app;
  });
 }
@@ -409,7 +418,7 @@ export function allowedCandidateResponse(from,to){ return from==="offer"&&to==="
 
 export async function updateCandidate(jobId,applicationId,userId,input,requestId){
   return withTransaction(async db=>{
-    const j=(await db.query("select organization_id from job where id=$1",[jobId])).rows[0];
+    const j=(await db.query("select organization_id,title from job where id=$1",[jobId])).rows[0];
     if(!j) throw error(404,"Job not found.","NOT_FOUND");
     await orgRole(db,j.organization_id,userId,CANDIDATE_ROLES);
     const a=(await db.query("select * from job_application where id=$1 and job_id=$2 for update",[applicationId,jobId])).rows[0];
@@ -427,6 +436,7 @@ export async function updateCandidate(jobId,applicationId,userId,input,requestId
     )).rows[0];
     await db.query("insert into job_application_event(application_id,actor_user_id,from_status,to_status,note) values($1,$2,$3,$4,$5)",[applicationId,userId,a.status,input.status,input.note||null]);
     await audit(db,userId,"job.candidate_status_changed","job_application",applicationId,requestId,{from:a.status,to:input.status});
+    await queueWorkflowEmail(db,a.applicant_user_id,"professional.workflow_update",{status:input.status,jobTitle:j.title,nextAction:input.status==="correction_required"?"Review the employer message and update your application":"Open your application timeline for the latest details",registrationReference:a.tracking_reference||""},"job_application",applicationId);
     return updated;
   });
 }
