@@ -61,10 +61,16 @@ async function auth(req){
     if(!r.rows[0]||r.rows[0].status!=="active"||r.rows[0].user_id!==identity.sub) throw Object.assign(new Error("Session expired or revoked."),{statusCode:401});
     // Authorization must use current database roles, never stale role claims from a signed token.
     identity.roles=withCurrentRoles(identity,Array.isArray(r.rows[0].roles)?r.rows[0].roles:JSON.parse(r.rows[0].roles||"[]")).roles;
-    if(r.rows[0].admin_passkey_enforced_at && r.rows[0].auth_method!=="passkey") {
-      const route=pathParts(req.url).join("/");
-      const recoveryAllowed=r.rows[0].auth_method==="recovery" && ["api/v1/admin/passkeys/registration/options","api/v1/admin/passkeys/registration/verify"].includes(route);
-      if(!recoveryAllowed) throw Object.assign(new Error("Administrator passkey authentication is required."),{statusCode:401,code:"PASSKEY_REQUIRED"});
+    const route=pathParts(req.url).join("/");
+    const platformAdmin=identity.roles.some(role=>["system_admin","admin"].includes(role));
+    const passkeysRequired=config.nodeEnv==="production" || process.env.REQUIRE_ADMIN_PASSKEYS==="true";
+    const enrollmentRoute=["api/v1/admin/passkeys/registration/options","api/v1/admin/passkeys/registration/verify"].includes(route);
+    const recoveryAllowed=r.rows[0].auth_method==="recovery" && enrollmentRoute;
+    if(passkeysRequired && platformAdmin && !r.rows[0].admin_passkey_enforced_at && !enrollmentRoute) {
+      throw Object.assign(new Error("Register an administrator passkey before using the platform. Sign in and complete passkey setup."),{statusCode:401,code:"PASSKEY_ENROLLMENT_REQUIRED"});
+    }
+    if(r.rows[0].admin_passkey_enforced_at && r.rows[0].auth_method!=="passkey" && !recoveryAllowed) {
+      throw Object.assign(new Error("Administrator passkey authentication is required."),{statusCode:401,code:"PASSKEY_REQUIRED"});
     }
     await db.query("update auth_session set last_seen_at=now() where id=$1",[identity.sid]);
     return identity;
