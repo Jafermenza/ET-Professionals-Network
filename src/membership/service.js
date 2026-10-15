@@ -78,7 +78,7 @@ export async function register(input,requestId){
     await audit(db,user.id,"account.registered","account",user.id,requestId,{identityPolicy:"email_phone_exact_name",registrationReference});
     if(emailVerificationRequired) await db.query("insert into notification_event(user_id,event_code,resource_type,resource_id,payload) values($1,'account_registered','account',$2,$3)",[user.id,user.id,{displayName:p.display_name,registrationReference}]);
     else await notify(db,user.id,"account_registered","account",user.id,{displayName:p.display_name,registrationReference});
-    const verification=emailVerificationRequired?await createEmailVerification(db,user.id,email,registrationReference,p.firstName):null;
+    const verification=emailVerificationRequired?await createEmailVerification(db,user.id,email,registrationReference,p.first_name):null;
     const token=emailVerificationRequired?null:await tokenFor(db,user,["member"]);
     return {user:{id:user.id,email:user.email},person:p,registrationReference,verification,token};
   });
