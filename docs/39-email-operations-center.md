@@ -10,6 +10,7 @@ Open `/admin/email` as a system administrator. The email operations center inclu
 - Drafts: compose and save messages before queueing.
 - Outbox / queued: durable messages waiting for delivery; dispatch up to 20 per administrator action.
 - Failed: messages requiring operator attention; retry failed messages and inspect the latest provider error.
+- Verification failures: failed account-verification deliveries; retry creates a fresh single-use verification link and invalidates prior unconsumed links.
 - Templates: create and edit subject, plain text, HTML, audience and enabled state. Templates support `{{variableName}}` substitutions.
 - Connections & settings: readiness summary, environment variable checklist, send-a-test-email action and manual queue processing.
 
