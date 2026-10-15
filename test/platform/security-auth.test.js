@@ -1,11 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { randomUUID } from "node:crypto";
+import { randomUUID, createHash } from "node:crypto";
 import { getPool, closePool, withTransaction } from "../../src/platform/db.js";
 import * as membership from "../../src/membership/service.js";
 import { hashSessionToken } from "../../src/platform/auth.js";
 import { issueHumanChallenge, verifyHumanChallenge, consumeHumanChallenge, enforcePersistentRateLimit, hashSecurityToken } from "../../src/platform/security-controls.js";
-import { recoverAdminPasskey } from "../../src/platform/webauthn.js";
+import { recoverAdminPasskey, beginAdminPasskeyAuthentication, finishAdminPasskeyAuthentication } from "../../src/platform/webauthn.js";
 import { createEmailVerification, verifyEmailToken } from "../../src/platform/email-verification.js";
 
 const suffix=randomUUID().replace(/-/g,"").slice(0,12);
@@ -30,6 +30,22 @@ test("persistent rate limits are shared by independent request objects",async()=
   await enforcePersistentRateLimit(requestA,action,2,60000);
   await enforcePersistentRateLimit(requestB,action,2,60000);
   await assert.rejects(enforcePersistentRateLimit(requestA,action,2,60000),error=>error.code==="RATE_LIMITED"&&error.statusCode===429);
+});
+
+test("WebAuthn assertion with a mismatched challenge is rejected",async()=>{
+  const email="security-webauthn-"+suffix+"@example.test";
+  const registered=await membership.register({email,password:"Security-webauthn-password-12345",firstName:"Security",lastName:"WebAuthn"+suffix,phone:"09"+randomUUID().replace(/\D/g,"").slice(0,8)},"security-webauthn-register");
+  const userId=registered.user.id;createdUsers.push(userId);
+  const db=getPool();
+  await db.query("insert into app_user_role(user_id,role_id) select $1,id from app_role where role_code='system_admin' on conflict do nothing",[userId]);
+  await db.query("update app_user set admin_passkey_enforced_at=now() where id=$1",[userId]);
+  const credentialId=Buffer.from("credential-"+suffix).toString("base64url");
+  await db.query("insert into admin_passkey_credential(user_id,credential_id,public_key_jwk) values($1,$2,$3)",[userId,credentialId,{kty:"EC",crv:"P-256",x:Buffer.alloc(32,1).toString("base64url"),y:Buffer.alloc(32,2).toString("base64url"),ext:true}]);
+  await beginAdminPasskeyAuthentication(email);
+  const clientData=Buffer.from(JSON.stringify({type:"webauthn.get",challenge:"deliberately-wrong-challenge",origin:"http://localhost:3001"})).toString("base64url");
+  const authData=Buffer.alloc(37);createHash("sha256").update("localhost").digest().copy(authData,0);authData[32]=5;
+  const response={id:credentialId,rawId:credentialId,response:{clientDataJSON:clientData,authenticatorData:authData.toString("base64url"),signature:Buffer.from([1,2,3]).toString("base64url")}};
+  await assert.rejects(finishAdminPasskeyAuthentication(email,response,{},"security-webauthn-wrong-challenge"),error=>error.statusCode===401&&error.code==="UNAUTHENTICATED");
 });
 
 test("email verification is one-time and blocks unverified login",async()=>{
