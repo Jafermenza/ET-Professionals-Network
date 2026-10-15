@@ -122,11 +122,11 @@ export async function verifyEmailToken(rawToken, requestId) {
 export async function resendEmailVerification(emailInput, requestId) {
   const email = clean(emailInput).toLowerCase();
   if (!email || email.length > 320) return { accepted: true };
+  assertEmailDeliveryConfigured();
   const db = getPool();
   const user = (await db.query("select id,email,registration_reference,email_verified_at from app_user where lower(email)=lower($1) limit 1", [email])).rows[0];
   // Keep responses indistinguishable for unknown and already-verified addresses.
   if (!user || user.email_verified_at) return { accepted: true };
-  assertEmailDeliveryConfigured();
   const token = randomBytes(32).toString("base64url");
   await withTransaction(async tx => {
     await tx.query("update email_verification_token set consumed_at=now() where user_id=$1 and consumed_at is null", [user.id]);
