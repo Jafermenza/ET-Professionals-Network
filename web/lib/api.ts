@@ -16,6 +16,7 @@ const FRIENDLY_ERRORS: Record<string,string> = {
   PASSWORD_TOO_SHORT: "Choose a password with at least 10 characters.",
   UNAUTHENTICATED: "Your session has expired or you need to sign in. Please log in and try again.",
   EMAIL_NOT_VERIFIED: "Verify your email before signing in. You can request a new verification link below.",
+  EMAIL_DELIVERY_NOT_CONFIGURED: "Email verification delivery is not configured for this deployment. Registration is temporarily unavailable; contact the platform operator.",
   PASSKEY_REQUIRED: "This administrator account requires a passkey. Choose “Sign in with administrator passkey” or use a one-time recovery code.",
   PASSKEY_ENROLLMENT_REQUIRED: "Register an administrator passkey before continuing. Sign in with your password once to complete setup.",
   PASSKEY_NOT_CONFIGURED: "Administrator passkeys are not configured for this deployment. Contact the platform operator.",
