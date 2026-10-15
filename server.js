@@ -38,7 +38,7 @@ async function body(req){
   let raw="";
   for await (const chunk of req) {
     raw+=chunk;
-    if(Buffer.byteLength(raw)>1024*1024) throw Object.assign(new Error("Request body too large."),{statusCode:413,code:"PAYLOAD_TOO_LARGE"});
+    if(Buffer.byteLength(raw)>64*1024) throw Object.assign(new Error("Request body too large."),{statusCode:413,code:"PAYLOAD_TOO_LARGE"});
   }
   if(!raw) return {};
   try { return JSON.parse(raw); } catch { throw Object.assign(new Error("Request body must be valid JSON."),{statusCode:400,code:"INVALID_JSON"}); }
