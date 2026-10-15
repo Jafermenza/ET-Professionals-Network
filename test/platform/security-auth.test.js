@@ -5,6 +5,7 @@ import { getPool, closePool, withTransaction } from "../../src/platform/db.js";
 import * as membership from "../../src/membership/service.js";
 import { issueHumanChallenge, verifyHumanChallenge, consumeHumanChallenge, enforcePersistentRateLimit, hashSecurityToken } from "../../src/platform/security-controls.js";
 import { recoverAdminPasskey } from "../../src/platform/webauthn.js";
+import { createEmailVerification, verifyEmailToken } from "../../src/platform/email-verification.js";
 
 const suffix=randomUUID().replace(/-/g,"").slice(0,12);
 const createdUsers=[];
@@ -28,6 +29,27 @@ test("persistent rate limits are shared by independent request objects",async()=
   await enforcePersistentRateLimit(requestA,action,2,60000);
   await enforcePersistentRateLimit(requestB,action,2,60000);
   await assert.rejects(enforcePersistentRateLimit(requestA,action,2,60000),error=>error.code==="RATE_LIMITED"&&error.statusCode===429);
+});
+
+test("email verification is one-time and blocks unverified login",async()=>{
+  const email="security-email-"+suffix+"@example.test";
+  const registered=await membership.register({email,password:"Security-email-password-12345",firstName:"Security",lastName:"Email"+suffix,phone:"09"+randomUUID().replace(/\\D/g,"").slice(0,8)},"security-email-register");
+  const userId=registered.user.id;createdUsers.push(userId);
+  const db=getPool();
+  assert.match(registered.registrationReference,/^MPA-MEM-\\d{2}-\\d{6,}$/);
+  await db.query("update app_user set email_verified_at=null where id=$1",[userId]);
+  const verification=await withTransaction(tx=>createEmailVerification(tx,userId,email,registered.registrationReference));
+  const previous=process.env.EMAIL_VERIFICATION_REQUIRED;
+  process.env.EMAIL_VERIFICATION_REQUIRED="true";
+  try {
+    await assert.rejects(membership.login(email,"Security-email-password-12345","security-email-login"),error=>error.code==="EMAIL_NOT_VERIFIED");
+  } finally {
+    if(previous===undefined)delete process.env.EMAIL_VERIFICATION_REQUIRED;else process.env.EMAIL_VERIFICATION_REQUIRED=previous;
+  }
+  assert.deepEqual(await verifyEmailToken(verification.token,"security-email-verify"),{verified:true});
+  await assert.rejects(verifyEmailToken(verification.token,"security-email-replay"),error=>error.code==="EMAIL_VERIFICATION_INVALID");
+  const login=await membership.login(email,"Security-email-password-12345","security-email-login-after-verify");
+  assert.equal(typeof login.token,"string");
 });
 
 test("administrator recovery codes are single-use and create a restricted recovery session",async()=>{
