@@ -21,7 +21,7 @@ const FRIENDLY_ERRORS: Record<string,string> = {
   CHALLENGE_REQUIRED: "Complete the human check before registering.",
   CHALLENGE_INVALID: "The human-check token is invalid, expired, or already used. Complete a new check.",
   CHALLENGE_INCORRECT: "That answer was not correct. Please try a new human check.",
-  PASSWORD_CONFIRMATION_MISMATCH: "Password confirmation does not match.
+  PASSWORD_CONFIRMATION_MISMATCH: "Password confirmation does not match.",
   AUTH_RATE_LIMIT: "There have been too many unsuccessful sign-in attempts. Please wait a while and try again.",
   RATE_LIMITED: "Too many requests were made in a short time. Please wait a moment and try again.",
   FORBIDDEN: "Your account does not have permission to perform this action. If you believe this is incorrect, contact support.",
