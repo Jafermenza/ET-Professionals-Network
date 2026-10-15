@@ -1,4 +1,4 @@
-import { createHash, randomBytes, randomInt } from "node:crypto";
+import { createHash, randomBytes, randomInt, timingSafeEqual } from "node:crypto";
 import { getPool, withTransaction } from "./db.js";
 
 const sha256 = value => createHash("sha256").update(String(value)).digest("hex");
@@ -35,7 +35,7 @@ export async function enforcePersistentRateLimit(req, action, limit = 10, window
     returning request_count
   `, [key, windowMs]);
   // Opportunistic bounded cleanup avoids a process-local map and keeps storage bounded.
-  if (randomInt(0, 100) === 0) await db.query("delete from security_rate_limit where expires_at < now() limit 500");
+  if (randomInt(0, 100) === 0) await db.query("delete from security_rate_limit where bucket_key in (select bucket_key from security_rate_limit where expires_at < now() order by expires_at limit 500)");
   if (Number(result.rows[0].request_count) > limit) {
     throw Object.assign(new Error("Too many requests. Please try again later."), { statusCode: 429, code: "RATE_LIMITED" });
   }
@@ -58,21 +58,27 @@ export async function verifyHumanChallenge(id, answer) {
   const result = await withTransaction(async db => {
     const row = (await db.query("select * from security_human_challenge where id=$1 and purpose='registration' for update", [id])).rows[0];
     if (!row || row.consumed_at || row.verified_at || new Date(row.expires_at) <= new Date() || row.failed_attempts >= 5) {
-      throw Object.assign(new Error("This human check has expired. Please try again."), { statusCode: 400, code: "CHALLENGE_INVALID" });
+      return { ok: false, code: "CHALLENGE_INVALID" };
     }
-    const expected = row.answer_hash;
-    // Recompute with the exact stored question; compare fixed-length hashes in constant time.
     const suppliedAnswer = normalizeAnswer(answer);
-    const match = /^-?\d{1,3}$/.test(suppliedAnswer) &&
-      sha256("registration:" + row.question + ":" + suppliedAnswer) === expected;
+    const actual = sha256("registration:" + row.question + ":" + suppliedAnswer);
+    const expectedBytes = Buffer.from(row.answer_hash, "hex");
+    const actualBytes = Buffer.from(actual, "hex");
+    const match = /^-?\d{1,3}$/.test(suppliedAnswer) && expectedBytes.length === actualBytes.length && timingSafeEqual(expectedBytes, actualBytes);
     if (!match) {
       await db.query("update security_human_challenge set failed_attempts=least(failed_attempts+1,5) where id=$1", [id]);
-      throw Object.assign(new Error("That answer was not correct. Please try again."), { statusCode: 400, code: "CHALLENGE_INCORRECT" });
+      return { ok: false, code: "CHALLENGE_INCORRECT" };
     }
     await db.query("update security_human_challenge set token_hash=$1,verified_at=now() where id=$2", [sha256(rawToken), id]);
-    return true;
+    return { ok: true };
   });
-  return result ? { token: rawToken, expiresInSeconds: 300 } : null;
+  if (!result.ok) {
+    const invalid = result.code === "CHALLENGE_INVALID";
+    throw Object.assign(new Error(invalid ? "This human check has expired. Please try again." : "That answer was not correct. Please try again."), {
+      statusCode: 400, code: result.code
+    });
+  }
+  return { token: rawToken, expiresInSeconds: 300 };
 }
 
 export async function consumeHumanChallenge(db, rawToken) {
