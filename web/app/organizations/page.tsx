@@ -663,14 +663,14 @@ export default function Organizations() {
                       )}
                     </Badge>
                   </div>
-                  <div className="track-card-grid"><div><span>Application reference</span><b>{org.tracking_reference||"Reference pending"}</b></div><div><span>Last updated</span><b>{org.updated_at?new Date(org.updated_at).toLocaleString():"Not available"}</b></div><div><span>Next required action</span><b>{org.verification_status==="verified"?"No action required":org.verification_status==="pending"?"Await organization review":"Upload required evidence and submit for review"}</b></div></div><p className="muted">The representative account is linked to this organization as its owner. Organization approval remains separate from email verification. Evidence is private and checked against active server-side requirements.</p>
-                  <button
+                  <div className="track-card-grid"><div><span>Application reference</span><b>{org.tracking_reference||"Reference pending"}</b></div><div><span>Last updated</span><b>{org.updated_at?new Date(org.updated_at).toLocaleString():"Not available"}</b></div><div><span>Next required action</span><b>{org.verification_status==="verified"?"No action required":org.verification_status==="pending"?"Await organization review":org.verification_status==="correction_required"?"Provide the requested corrections":org.verification_status==="rejected"?"Review the decision and contact support if needed":"Upload required evidence and submit for review"}</b></div></div><p className="muted">The representative account is linked to this organization as its owner. Organization approval remains separate from email verification. Evidence is private and checked against active server-side requirements.</p>
+                  {["draft","correction_required","unverified"].includes(org.verification_status||"draft")&&<button
                     className="btn btn-ghost"
                     type="button"
                     onClick={() => void submitVerification(org)}
                   >
                     Submit for verification
-                  </button>
+                  </button>}
                 </div>
               ))}
             </div>
